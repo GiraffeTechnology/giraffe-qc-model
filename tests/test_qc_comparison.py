@@ -62,6 +62,21 @@ def test_run_comparison_source_type_video_capture(db, sample, tmp_path):
     assert task.source_type == "video_capture"
 
 
+def test_run_comparison_default_uses_cv(db, tmp_path):
+    """When no provider is given, CVComparator is the default — no LLM needed."""
+    import cv2, numpy as np
+    img = np.zeros((100, 100, 3), dtype=np.uint8)
+    img[:] = (0, 0, 200)
+    std_p  = str(tmp_path / "std_cv.png");  cv2.imwrite(std_p, img)
+    prod_p = str(tmp_path / "prod_cv.png"); cv2.imwrite(prod_p, img)
+    from src.sample_store.manager import import_sample
+    s = import_sample(db, "SKU-CV-DEFAULT", std_p)
+    task, result = run_comparison(db, prod_p, s)   # no provider arg
+    assert result.llm_provider == "cv"
+    assert task.status == "done"
+    assert result.overall_result in ("pass", "needs_fix", "reject")
+
+
 def test_failed_comparison_marks_task_failed(db, sample, tmp_path):
     """A provider that always raises should mark the task as failed."""
     from src.llm.base import LLMProvider

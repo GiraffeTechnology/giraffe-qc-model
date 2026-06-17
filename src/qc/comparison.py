@@ -1,7 +1,10 @@
 """
 Core Capability A — image comparison pipeline.
 
-Flow: production_image → lookup sample → call LLM → write QCTask + QCResult to DB
+Flow: production_image → lookup sample → CV comparator (or optional LLM) → write QCTask + QCResult to DB
+
+Default provider is CVComparator (pure local vision, no API calls).
+Pass an LLMProvider instance to override with Qwen/OpenAI.
 """
 from __future__ import annotations
 from datetime import datetime, timezone
@@ -10,7 +13,6 @@ from sqlalchemy.orm import Session
 
 from src.db.models import QCTask, QCResult, SampleItem
 from src.llm.base import LLMProvider, ImageCompareResult
-from src.llm.registry import get_provider
 
 
 def _utcnow() -> datetime:
@@ -31,7 +33,10 @@ def run_comparison(
 
     Returns (QCTask, QCResult) — both committed to DB.
     """
-    llm = provider or get_provider()
+    if provider is None:
+        from src.cv.comparator import CVComparator
+        provider = CVComparator()
+    llm = provider
 
     # Create task record
     task = QCTask(
@@ -56,7 +61,7 @@ def run_comparison(
         task.status = "failed"
         task.completed_at = _utcnow()
         db.commit()
-        raise RuntimeError(f"LLM comparison failed for task {task.id}: {exc}") from exc
+        raise RuntimeError(f"QC comparison failed for task {task.id}: {exc}") from exc
 
     task.completed_at = _utcnow()
 

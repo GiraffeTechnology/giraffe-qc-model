@@ -8,9 +8,9 @@ Tier 2 — ORB local feature matching (changed frames only, ~10ms):
   Compare against sample library.  Only frames above LOCAL_PREFILTER_THRESHOLD
   proceed to Tier 3.
 
-Tier 3 — Qwen vision LLM (high-confidence frames only):
-  Reuses Core Capability A's run_comparison().
-  Most expensive operation; must be called as rarely as possible.
+Tier 3 — CV comparator (high-confidence frames only, ~20ms):
+  Reuses Core Capability A's run_comparison() with CVComparator by default.
+  Pass an LLMProvider to run_video_pipeline() to override with Qwen/OpenAI.
 
 Input source abstraction:
   The pipeline accepts any iterable of (frame_index, timestamp_ms, bgr_array).
@@ -31,7 +31,6 @@ from sqlalchemy.orm import Session
 
 from src.db.models import VideoTask, CaptureRecord, SampleItem, QCTask, QCResult
 from src.db.session import SessionLocal
-from src.llm.registry import get_provider
 from src.qc.comparison import run_comparison
 from src.sample_store.manager import get_samples
 from src.video.detector import ORBDetector, LocalDetector, above_threshold
@@ -99,6 +98,7 @@ def run_video_pipeline(
     notes: str = "",
     db: Session | None = None,
     detector: LocalDetector | None = None,
+    provider=None,
 ) -> tuple[VideoTask, PipelineStats]:
     """
     Process a video file through the three-tier pipeline.
@@ -111,7 +111,6 @@ def run_video_pipeline(
 
     _CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
     det = detector or ORBDetector()
-    llm = get_provider()
 
     # Load sample images for this SKU
     samples: list[SampleItem] = get_samples(db, sku_id)
@@ -169,7 +168,7 @@ def run_video_pipeline(
                 sample=primary_sample,
                 requirements=requirements,
                 notes=notes,
-                provider=llm,
+                provider=provider,   # None → CVComparator default
                 source_type="video_capture",
             )
             qc_task_id = qc_task.id

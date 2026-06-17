@@ -49,23 +49,27 @@ class TestOpenAIProviderSkeleton:
 
 
 class TestRegistry:
-    def test_mock_when_real_calls_disabled(self, monkeypatch):
+    def test_cv_when_real_calls_disabled(self, monkeypatch):
         monkeypatch.setenv("LLM_ENABLE_REAL_CALLS", "false")
         monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
         monkeypatch.delenv("QWEN_API_KEY", raising=False)
         p = get_provider("qwen")
-        assert p.provider_name == "mock"
+        assert p.provider_name == "cv"
 
-    def test_mock_when_no_api_key(self, monkeypatch):
+    def test_cv_when_no_api_key(self, monkeypatch):
         monkeypatch.setenv("LLM_ENABLE_REAL_CALLS", "true")
         monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
         monkeypatch.delenv("QWEN_API_KEY", raising=False)
         p = get_provider("qwen")
-        assert p.provider_name == "mock"
+        assert p.provider_name == "cv"
 
     def test_explicit_mock_provider(self, monkeypatch):
         p = get_provider("mock")
         assert p.provider_name == "mock"
+
+    def test_explicit_cv_provider(self):
+        p = get_provider("cv")
+        assert p.provider_name == "cv"
 
     def test_unknown_provider_raises(self, monkeypatch):
         monkeypatch.setenv("LLM_ENABLE_REAL_CALLS", "true")
