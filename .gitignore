@@ -1,0 +1,18 @@
+# Runtime data
+data/
+giraffe_qc.db
+*.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Build
+*.egg-info/
+dist/
+build/
+
+# Env
+.env
