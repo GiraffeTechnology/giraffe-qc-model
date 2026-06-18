@@ -16,3 +16,6 @@ build/
 
 # Env
 .env
+
+# Claude Code internal
+.claude/
