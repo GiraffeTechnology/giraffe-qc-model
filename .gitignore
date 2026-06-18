@@ -19,3 +19,7 @@ build/
 
 # Claude Code internal
 .claude/
+
+# Gradle build cache
+.gradle/
+local.properties
