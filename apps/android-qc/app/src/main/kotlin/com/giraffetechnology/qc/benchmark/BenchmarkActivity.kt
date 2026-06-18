@@ -42,16 +42,22 @@ class BenchmarkActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Use app-scoped external storage — readable/writable without any
-        // storage permission on Android 10+ (API 29+) incl. Android 16.
-        val extDir = getExternalFilesDir(null) ?: filesDir
-        val defaultModelPath = File(extDir, "models/qwen_mnn").absolutePath
+        // Always derive model path from getExternalFilesDir() — the /sdcard/ symlink
+        // is visible to `adb shell ls` but Java File.exists() cannot follow it on
+        // Android 16 scoped storage. getExternalFilesDir() returns the real
+        // /storage/emulated/0/... path that the app sandbox can actually read.
+        val extDir     = getExternalFilesDir(null) ?: filesDir
+        val modelPath  = File(extDir, "models/qwen_mnn").absolutePath
         val outputFile = File(extDir, RESULTS_FILENAME)
 
-        val modelPath  = intent.getStringExtra("model_path") ?: defaultModelPath
         val iterations = intent.getIntExtra("iterations", 10)
         val modelName  = intent.getStringExtra("model_name") ?: "Qwen2-VL-2B-Instruct-MNN"
         val cpuOnly    = intent.getBooleanExtra("cpu_only", false)
+
+        // Log if the caller passed a model_path that differs (e.g. /sdcard/... from script).
+        intent.getStringExtra("model_path")?.takeIf { it != modelPath }?.let {
+            Log.w(TAG, "Intent model_path=$it ignored — /sdcard symlink unresolvable via File on Android 16. Using: $modelPath")
+        }
 
         Log.i(TAG, "Benchmark start: model=$modelPath  iterations=$iterations  modelName=$modelName  cpuOnly=$cpuOnly")
         Log.i(TAG, "Results file: ${outputFile.absolutePath}")
