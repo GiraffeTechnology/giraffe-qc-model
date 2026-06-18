@@ -129,6 +129,9 @@ fi
 log "Starting BenchmarkActivity..."
 log "  model_path=$MODEL_PATH  iterations=$ITERATIONS  model_name=$MODEL_NAME  cpu_only=$CPU_ONLY"
 
+# Clear logcat buffer so the fallback parser sees only this run's output
+$ADB_CMD logcat -c 2>/dev/null || true
+
 $ADB_CMD shell am start -n "${PACKAGE}/${ACTIVITY}" \
     --es model_path "$MODEL_PATH" \
     --ei iterations "$ITERATIONS" \
@@ -161,8 +164,9 @@ log "Benchmark complete. Pulling results..."
 # Pull JSON results
 $ADB_CMD pull "$DEVICE_OUTPUT" "$OUTPUT" 2>/dev/null || {
     echo "WARNING: Could not pull $DEVICE_OUTPUT — extracting from logcat instead." >&2
-    # Fallback: extract JSON from logcat between markers
-    $ADB_CMD logcat -d -s QCBenchmark 2>/dev/null \
+    # Use -v raw to get only the message body (no timestamp/tag prefix),
+    # then extract lines between the JSON markers.
+    $ADB_CMD logcat -d -v raw -s QCBenchmark 2>/dev/null \
         | awk '/BENCHMARK_RESULTS_JSON_START/{flag=1; next} /BENCHMARK_RESULTS_JSON_END/{flag=0} flag' \
         > "$OUTPUT"
 }
