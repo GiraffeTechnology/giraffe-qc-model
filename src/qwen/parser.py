@@ -74,8 +74,8 @@ def parse_qwen_output(
     try:
         json_str = _extract_json_from_text(raw)
         data = json.loads(json_str)
-    except (json.JSONDecodeError, ValueError) as e:
-        return _make_fail_closed(engine, reason=f"json_decode_error: {e}")
+    except (json.JSONDecodeError, ValueError):
+        return _make_fail_closed(engine, reason="json_parse_failed")
 
     if not isinstance(data, dict):
         return _make_fail_closed(engine, reason="response_not_dict")

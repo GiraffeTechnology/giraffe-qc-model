@@ -12,7 +12,8 @@ from src.qwen.schema import StandardPhotoInput, CapturePhotoInput, QcPointInput
 PROMPT_VERSION = "qwen-qc-v1"
 
 _PROMPT_TEMPLATE = """\
-You are a professional product quality control (QC) inspector. Your task is to inspect a production product photo against reference standard photos and a set of QC criteria.
+You are a professional product quality control (QC) inspector. (Prompt version: qwen-qc-v1)
+Your task is to inspect a production product photo against reference standard photos and QC points.
 
 ## Standard (Reference) Photos
 {standard_photos_desc}

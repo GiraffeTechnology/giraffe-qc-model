@@ -56,6 +56,35 @@ def _make_review_required(
     )
 
 
+def _make_fail(
+    qc_points: List[QcPointInput],
+    reason: str,
+    engine: str = "router",
+) -> QwenInspectionOutput:
+    """Return a fail result (used when on-device result was fail and is final)."""
+    items = [
+        InspectionItemResult(
+            qc_point_id=p.qc_point_id,
+            qc_point_code=p.qc_point_code,
+            name=p.name,
+            result="fail",
+            confidence=0.0,
+            reason=reason,
+            evidence={},
+        )
+        for p in qc_points
+    ]
+    return QwenInspectionOutput(
+        overall_result="fail",
+        engine=engine,
+        model_name="none",
+        confidence=0.0,
+        items=items,
+        fallback=FallbackInfo(used=False, reason=reason),
+        summary=f"On-device inspection result: {reason}",
+    )
+
+
 class QwenRouter:
     """Routes QC inspection requests to available providers.
 
@@ -63,10 +92,14 @@ class QwenRouter:
     The primary path (on-device) uses the Android router.
 
     Routing logic:
-    1. If cloud_provider is provided and QWEN_CLOUD_ENABLED=true → use cloud
-    2. If cloud_provider is provided but cloud disabled → return review_required
-    3. If no cloud_provider → return review_required
+    1. If simulated_on_device_result="fail" and on_device_fail_is_final → return fail (no cloud)
+    2. If cloud_provider is provided and QWEN_CLOUD_ENABLED=true → use cloud
+    3. If cloud_provider is provided but cloud disabled → return review_required
+    4. If no cloud_provider → return review_required
     """
+
+    def __init__(self, on_device_fail_is_final: bool = True) -> None:
+        self.on_device_fail_is_final = on_device_fail_is_final
 
     def route(
         self,
@@ -75,6 +108,7 @@ class QwenRouter:
         qc_points: List[QcPointInput],
         context: InspectionContext,
         cloud_provider: Optional[QwenQCProvider] = None,
+        simulated_on_device_result: Optional[str] = None,
     ) -> QwenInspectionOutput:
         """Route inspection to available provider.
 
@@ -89,6 +123,10 @@ class QwenRouter:
         Returns:
             QwenInspectionOutput
         """
+        # §4.5.4: on-device FAIL is final — never escalate to cloud to produce a pass
+        if simulated_on_device_result == "fail" and self.on_device_fail_is_final:
+            return _make_fail(qc_points, reason="on_device_fail_is_final", engine="router")
+
         if cloud_provider is None:
             return _make_review_required(
                 qc_points,
