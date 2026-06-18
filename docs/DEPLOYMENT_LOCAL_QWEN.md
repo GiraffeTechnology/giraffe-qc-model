@@ -100,28 +100,35 @@ Place all model files under `app/src/main/assets/models/qwen_mnn/` (including `c
 
 ## ADB Sideloading (Development / Benchmark)
 
+The app uses `getExternalFilesDir()` for both model loading and results output —
+no `MANAGE_EXTERNAL_STORAGE` permission is required on Android 10+ / Android 16
+scoped storage. ADB can push to the app's scoped external directory without root.
+
 Push the model directory to the device:
 
 ```bash
-adb push ./qwen_2b_mnn/ /sdcard/qwen_2b_mnn/
+adb push ./qwen_2b_mnn/ \
+  /sdcard/Android/data/com.giraffetechnology.qc/files/models/qwen_mnn/
 ```
 
-Then launch via the BenchmarkActivity:
+Then launch via the BenchmarkActivity (`model_path` defaults to the above
+location so `--es model_path` can be omitted when using the default):
 
 ```bash
 adb shell am start -n com.giraffetechnology.qc/.benchmark.BenchmarkActivity \
-    --es model_path /sdcard/qwen_2b_mnn \
     --ei iterations 10 \
     --es model_name "Qwen2-VL-2B-Instruct-MNN" \
     --ez cpu_only true
 ```
+
+Results are written to:
+`/sdcard/Android/data/com.giraffetechnology.qc/files/qc_benchmark_results.json`
 
 Or use the benchmark script (pass `-c` for CPU-only, `-a` to auto-install the APK):
 
 ```bash
 ./scripts/benchmark_mnn.sh \
     -d <device_serial> \
-    -p /sdcard/qwen_2b_mnn \
     -i 10 \
     -a apps/android-qc/app/build/outputs/apk/debug/app-debug.apk \
     -c

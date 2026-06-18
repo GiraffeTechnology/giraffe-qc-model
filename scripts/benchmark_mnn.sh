@@ -8,7 +8,8 @@
 #
 # Options:
 #   -d DEVICE      ADB device serial (default: first connected)
-#   -p MODEL_PATH  Path on device to model dir (default: /sdcard/qwen_2b_mnn)
+#   -p MODEL_PATH  Path on device to model dir
+#                  (default: /sdcard/Android/data/com.giraffetechnology.qc/files/models/qwen_mnn)
 #   -i ITERATIONS  Number of inference iterations (default: 10)
 #   -m MODEL_NAME  Model name label (default: Qwen2-VL-2B-Instruct-MNN)
 #   -o OUTPUT      Local output file for JSON results (default: benchmark_results.json)
@@ -20,8 +21,13 @@
 #   - ADB in PATH and device connected with USB debugging enabled
 #   - APK installed: adb install app/build/outputs/apk/debug/app-debug.apk
 #     (or pass -a <apk_path> to install automatically)
-#   - Model provisioned to device: adb push <model_dir>/ /sdcard/qwen_2b_mnn/
+#   - Model pushed to device:
+#       adb push <local_model_dir>/ \
+#         /sdcard/Android/data/com.giraffetechnology.qc/files/models/qwen_mnn/
 #     See docs/DEPLOYMENT_LOCAL_QWEN.md for download + sideload instructions.
+#
+# NOTE: Uses app-scoped external storage (getExternalFilesDir) — no
+#   MANAGE_EXTERNAL_STORAGE needed on Android 10+ / Android 16.
 #
 # Model directory must contain (taobao-mnn/Qwen2-VL-2B-Instruct-MNN layout):
 #   llm.mnn  llm.mnn.weight  visual.mnn  visual.mnn.weight
@@ -35,16 +41,18 @@
 
 set -euo pipefail
 
+PACKAGE="com.giraffetechnology.qc"
+ACTIVITY=".benchmark.BenchmarkActivity"
+EXT_FILES_DIR="/sdcard/Android/data/${PACKAGE}/files"
+
 DEVICE=""
-MODEL_PATH="/sdcard/qwen_2b_mnn"
+MODEL_PATH="${EXT_FILES_DIR}/models/qwen_mnn"
 ITERATIONS=10
 MODEL_NAME="Qwen2-VL-2B-Instruct-MNN"
 OUTPUT="benchmark_results.json"
 APK_PATH=""
 CPU_ONLY=false
-PACKAGE="com.giraffetechnology.qc"
-ACTIVITY=".benchmark.BenchmarkActivity"
-DEVICE_OUTPUT="/sdcard/qc_benchmark_results.json"
+DEVICE_OUTPUT="${EXT_FILES_DIR}/qc_benchmark_results.json"
 
 usage() {
     grep '^#' "$0" | sed 's/^# \{0,1\}//'
@@ -105,8 +113,8 @@ fi
 # Verify model directory and key files exist on device
 if ! $ADB_CMD shell test -d "$MODEL_PATH" 2>/dev/null; then
     echo "ERROR: Model directory not found on device at: $MODEL_PATH" >&2
-    echo "Provision the model first:" >&2
-    echo "  adb push <local_model_dir>/ $MODEL_PATH/" >&2
+    echo "Provision the model first (app-scoped external storage, no root needed):" >&2
+    echo "  adb push <local_model_dir>/ \"$MODEL_PATH/\"" >&2
     echo "  See docs/DEPLOYMENT_LOCAL_QWEN.md for full instructions." >&2
     exit 1
 fi

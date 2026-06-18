@@ -14,39 +14,51 @@ import java.time.Instant
 /**
  * §4.3.0 On-device latency benchmark activity.
  *
- * Target device: Snapdragon 8 Gen, 8 GB RAM.
- * Default model: Qwen2-VL-2B-Instruct-MNN (INT4).
- * Measures cold-start load time, per-image p50/p95, peak memory, thermal behavior.
+ * Uses getExternalFilesDir() for both model loading and results — no
+ * MANAGE_EXTERNAL_STORAGE permission needed on Android 10+ / Android 16
+ * scoped storage. ADB can push to this path without root.
+ *
+ * Default model path: <external_files_dir>/models/qwen_mnn/
+ * Push via ADB:
+ *   adb push <local_model_dir>/ \
+ *     /sdcard/Android/data/com.giraffetechnology.qc/files/models/qwen_mnn/
  *
  * Launch via ADB:
  *   adb shell am start -n com.giraffetechnology.qc/.benchmark.BenchmarkActivity \
- *     --es model_path /sdcard/qwen_2b_mnn \
  *     --ei iterations 10 \
  *     --es model_name "Qwen2-VL-2B-Instruct-MNN" \
  *     --ez cpu_only true
  *
- * Results written to /sdcard/qc_benchmark_results.json and logcat tag QCBenchmark.
+ * Results written to <external_files_dir>/qc_benchmark_results.json
+ * and logcat tag QCBenchmark.
  */
 class BenchmarkActivity : Activity() {
 
     companion object {
         private const val TAG = "QCBenchmark"
-        private const val OUTPUT_FILE = "/sdcard/qc_benchmark_results.json"
+        private const val RESULTS_FILENAME = "qc_benchmark_results.json"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val modelPath  = intent.getStringExtra("model_path")
-            ?: ModelProvisioning.getModelDir(applicationContext).absolutePath
+
+        // Use app-scoped external storage — readable/writable without any
+        // storage permission on Android 10+ (API 29+) incl. Android 16.
+        val extDir = getExternalFilesDir(null) ?: filesDir
+        val defaultModelPath = File(extDir, "models/qwen_mnn").absolutePath
+        val outputFile = File(extDir, RESULTS_FILENAME)
+
+        val modelPath  = intent.getStringExtra("model_path") ?: defaultModelPath
         val iterations = intent.getIntExtra("iterations", 10)
         val modelName  = intent.getStringExtra("model_name") ?: "Qwen2-VL-2B-Instruct-MNN"
         val cpuOnly    = intent.getBooleanExtra("cpu_only", false)
 
-        Log.i(TAG, "Benchmark start: model=$modelPath, iterations=$iterations, modelName=$modelName, cpuOnly=$cpuOnly")
+        Log.i(TAG, "Benchmark start: model=$modelPath  iterations=$iterations  modelName=$modelName  cpuOnly=$cpuOnly")
+        Log.i(TAG, "Results file: ${outputFile.absolutePath}")
 
         CoroutineScope(Dispatchers.Main).launch {
             val results = runBenchmark(modelPath, iterations, modelName, cpuOnly)
-            writeResults(results)
+            writeResults(results, outputFile)
             Log.i(TAG, "Benchmark complete")
             finish()
         }
@@ -71,7 +83,7 @@ class BenchmarkActivity : Activity() {
                 "model_name"   to modelName,
                 "device_model" to Build.MODEL,
                 "total_ram_mb" to totalRamMb(),
-                "note"         to "Ensure model is provisioned per docs/DEPLOYMENT_LOCAL_QWEN.md",
+                "note"         to "Push model to /sdcard/Android/data/com.giraffetechnology.qc/files/models/qwen_mnn/ — see docs/DEPLOYMENT_LOCAL_QWEN.md",
             )
         }
 
@@ -131,14 +143,16 @@ class BenchmarkActivity : Activity() {
         )
     }
 
-    private fun writeResults(results: Map<String, Any>) {
+    private fun writeResults(results: Map<String, Any>, outputFile: File) {
         val json = JSONObject(results).toString(2)
         try {
-            File(OUTPUT_FILE).writeText(json)
-            Log.i(TAG, "Results → $OUTPUT_FILE")
+            outputFile.parentFile?.mkdirs()
+            outputFile.writeText(json)
+            Log.i(TAG, "Results written → ${outputFile.absolutePath}")
         } catch (e: Exception) {
             Log.w(TAG, "Write failed: ${e.message}")
         }
+        // Always emit to logcat as fallback for adb pull failures
         Log.i(TAG, "BENCHMARK_RESULTS_JSON_START")
         Log.i(TAG, json)
         Log.i(TAG, "BENCHMARK_RESULTS_JSON_END")
