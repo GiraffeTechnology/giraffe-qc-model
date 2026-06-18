@@ -47,31 +47,73 @@ class MnnRuntimeLoader(private val context: Context) {
                 false
             }
         }
+
+        /**
+         * Resolves the directory that actually contains llm.mnn, starting from rootDir.
+         * Checks rootDir directly first, then one level of subdirectories.
+         * Returns null if llm.mnn cannot be found anywhere under rootDir.
+         *
+         * This handles the common adb-push case where files land in a subdirectory:
+         *   adb push ./Qwen2-VL-2B-Instruct-MNN  /sdcard/.../qwen_mnn/
+         * results in: /sdcard/.../qwen_mnn/Qwen2-VL-2B-Instruct-MNN/llm.mnn
+         */
+        fun resolveModelDir(rootDir: File): File? {
+            // Direct check
+            if (File(rootDir, "llm.mnn").exists()) {
+                Log.i(TAG, "llm.mnn found directly in: ${rootDir.absolutePath}")
+                return rootDir
+            }
+            Log.w(TAG, "llm.mnn not found directly in: ${rootDir.absolutePath}")
+            val listing = rootDir.list()?.joinToString(", ") ?: "<directory empty or missing>"
+            Log.w(TAG, "  Directory contents: $listing")
+
+            // One-level subdirectory scan
+            val subdirs = rootDir.listFiles { f -> f.isDirectory } ?: emptyArray()
+            for (sub in subdirs) {
+                if (File(sub, "llm.mnn").exists()) {
+                    Log.w(TAG, "llm.mnn found in subdirectory: ${sub.absolutePath} " +
+                        "— model was pushed one level too deep. Using this path.")
+                    return sub
+                }
+            }
+            Log.e(TAG, "llm.mnn not found in ${rootDir.absolutePath} or any immediate subdirectory")
+            return null
+        }
     }
 
     private var modelLoaded = false
     internal var modelPtr: Long = 0L
 
+    /** Actual directory containing llm.mnn — may differ from the rootDir passed to loadModel(). */
+    var resolvedModelDir: File? = null
+        private set
+
     suspend fun loadModel(modelDir: File, cpuOnly: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         val nativeAvailable = loadNativeLibs()
-        val modelFile = File(modelDir, "llm.mnn")
-        if (!modelFile.exists()) {
-            Log.e(TAG, "llm.mnn not found at ${modelFile.absolutePath}")
+
+        val effectiveDir = resolveModelDir(modelDir)
+        if (effectiveDir == null) {
+            Log.e(TAG, "Model directory resolution failed. rootDir=${modelDir.absolutePath}")
             return@withContext false
         }
+
+        resolvedModelDir = effectiveDir
+
         if (!nativeAvailable) {
             // STUB MODE: model files present but MNN AAR not yet integrated.
             // Inspector will simulate inference with realistic latency rather than fail.
             stubMode = true
             modelLoaded = true
-            Log.w(TAG, "STUB MODE — llm.mnn found but MNN native libs absent. " +
-                "Benchmark will simulate inference. Integrate MNN-android.aar for real numbers.")
+            Log.w(TAG, "STUB MODE — llm.mnn found at ${effectiveDir.absolutePath} " +
+                "but MNN native libs absent. Benchmark will simulate inference. " +
+                "Integrate MNN-android.aar for real numbers.")
             return@withContext true
         }
-        // Production: modelPtr = nativeLoadModel(modelDir.absolutePath, cpuOnly)
+
+        // Production: modelPtr = nativeLoadModel(effectiveDir.absolutePath, cpuOnly)
         stubMode = false
         modelLoaded = true
-        Log.i(TAG, "Model loaded from ${modelDir.absolutePath}  cpuOnly=$cpuOnly")
+        Log.i(TAG, "Model loaded from ${effectiveDir.absolutePath}  cpuOnly=$cpuOnly")
         true
     }
 

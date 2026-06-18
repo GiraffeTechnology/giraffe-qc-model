@@ -78,12 +78,23 @@ class BenchmarkActivity : Activity() {
         val loadTimeMs = System.currentTimeMillis() - loadStart
 
         if (!loaded) {
+            val checkedDir = File(modelPath)
+            val dirListing = checkedDir.list()?.joinToString(", ") ?: "<directory missing>"
+            val subdirListings = checkedDir.listFiles { f -> f.isDirectory }
+                ?.joinToString("; ") { sub ->
+                    "${sub.name}/[${sub.list()?.joinToString(", ") ?: "empty"}]"
+                } ?: ""
             return@withContext mapOf(
-                "error"        to "Model failed to load from $modelPath",
-                "model_name"   to modelName,
-                "device_model" to Build.MODEL,
-                "total_ram_mb" to totalRamMb(),
-                "note"         to "Push model to /sdcard/Android/data/com.giraffetechnology.qc/files/models/qwen_mnn/ — see docs/DEPLOYMENT_LOCAL_QWEN.md",
+                "error"              to "Model failed to load from $modelPath",
+                "model_name"         to modelName,
+                "device_model"       to Build.MODEL,
+                "total_ram_mb"       to totalRamMb(),
+                "checked_path"       to "$modelPath/llm.mnn",
+                "dir_listing"        to dirListing,
+                "subdir_listings"    to subdirListings,
+                "note"               to "Expected llm.mnn directly in $modelPath " +
+                    "or in one subdirectory. Push model with trailing slash: " +
+                    "adb push <local_dir>/ $modelPath/ — see docs/DEPLOYMENT_LOCAL_QWEN.md",
             )
         }
 
@@ -126,6 +137,7 @@ class BenchmarkActivity : Activity() {
 
         mapOf(
             "model_name"          to modelName,
+            "model_dir_used"      to (runtimeLoader.resolvedModelDir?.absolutePath ?: modelPath),
             "device_model"        to Build.MODEL,
             "device_soc"          to Build.HARDWARE,
             "android_version"     to Build.VERSION.RELEASE,
