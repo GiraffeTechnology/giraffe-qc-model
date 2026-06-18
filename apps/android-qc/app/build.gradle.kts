@@ -16,10 +16,17 @@ android {
         versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // On-device model config exposed via BuildConfig
+        buildConfigField("String", "QWEN_MODEL_NAME", "\"Qwen2-VL-2B-Instruct-MNN\"")
+        buildConfigField("String", "QWEN_PROVISIONING_MODE", "\"download_on_first_run\"")
+        buildConfigField("int", "QWEN_TIMEOUT_SECONDS", "10")
+        buildConfigField("boolean", "QWEN_CLOUD_ENABLED", "false")
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"
@@ -32,11 +39,6 @@ android {
             isMinifyEnabled = false
         }
     }
-    // On-device model config
-    buildConfigField("String", "QWEN_MODEL_NAME", "\"Qwen2-VL-2B-Instruct-MNN\"")
-    buildConfigField("String", "QWEN_PROVISIONING_MODE", "\"download_on_first_run\"")
-    buildConfigField("int", "QWEN_TIMEOUT_SECONDS", "10")
-    buildConfigField("boolean", "QWEN_CLOUD_ENABLED", "false")
 }
 
 dependencies {
