@@ -144,8 +144,16 @@ def run_video_pipeline(
     db.commit()
     db.refresh(vtask)
 
-    stats    = PipelineStats()
-    source   = VideoFileSource(video_path)
+    stats = PipelineStats()
+    try:
+        source = VideoFileSource(video_path)
+    except FileNotFoundError:
+        vtask.status = "failed"
+        vtask.completed_at = datetime.now(timezone.utc)
+        db.commit()
+        if own_db:
+            db.close()
+        raise
     prev_gray: np.ndarray | None = None
 
     for ft in source.frames():
@@ -224,6 +232,7 @@ def run_video_pipeline(
     vtask.tier3_llm_called = stats.tier3_comparator_called
     vtask.llm_save_ratio   = stats.tier3_save_ratio
     db.commit()
+    db.refresh(vtask)
 
     if own_db:
         db.close()

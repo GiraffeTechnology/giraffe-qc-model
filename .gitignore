@@ -14,5 +14,10 @@ __pycache__/
 dist/
 build/
 
-# Env
+# Env / secrets — never commit keys or credentials
 .env
+.env.local
+.env.*.local
+*.key
+secrets/
+.claude/

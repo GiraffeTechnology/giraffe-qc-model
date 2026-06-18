@@ -212,3 +212,60 @@ def test_pipeline_raises_for_missing_sku(pipeline_db):
             sku_id="SKU-DOES-NOT-EXIST",
             db=pipeline_db,
         )
+
+
+def test_pipeline_stats_persisted_to_db(pipeline_db, tmp_path):
+    """VideoTask fields must reflect PipelineStats after completion."""
+    from src.sample_store.manager import import_sample
+    import cv2
+
+    img = np.zeros((100, 100, 3), dtype=np.uint8)
+    img[:] = (30, 30, 220)
+    img[0::20, :] = (255, 255, 255)
+    sp = str(tmp_path / "std_stats.png")
+    cv2.imwrite(sp, img)
+    import_sample(pipeline_db, "SKU-STATS", sp)
+
+    vtask, stats = run_video_pipeline(
+        "tests/fixtures/videos/video_with_target.mp4",
+        sku_id="SKU-STATS",
+        db=pipeline_db,
+    )
+
+    # Stats must be reflected in the DB record
+    assert vtask.total_frames == stats.total_frames
+    assert vtask.tier1_filtered == stats.tier1_filtered
+    assert vtask.tier2_processed == stats.tier2_processed
+    assert vtask.tier2_passed == stats.tier2_passed
+    assert vtask.tier3_llm_called == stats.tier3_comparator_called
+    assert vtask.llm_save_ratio == stats.tier3_save_ratio
+    assert vtask.completed_at is not None
+
+
+def test_pipeline_fatal_setup_marks_task_failed(pipeline_db, tmp_path):
+    """VideoFileSource failure after vtask creation must set status=failed, not leave it running."""
+    from src.sample_store.manager import import_sample
+    from src.db.models import VideoTask
+    import cv2
+
+    img = np.zeros((100, 100, 3), dtype=np.uint8)
+    img[:] = (30, 30, 220)
+    img[0::20, :] = (255, 255, 255)
+    sp = str(tmp_path / "std_fatal.png")
+    cv2.imwrite(sp, img)
+    import_sample(pipeline_db, "SKU-FATAL", sp)
+
+    with pytest.raises(FileNotFoundError):
+        run_video_pipeline(
+            "/nonexistent/video_does_not_exist.mp4",
+            sku_id="SKU-FATAL",
+            db=pipeline_db,
+        )
+
+    # The task that was created must be marked failed, not stuck in running
+    tasks = pipeline_db.query(VideoTask).filter(VideoTask.sku_id == "SKU-FATAL").all()
+    assert len(tasks) == 1
+    assert tasks[0].status == "failed", (
+        f"Expected status='failed' but got {tasks[0].status!r} — "
+        "task was left stuck in 'running' after fatal setup error"
+    )
