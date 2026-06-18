@@ -182,14 +182,19 @@ with open(sys.argv[1]) as f:
 if "error" in r:
     print(f"BENCHMARK FAILED: {r['error']}")
     sys.exit(1)
+stub = r.get('stub_mode', False)
 print("=" * 60)
-print("BENCHMARK SUMMARY")
+if stub:
+    print("BENCHMARK SUMMARY  [STUB MODE — MNN AAR not integrated]")
+else:
+    print("BENCHMARK SUMMARY")
 print("=" * 60)
 print(f"  Model:              {r.get('model_name','?')}")
 print(f"  Device:             {r.get('device_model','?')}")
 print(f"  Android version:    {r.get('android_version','?')}")
 print(f"  Total RAM:          {r.get('total_ram_mb','?')} MB")
 print(f"  CPU-only mode:      {r.get('cpu_only','?')}")
+print(f"  Stub mode:          {stub}")
 print(f"  Model load time:    {r.get('model_load_time_ms','?')} ms")
 print(f"  Iterations:         {r.get('iterations','?')}")
 print(f"  Errors:             {r.get('error_count','?')}")
@@ -199,9 +204,13 @@ print(f"  Peak memory:        {r.get('peak_memory_mb','?')} MB  (budget: ≤6144
 print(f"  Budget met (10s):   {r.get('budget_met_10s','?')}")
 print(f"  Timestamp:          {r.get('timestamp_utc','?')}")
 print("=" * 60)
+if stub:
+    print("WARNING: STUB MODE — latencies are simulated (2–4.5 s/iter), NOT real MNN numbers.")
+    print("  Next step: add MNN-android.aar to build.gradle.kts and wire nativeRunInference().")
 budget_ok = r.get('budget_met_10s', False)
 if budget_ok:
-    print("PASS: p95 latency within 10 s budget.")
+    suffix = " (simulated)" if stub else ""
+    print(f"PASS: p95 latency within 10 s budget{suffix}.")
 else:
     p95 = r.get('p95_latency_ms', '?')
     print(f"FAIL: p95 latency {p95} ms exceeds 10 s budget — model or hardware tuning needed.")

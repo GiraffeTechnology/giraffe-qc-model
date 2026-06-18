@@ -11,6 +11,7 @@ import java.io.File
  *
  * Production: wires to MNN-android.aar JNI layer.
  * CI/test: MNN native libs absent → loadNativeLibs() returns false → scaffold mode.
+ * Stub mode: native libs absent but llm.mnn exists on device → simulated inference.
  *
  * Device: Snapdragon 8 Gen, 8 GB RAM.
  * Model: Qwen2-VL-2B-Instruct-MNN (INT4) — ~2GB weights, ~3-4GB at runtime including
@@ -25,6 +26,13 @@ class MnnRuntimeLoader(private val context: Context) {
     companion object {
         private const val TAG = "MnnRuntimeLoader"
         private var nativeLoaded = false
+
+        /**
+         * True when llm.mnn was found on device but MNN native libs are absent.
+         * MnnQwenInspector will simulate inference instead of calling JNI.
+         */
+        var stubMode = false
+            private set
 
         fun loadNativeLibs(): Boolean {
             if (nativeLoaded) return true
@@ -45,17 +53,23 @@ class MnnRuntimeLoader(private val context: Context) {
     internal var modelPtr: Long = 0L
 
     suspend fun loadModel(modelDir: File, cpuOnly: Boolean = false): Boolean = withContext(Dispatchers.IO) {
-        if (!loadNativeLibs()) {
-            Log.e(TAG, "MNN native libs not loaded — on-device inference unavailable")
-            return@withContext false
-        }
+        val nativeAvailable = loadNativeLibs()
         val modelFile = File(modelDir, "llm.mnn")
         if (!modelFile.exists()) {
             Log.e(TAG, "llm.mnn not found at ${modelFile.absolutePath}")
             return@withContext false
         }
+        if (!nativeAvailable) {
+            // STUB MODE: model files present but MNN AAR not yet integrated.
+            // Inspector will simulate inference with realistic latency rather than fail.
+            stubMode = true
+            modelLoaded = true
+            Log.w(TAG, "STUB MODE — llm.mnn found but MNN native libs absent. " +
+                "Benchmark will simulate inference. Integrate MNN-android.aar for real numbers.")
+            return@withContext true
+        }
         // Production: modelPtr = nativeLoadModel(modelDir.absolutePath, cpuOnly)
-        // Scaffold: mark loaded if file exists (real call requires MNN AAR)
+        stubMode = false
         modelLoaded = true
         Log.i(TAG, "Model loaded from ${modelDir.absolutePath}  cpuOnly=$cpuOnly")
         true

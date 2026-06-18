@@ -132,6 +132,7 @@ class BenchmarkActivity : Activity() {
             "total_ram_mb"        to totalRamMb(),
             "model_load_time_ms"  to loadTimeMs,
             "cpu_only"            to cpuOnly,
+            "stub_mode"           to MnnRuntimeLoader.stubMode,
             "iterations"          to iterations,
             "error_count"         to errorCount,
             "p50_latency_ms"      to p50,
