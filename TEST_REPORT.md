@@ -8,7 +8,7 @@
 | Integration tests (opt-in) | 6 | ⏭ Skipped by default (expected) |
 | Android/MNN physical-device tests | — | ⏳ Pending device |
 
-Last full run: `uv sync --group dev && uv run pytest tests/ -v`
+Last full run: `uv sync --group dev && uv run pytest tests/ -v` (after merging latest `main`)
 Consecutive passing runs: **5 / 5**
 
 ---
@@ -114,3 +114,19 @@ git grep -n "api_key ="            # no hardcoded values
 ```
 
 `.gitignore` blocks: `.env`, `.env.local`, `.env.*.local`, `*.key`, `secrets/`
+
+---
+
+## Merge Readiness
+
+| Check | Result |
+|-------|--------|
+| Branch updated with latest `main` | yes — merged `origin/main` (c6f4ae1) |
+| Conflicts resolved | not applicable — clean merge, no conflicts |
+| `uv sync --group dev` succeeded | yes |
+| Full pytest run passed | yes — 203 passed, 6 skipped |
+| 5 consecutive pytest runs passed | yes — 203 passed × 5/5 |
+| GitHub Actions expected to run on PR | yes — `tests.yml` triggers on push and pull_request |
+| Real Qwen integration run | skipped — `RUN_QWEN_INTEGRATION=1` and real API key not provided (expected for CI) |
+| Android/MNN physical-device test | pending — device not yet available |
+| Secrets committed | no |
