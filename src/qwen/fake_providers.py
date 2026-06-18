@@ -94,8 +94,66 @@ class TimeoutQwenProvider(QwenQCProvider):
         raise TimeoutError("TimeoutQwenProvider: intentional timeout for testing")
 
 
+class FakeFailCloudQwenProvider(QwenQCProvider):
+    """Test provider that returns a deterministic fail result (no exception)."""
+
+    @property
+    def engine_name(self) -> str:
+        return "fake_fail_cloud_qwen"
+
+    def inspect(
+        self,
+        standard_photos: List[StandardPhotoInput],
+        captured_photo: CapturePhotoInput,
+        qc_points: List[QcPointInput],
+        context: InspectionContext,
+    ) -> QwenInspectionOutput:
+        items = [
+            InspectionItemResult(
+                qc_point_id=p.qc_point_id,
+                qc_point_code=p.qc_point_code,
+                name=p.name,
+                result="fail",
+                confidence=0.95,
+                reason="Fake provider: always fail",
+                evidence={},
+            )
+            for p in qc_points
+        ]
+        return QwenInspectionOutput(
+            overall_result="fail",
+            engine="fake_fail_cloud_qwen",
+            model_name="fake-qwen-vl-v1",
+            confidence=0.95,
+            items=items,
+            fallback=FallbackInfo(used=False),
+            summary="Fake inspection: all points failed",
+        )
+
+
+class NotProvisionedQwenProvider(QwenQCProvider):
+    """Test provider that raises UnsupportedOperationError (model not on device)."""
+
+    @property
+    def engine_name(self) -> str:
+        return "not_provisioned_qwen"
+
+    def inspect(
+        self,
+        standard_photos: List[StandardPhotoInput],
+        captured_photo: CapturePhotoInput,
+        qc_points: List[QcPointInput],
+        context: InspectionContext,
+    ) -> QwenInspectionOutput:
+        raise UnsupportedOperationError("on_device_model_not_provisioned")
+
+
+class UnsupportedOperationError(Exception):
+    """Raised when the on-device model is not provisioned."""
+
+
 class InvalidJsonQwenProvider(QwenQCProvider):
-    """Test provider that returns invalid JSON output."""
+    """Test provider that returns invalid JSON output (simulates parse failure path)."""
 
     @property
     def engine_name(self) -> str:
@@ -108,11 +166,6 @@ class InvalidJsonQwenProvider(QwenQCProvider):
         qc_points: List[QcPointInput],
         context: InspectionContext,
     ) -> QwenInspectionOutput:
-        # This provider's inspect returns a "raw" string, but to simulate
-        # what happens when the parser receives invalid JSON, we call the parser
-        # directly — but here we just return a valid schema object with the raw text.
-        # The intended use is: pass the raw string "not json at all" to parse_qwen_output
-        # to test parser behavior. This provider simulates that scenario.
         from src.qwen.parser import parse_qwen_output
         return parse_qwen_output(
             "not json at all",
