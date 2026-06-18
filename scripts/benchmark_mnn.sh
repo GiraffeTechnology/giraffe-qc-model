@@ -7,17 +7,26 @@
 #   ./scripts/benchmark_mnn.sh [OPTIONS]
 #
 # Options:
-#   -d DEVICE    ADB device serial (default: first connected)
+#   -d DEVICE      ADB device serial (default: first connected)
 #   -p MODEL_PATH  Path on device to model dir (default: /sdcard/qwen_2b_mnn)
 #   -i ITERATIONS  Number of inference iterations (default: 10)
 #   -m MODEL_NAME  Model name label (default: Qwen2-VL-2B-Instruct-MNN)
 #   -o OUTPUT      Local output file for JSON results (default: benchmark_results.json)
+#   -a APK_PATH    Local path to app-debug.apk; installs before benchmark if provided
+#   -c             CPU-only mode (disables GPU/NPU delegates, passes --ez cpu_only true)
 #   -h             Show this help
 #
 # Prerequisites:
 #   - ADB in PATH and device connected with USB debugging enabled
 #   - APK installed: adb install app/build/outputs/apk/debug/app-debug.apk
-#   - Model provisioned to device: adb push <model_dir> /sdcard/qwen_2b_mnn/
+#     (or pass -a <apk_path> to install automatically)
+#   - Model provisioned to device: adb push <model_dir>/ /sdcard/qwen_2b_mnn/
+#     See docs/DEPLOYMENT_LOCAL_QWEN.md for download + sideload instructions.
+#
+# Model directory must contain (taobao-mnn/Qwen2-VL-2B-Instruct-MNN layout):
+#   llm.mnn  llm.mnn.weight  visual.mnn  visual.mnn.weight
+#   llm.mnn.json  llm_config.json  embeddings_bf16.bin  tokenizer.txt  config.json
+#   checksum.sha256
 #
 # Budget targets (§4.3.0):
 #   - Cold start load:  ≤ 30 s
@@ -31,6 +40,8 @@ MODEL_PATH="/sdcard/qwen_2b_mnn"
 ITERATIONS=10
 MODEL_NAME="Qwen2-VL-2B-Instruct-MNN"
 OUTPUT="benchmark_results.json"
+APK_PATH=""
+CPU_ONLY=false
 PACKAGE="com.giraffetechnology.qc"
 ACTIVITY=".benchmark.BenchmarkActivity"
 DEVICE_OUTPUT="/sdcard/qc_benchmark_results.json"
@@ -40,13 +51,15 @@ usage() {
     exit 0
 }
 
-while getopts "d:p:i:m:o:h" opt; do
+while getopts "d:p:i:m:o:a:ch" opt; do
     case $opt in
         d) DEVICE="$OPTARG" ;;
         p) MODEL_PATH="$OPTARG" ;;
         i) ITERATIONS="$OPTARG" ;;
         m) MODEL_NAME="$OPTARG" ;;
         o) OUTPUT="$OPTARG" ;;
+        a) APK_PATH="$OPTARG" ;;
+        c) CPU_ONLY=true ;;
         h) usage ;;
         *) echo "Unknown option -$opt" >&2; exit 1 ;;
     esac
@@ -70,14 +83,26 @@ DEVICE_MODEL=$($ADB_CMD shell getprop ro.product.model 2>/dev/null | tr -d '\r')
 ANDROID_VER=$($ADB_CMD shell getprop ro.build.version.release 2>/dev/null | tr -d '\r')
 log "Device: $DEVICE_MODEL  (Android $ANDROID_VER)"
 
+# Install APK if -a was provided
+if [[ -n "$APK_PATH" ]]; then
+    if [[ ! -f "$APK_PATH" ]]; then
+        echo "ERROR: APK not found at: $APK_PATH" >&2
+        exit 1
+    fi
+    log "Installing APK: $APK_PATH"
+    $ADB_CMD install -r "$APK_PATH"
+    log "APK installed."
+fi
+
 # Verify APK installed
 if ! $ADB_CMD shell pm list packages 2>/dev/null | grep -q "$PACKAGE"; then
     echo "ERROR: APK not installed. Run:" >&2
     echo "  adb install app/build/outputs/apk/debug/app-debug.apk" >&2
+    echo "  Or pass -a <apk_path> to this script." >&2
     exit 1
 fi
 
-# Verify model directory exists on device
+# Verify model directory and key files exist on device
 if ! $ADB_CMD shell test -d "$MODEL_PATH" 2>/dev/null; then
     echo "ERROR: Model directory not found on device at: $MODEL_PATH" >&2
     echo "Provision the model first:" >&2
@@ -86,13 +111,21 @@ if ! $ADB_CMD shell test -d "$MODEL_PATH" 2>/dev/null; then
     exit 1
 fi
 
+if ! $ADB_CMD shell test -f "$MODEL_PATH/llm.mnn" 2>/dev/null; then
+    echo "ERROR: llm.mnn not found in $MODEL_PATH" >&2
+    echo "The model directory must contain: llm.mnn llm.mnn.weight visual.mnn visual.mnn.weight" >&2
+    echo "Download from: https://huggingface.co/taobao-mnn/Qwen2-VL-2B-Instruct-MNN" >&2
+    exit 1
+fi
+
 log "Starting BenchmarkActivity..."
-log "  model_path=$MODEL_PATH  iterations=$ITERATIONS  model_name=$MODEL_NAME"
+log "  model_path=$MODEL_PATH  iterations=$ITERATIONS  model_name=$MODEL_NAME  cpu_only=$CPU_ONLY"
 
 $ADB_CMD shell am start -n "${PACKAGE}/${ACTIVITY}" \
     --es model_path "$MODEL_PATH" \
     --ei iterations "$ITERATIONS" \
-    --es model_name "$MODEL_NAME"
+    --es model_name "$MODEL_NAME" \
+    --ez cpu_only "$CPU_ONLY"
 
 # Wait for benchmark to finish (poll logcat for completion marker)
 log "Waiting for benchmark to complete (up to 5 min)..."
@@ -144,6 +177,7 @@ print(f"  Model:              {r.get('model_name','?')}")
 print(f"  Device:             {r.get('device_model','?')}")
 print(f"  Android version:    {r.get('android_version','?')}")
 print(f"  Total RAM:          {r.get('total_ram_mb','?')} MB")
+print(f"  CPU-only mode:      {r.get('cpu_only','?')}")
 print(f"  Model load time:    {r.get('model_load_time_ms','?')} ms")
 print(f"  Iterations:         {r.get('iterations','?')}")
 print(f"  Errors:             {r.get('error_count','?')}")

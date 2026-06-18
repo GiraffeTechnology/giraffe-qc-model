@@ -22,7 +22,8 @@ import java.time.Instant
  *   adb shell am start -n com.giraffetechnology.qc/.benchmark.BenchmarkActivity \
  *     --es model_path /sdcard/qwen_2b_mnn \
  *     --ei iterations 10 \
- *     --es model_name "Qwen2-VL-2B-Instruct-MNN"
+ *     --es model_name "Qwen2-VL-2B-Instruct-MNN" \
+ *     --ez cpu_only true
  *
  * Results written to /sdcard/qc_benchmark_results.json and logcat tag QCBenchmark.
  */
@@ -39,11 +40,12 @@ class BenchmarkActivity : Activity() {
             ?: ModelProvisioning.getModelDir(applicationContext).absolutePath
         val iterations = intent.getIntExtra("iterations", 10)
         val modelName  = intent.getStringExtra("model_name") ?: "Qwen2-VL-2B-Instruct-MNN"
+        val cpuOnly    = intent.getBooleanExtra("cpu_only", false)
 
-        Log.i(TAG, "Benchmark start: model=$modelPath, iterations=$iterations, modelName=$modelName")
+        Log.i(TAG, "Benchmark start: model=$modelPath, iterations=$iterations, modelName=$modelName, cpuOnly=$cpuOnly")
 
         CoroutineScope(Dispatchers.Main).launch {
-            val results = runBenchmark(modelPath, iterations, modelName)
+            val results = runBenchmark(modelPath, iterations, modelName, cpuOnly)
             writeResults(results)
             Log.i(TAG, "Benchmark complete")
             finish()
@@ -54,12 +56,13 @@ class BenchmarkActivity : Activity() {
         modelPath: String,
         iterations: Int,
         modelName: String,
+        cpuOnly: Boolean = false,
     ): Map<String, Any> = withContext(Dispatchers.Default) {
         val runtimeLoader = MnnRuntimeLoader(applicationContext)
 
         // Cold start
         val loadStart  = System.currentTimeMillis()
-        val loaded     = runtimeLoader.loadModel(File(modelPath))
+        val loaded     = runtimeLoader.loadModel(File(modelPath), cpuOnly)
         val loadTimeMs = System.currentTimeMillis() - loadStart
 
         if (!loaded) {
@@ -116,6 +119,7 @@ class BenchmarkActivity : Activity() {
             "android_version"     to Build.VERSION.RELEASE,
             "total_ram_mb"        to totalRamMb(),
             "model_load_time_ms"  to loadTimeMs,
+            "cpu_only"            to cpuOnly,
             "iterations"          to iterations,
             "error_count"         to errorCount,
             "p50_latency_ms"      to p50,

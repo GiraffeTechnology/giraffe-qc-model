@@ -55,7 +55,11 @@ class ModelProvisioning(
         }
 
         fun isModelReady(modelDir: File): Boolean =
-            modelDir.exists() && modelDir.isDirectory && File(modelDir, "model.mnn").exists()
+            modelDir.exists() && modelDir.isDirectory &&
+            File(modelDir, "llm.mnn").exists() &&
+            File(modelDir, "llm.mnn.weight").exists() &&
+            File(modelDir, "visual.mnn").exists() &&
+            File(modelDir, "visual.mnn.weight").exists()
     }
 
     fun getStatus(): ProvisioningStatus {
@@ -63,7 +67,7 @@ class ModelProvisioning(
         if (!modelDir.exists()) return ProvisioningStatus.NOT_PROVISIONED
         val checksumFile = File(modelDir, "checksum.sha256")
         if (!checksumFile.exists()) return ProvisioningStatus.NOT_PROVISIONED
-        val modelFile = File(modelDir, "model.mnn")
+        val modelFile = File(modelDir, "llm.mnn")
         if (!modelFile.exists()) return ProvisioningStatus.NOT_PROVISIONED
         return if (verifySha256(modelFile, checksumFile.readText().trim()))
             ProvisioningStatus.READY
@@ -95,7 +99,7 @@ class ModelProvisioning(
                 Log.e(TAG, "No checksum file in bundled assets — refusing to use model")
                 return ProvisioningStatus.CHECKSUM_FAILED
             }
-            val modelFile = File(modelDir, "model.mnn")
+            val modelFile = File(modelDir, "llm.mnn")
             if (!verifySha256(modelFile, checksumFile.readText().trim())) {
                 Log.e(TAG, "Bundled model checksum mismatch — refusing to use model")
                 return ProvisioningStatus.CHECKSUM_FAILED
@@ -130,7 +134,7 @@ class ModelProvisioning(
                 Log.e(TAG, "Downloaded model checksum mismatch — refusing to use")
                 return ProvisioningStatus.CHECKSUM_FAILED
             }
-            val modelFile = File(modelDir, "model.mnn")
+            val modelFile = File(modelDir, "llm.mnn")
             tmpFile.renameTo(modelFile)
             File(modelDir, "checksum.sha256").writeText(config.expectedSha256)
             Log.i(TAG, "Model downloaded and verified: ${config.modelName}")
