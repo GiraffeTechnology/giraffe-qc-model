@@ -94,7 +94,7 @@ giraffe-qc-model/
 │   ├── api/               # FastAPI routers
 │   └── qwen/              # QWEN provider abstraction, schema, parser,
 │                          # router, DashScope cloud provider, fake providers
-├── tests/                 # 166 Python unit + integration tests
+├── tests/                 # 203 Python unit tests + 6 opt-in integration tests
 └── docs/
     ├── LOCAL_FIRST_QWEN_QC.md
     ├── DEPLOYMENT_LOCAL_QWEN.md
@@ -143,7 +143,9 @@ land rather than letting it drift.
   data.
 - [x] Never-convert-failure-to-pass invariant verified across all
   failure modes via parametrized tests.
-- [x] Full Python test suite: **166 tests pass 5× consecutively**
+- [x] Full Python test suite: **203 tests pass 5× consecutively**, 6
+  Qwen integration tests skipped by default (require
+  `RUN_QWEN_INTEGRATION=1` + real key)
   (latest run on branch `claude/new-session-0rw6k5`).
 - [ ] **Real on-device MNN benchmark not yet run.** The on-device
   inspector (`MnnQwenInspector`) is currently a stub; the real
@@ -172,6 +174,70 @@ Once a physical Snapdragon test device is available (target: Snapdragon
    before proceeding.
 1. Install the APK on the physical device and validate the full
    capture-to-result flow end-to-end, offline.
+
+## Development setup
+
+### Quick start
+
+```bash
+# Install runtime + dev tooling
+make sync-dev          # or: uv sync --group dev
+
+# Run the full test suite once
+make test              # or: uv run pytest tests/ -v
+
+# Run 5× consecutively (required before declaring a change done)
+make test5
+```
+
+> **Do not use bare `uv sync` before running tests.** Plain `uv sync`
+> installs only runtime dependencies and will silently remove pytest
+> from the virtual environment. Always use `uv sync --group dev`
+> (or `make sync-dev`) when you need to run the test suite.
+
+### Equivalent direct commands
+
+```bash
+uv sync --group dev
+uv run pytest tests/ -v
+```
+
+### Qwen cloud integration tests (opt-in)
+
+The Qwen real-API integration tests are **skipped by default** unless all
+of the following environment variables are set:
+
+| Variable | Required value |
+|----------|---------------|
+| `RUN_QWEN_INTEGRATION` | `1` |
+| `QC_ENGINE_MODE` | `cloud_qwen_dev` |
+| `LLM_ENABLE_REAL_CALLS` | `true` |
+| `QWEN_CLOUD_ENABLED` | `true` |
+| `ALLOW_SEND_IMAGES_TO_CLOUD_QWEN` | `true` |
+| `DASHSCOPE_API_KEY` or `QWEN_API_KEY` | real key |
+
+Skipped integration tests are **expected and correct** in normal CI runs.
+
+To run them manually:
+
+```bash
+RUN_QWEN_INTEGRATION=1 \
+QC_ENGINE_MODE=cloud_qwen_dev \
+LLM_ENABLE_REAL_CALLS=true \
+QWEN_CLOUD_ENABLED=true \
+ALLOW_SEND_IMAGES_TO_CLOUD_QWEN=true \
+DASHSCOPE_API_KEY="$DASHSCOPE_API_KEY" \
+uv run pytest tests/integration/ -v
+```
+
+Or via Makefile (omits the key — set `DASHSCOPE_API_KEY` in your shell first):
+
+```bash
+make test-qwen
+```
+
+The `DASHSCOPE_API_KEY` / `QWEN_API_KEY` is a runtime-only secret.
+It must never be committed to this repository.
 
 ## Development principles
 
