@@ -80,20 +80,29 @@ class VideoTask(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     video_path: Mapped[str] = mapped_column(String(512), nullable=False)
     sku_id: Mapped[Optional[str]] = mapped_column(String(128), index=True)
-    # "pending" | "running" | "done" | "failed"
+    # "pending" | "running" | "done" | "partial_failed" | "failed"
     status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     # Pipeline statistics (populated on completion)
     total_frames: Mapped[int] = mapped_column(Integer, default=0)
-    tier1_filtered: Mapped[int] = mapped_column(Integer, default=0)   # discarded by diff check
-    tier2_processed: Mapped[int] = mapped_column(Integer, default=0)  # sent to ORB matcher
-    tier2_passed: Mapped[int] = mapped_column(Integer, default=0)     # above threshold → LLM
-    tier3_llm_called: Mapped[int] = mapped_column(Integer, default=0)
-    llm_save_ratio: Mapped[float] = mapped_column(Float, default=0.0) # 1 - tier3/total
+    tier1_filtered: Mapped[int] = mapped_column(Integer, default=0)
+    tier2_processed: Mapped[int] = mapped_column(Integer, default=0)
+    tier2_passed: Mapped[int] = mapped_column(Integer, default=0)
+    tier3_llm_called: Mapped[int] = mapped_column(Integer, default=0)   # DB column kept for compat
+    llm_save_ratio: Mapped[float] = mapped_column(Float, default=0.0)   # DB column kept for compat
 
     captures: Mapped[list["CaptureRecord"]] = relationship("CaptureRecord", back_populates="video_task")
+
+    # ── Python-level aliases with clearer names ──────────────────────────────
+    @property
+    def tier3_comparator_called(self) -> int:
+        return self.tier3_llm_called
+
+    @property
+    def tier3_save_ratio(self) -> float:
+        return self.llm_save_ratio
 
 
 class CaptureRecord(Base):

@@ -117,7 +117,9 @@ class CVComparator(LLMProvider):
             img = cv2.imread(p)
             if img is not None:
                 return img
-        return np.zeros((100, 100, 3), dtype=np.uint8)
+        raise FileNotFoundError(
+            f"No readable image found; tried: {paths}"
+        )
 
     def _r(self, img: np.ndarray) -> np.ndarray:
         return cv2.resize(img, (_W, _H))

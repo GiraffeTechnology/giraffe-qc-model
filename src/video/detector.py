@@ -17,11 +17,11 @@ Threshold LOCAL_PREFILTER_THRESHOLD (default 0.25):
   Higher → lower recall, fewer LLM calls
 """
 from __future__ import annotations
-import os
 import numpy as np
 import cv2
 
-_THRESHOLD = float(os.getenv("LOCAL_PREFILTER_THRESHOLD", "0.25"))
+from src.config import local_prefilter_threshold
+
 _MAX_FEATURES = 500
 
 
@@ -136,4 +136,4 @@ ORBDetector = HybridDetector   # alias for backward compatibility
 
 
 def above_threshold(score: float) -> bool:
-    return score >= _THRESHOLD
+    return score >= local_prefilter_threshold()

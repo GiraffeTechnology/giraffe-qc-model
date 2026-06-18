@@ -21,21 +21,16 @@ class TestTier1FrameFilter:
 
     def test_identical_frames_filtered(self, monkeypatch):
         monkeypatch.setenv("TIER1_DIFF_THRESHOLD", "5")
-        # Re-import to pick up env change
-        import importlib, src.video.frame_filter as ff
-        importlib.reload(ff)
         frame = np.full((100, 100), 128, dtype=np.uint8)
-        changed, score = ff.has_changed(frame, frame)
+        changed, score = has_changed(frame, frame)
         assert changed is False
         assert score < 5
 
     def test_different_frames_pass(self, monkeypatch):
         monkeypatch.setenv("TIER1_DIFF_THRESHOLD", "5")
-        import importlib, src.video.frame_filter as ff
-        importlib.reload(ff)
         f1 = np.zeros((100, 100), dtype=np.uint8)
         f2 = np.full((100, 100), 200, dtype=np.uint8)
-        changed, score = ff.has_changed(f1, f2)
+        changed, score = has_changed(f1, f2)
         assert changed is True
         assert score > 5
 
@@ -82,10 +77,8 @@ class TestTier2Detector:
 
     def test_above_threshold(self, monkeypatch):
         monkeypatch.setenv("LOCAL_PREFILTER_THRESHOLD", "0.5")
-        import importlib, src.video.detector as det
-        importlib.reload(det)
-        assert det.above_threshold(0.6) is True
-        assert det.above_threshold(0.4) is False
+        assert above_threshold(0.6) is True
+        assert above_threshold(0.4) is False
 
 
 # ── VideoFileSource ──────────────────────────────────────────────────────
@@ -159,7 +152,57 @@ def test_pipeline_no_target_zero_llm_calls(pipeline_db, tmp_path):
         db=pipeline_db,
     )
     # Gray-only video: tier-2 should reject most frames
-    assert stats.tier3_llm_called == 0
+    assert stats.tier3_comparator_called == 0
+
+
+def test_pipeline_partial_failure(pipeline_db, tmp_path, monkeypatch):
+    """First Tier-3 call succeeds; subsequent raise → 'partial_failed'."""
+    # Force all Tier-2 frames into Tier-3 so we get multiple comparator calls
+    monkeypatch.setenv("LOCAL_PREFILTER_THRESHOLD", "0.0")
+
+    from src.sample_store.manager import import_sample
+    from src.llm.base import LLMProvider, ImageCompareResult
+    import cv2
+
+    img = np.zeros((100, 100, 3), dtype=np.uint8)
+    img[:] = (30, 30, 220)
+    img[0::20, :] = (255, 255, 255)
+    sp = str(tmp_path / "std_pf.png")
+    cv2.imwrite(sp, img)
+    import_sample(pipeline_db, "SKU-PF", sp)
+
+    calls = {"n": 0}
+
+    class FlakyProvider(LLMProvider):
+        @property
+        def provider_name(self): return "flaky"
+        @property
+        def model_name(self): return "flaky-v0"
+
+        def compare_images(self, standard_paths, production_paths, requirements="", notes=""):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return ImageCompareResult(
+                    overall_result="pass", similarity_score=1.0,
+                    severity="low", http_status=200, elapsed_ms=0,
+                    feedback_zh="ok", feedback_en="ok", deviations=[],
+                    provider="flaky", model="flaky-v0", raw_summary="",
+                )
+            raise RuntimeError("simulated Tier-3 failure")
+
+    vtask, stats = run_video_pipeline(
+        "tests/fixtures/videos/video_with_target.mp4",
+        sku_id="SKU-PF",
+        db=pipeline_db,
+        provider=FlakyProvider(),
+    )
+
+    # With threshold=0.0 every Tier-2 frame goes to Tier-3 → should be ≥2 calls
+    assert stats.tier3_comparator_called >= 2, (
+        f"Expected ≥2 Tier-3 calls but got {stats.tier3_comparator_called}"
+    )
+    assert vtask.status == "partial_failed"
+    assert stats.tier3_error_count == stats.tier3_comparator_called - 1
 
 
 def test_pipeline_raises_for_missing_sku(pipeline_db):

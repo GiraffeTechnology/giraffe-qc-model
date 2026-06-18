@@ -54,14 +54,14 @@ class TestRegistry:
         monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
         monkeypatch.delenv("QWEN_API_KEY", raising=False)
         p = get_provider("qwen")
-        assert p.provider_name == "cv"
+        assert p.provider_name == "cv"     # silent fallback only when LLM disabled
 
-    def test_cv_when_no_api_key(self, monkeypatch):
+    def test_raises_when_real_calls_enabled_but_no_key(self, monkeypatch):
         monkeypatch.setenv("LLM_ENABLE_REAL_CALLS", "true")
         monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
         monkeypatch.delenv("QWEN_API_KEY", raising=False)
-        p = get_provider("qwen")
-        assert p.provider_name == "cv"
+        with pytest.raises(ValueError, match="no API key"):
+            get_provider("qwen")
 
     def test_explicit_mock_provider(self, monkeypatch):
         p = get_provider("mock")

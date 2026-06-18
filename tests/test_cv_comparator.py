@@ -5,6 +5,8 @@ import pytest
 from src.cv.comparator import CVComparator
 from src.llm.base import ImageCompareResult, LLMProvider
 
+# ── Helpers shared across tests ───────────────────────────────────────────────
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -117,6 +119,28 @@ class TestCVComparatorVerdicts:
         assert r.deviations == []
 
 
+# ── Missing image handling ────────────────────────────────────────────────────
+
+class TestCVComparatorMissingFiles:
+    def test_missing_standard_raises(self, comp, tmp_path):
+        prod = _solid(tmp_path / "prod.png", (0, 0, 200))
+        with pytest.raises(FileNotFoundError):
+            comp.compare_images(["/no/such/std.png"], [prod])
+
+    def test_missing_production_raises(self, comp, tmp_path):
+        std = _solid(tmp_path / "std.png", (0, 0, 200))
+        with pytest.raises(FileNotFoundError):
+            comp.compare_images([std], ["/no/such/prod.png"])
+
+    def test_both_missing_raises_not_pass(self, comp):
+        with pytest.raises(FileNotFoundError):
+            comp.compare_images(["/no/a.png"], ["/no/b.png"])
+
+    def test_empty_paths_raises(self, comp):
+        with pytest.raises(FileNotFoundError):
+            comp.compare_images([], [])
+
+
 # ── Registry integration ──────────────────────────────────────────────────────
 
 class TestRegistryCV:
@@ -128,8 +152,16 @@ class TestRegistryCV:
         from src.llm.registry import get_provider
         assert get_provider("cv").provider_name == "cv"
 
-    def test_get_provider_fallback_to_cv_when_no_key(self, monkeypatch):
+    def test_raises_when_llm_enabled_but_no_key(self, monkeypatch):
         monkeypatch.setenv("LLM_ENABLE_REAL_CALLS", "true")
+        monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+        monkeypatch.delenv("QWEN_API_KEY", raising=False)
+        from src.llm.registry import get_provider
+        with pytest.raises(ValueError, match="no API key"):
+            get_provider("qwen")
+
+    def test_silent_fallback_when_llm_disabled(self, monkeypatch):
+        monkeypatch.setenv("LLM_ENABLE_REAL_CALLS", "false")
         monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
         monkeypatch.delenv("QWEN_API_KEY", raising=False)
         from src.llm.registry import get_provider

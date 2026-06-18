@@ -50,8 +50,8 @@ print(f"  Total frames sampled  : {stats1.total_frames}")
 print(f"  Tier-1 filtered       : {stats1.tier1_filtered}  (no change, discarded)")
 print(f"  Tier-2 processed      : {stats1.tier2_processed}  (sent to ORB matcher)")
 print(f"  Tier-2 passed         : {stats1.tier2_passed}   (above ORB threshold → Tier-3)")
-print(f"  Tier-3 LLM called     : {stats1.tier3_llm_called}")
-print(f"  LLM save ratio        : {stats1.llm_save_ratio:.1%}  (vs calling LLM every frame)")
+print(f"  Tier-3 comparator     : {stats1.tier3_comparator_called}")
+print(f"  Tier-3 save ratio     : {stats1.tier3_save_ratio:.1%}  (vs running comparator every frame)")
 print(f"  Total elapsed         : {elapsed1:.1f}s")
 print(f"  VideoTask id          : {vtask1.id}, status={vtask1.status}")
 if stats1.captures:
@@ -78,8 +78,8 @@ print(f"  Total frames sampled  : {stats2.total_frames}")
 print(f"  Tier-1 filtered       : {stats2.tier1_filtered}")
 print(f"  Tier-2 processed      : {stats2.tier2_processed}")
 print(f"  Tier-2 passed         : {stats2.tier2_passed}   (should be 0 or very low)")
-print(f"  Tier-3 LLM called     : {stats2.tier3_llm_called}  (should be 0)")
-print(f"  LLM save ratio        : {stats2.llm_save_ratio:.1%}")
+print(f"  Tier-3 comparator     : {stats2.tier3_comparator_called}  (should be 0)")
+print(f"  Tier-3 save ratio     : {stats2.tier3_save_ratio:.1%}")
 print(f"  Total elapsed         : {elapsed2:.1f}s")
 
 # ── DB verification ─────────────────────────────────────────────────────────
@@ -96,16 +96,16 @@ print(f"  capture_records          : {caps}")
 print(f"  qc_tasks (video_capture) : {tasks}")
 print(f"  qc_results               : {results}")
 
-# ── LLM call saving comparison ──────────────────────────────────────────────
+# ── Tier-3 saving comparison ─────────────────────────────────────────────────
 total_frames = stats1.total_frames + stats2.total_frames
-total_llm    = stats1.tier3_llm_called + stats2.tier3_llm_called
+total_t3     = stats1.tier3_comparator_called + stats2.tier3_comparator_called
 print()
 print("=" * 60)
 print("PIPELINE SAVING SUMMARY")
-print(f"  Total frames across both videos : {total_frames}")
-print(f"  If LLM called every frame       : {total_frames} calls")
-print(f"  Actual LLM calls (Tier-3)       : {total_llm}")
-print(f"  LLM calls saved                 : {total_frames - total_llm}  ({(total_frames - total_llm)/total_frames:.1%})")
+print(f"  Total frames across both videos     : {total_frames}")
+print(f"  If comparator called every frame    : {total_frames} calls")
+print(f"  Actual Tier-3 comparator calls      : {total_t3}")
+print(f"  Tier-3 calls saved                  : {total_frames - total_t3}  ({(total_frames - total_t3)/total_frames:.1%})")
 print()
 print("CAPABILITY B DEMO: COMPLETE")
 db.close()

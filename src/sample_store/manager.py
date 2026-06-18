@@ -1,19 +1,25 @@
 """Sample library management — import standard photos, query by SKU."""
 from __future__ import annotations
-import os
+import re
 import shutil
+import time
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
+from src.config import sample_store_dir
 from src.db.models import SampleItem
-
-_STORE_DIR = Path(os.getenv("SAMPLE_STORE_DIR", "data/samples"))
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _safe_sku(sku_id: str) -> str:
+    """Strip characters that could cause path traversal or invalid filenames."""
+    return re.sub(r"[^\w\-]", "_", sku_id)[:64]
 
 
 def import_sample(
@@ -25,12 +31,19 @@ def import_sample(
 ) -> SampleItem:
     """
     Copy image_source into the sample store and create a DB record.
+
+    Each import gets a unique destination filename so repeated imports of
+    the same source file never overwrite earlier versions.
     Returns the new SampleItem.
     """
-    _STORE_DIR.mkdir(parents=True, exist_ok=True)
-    src = Path(image_source)
-    dest_name = f"{sku_id}_{src.name}"
-    dest = _STORE_DIR / dest_name
+    store = sample_store_dir()
+    store.mkdir(parents=True, exist_ok=True)
+
+    src      = Path(image_source)
+    safe_sku = _safe_sku(sku_id)
+    ts_ms    = int(time.time() * 1000)
+    uid      = uuid4().hex[:8]
+    dest     = store / f"{safe_sku}_{ts_ms}_{uid}_{src.name}"
     shutil.copy2(src, dest)
 
     item = SampleItem(

@@ -75,3 +75,51 @@ def test_list_all_skus(db, tmp_path):
     skus = list_all_skus(db)
     assert "SKU-A" in skus
     assert "SKU-B" in skus
+
+
+def test_duplicate_import_creates_distinct_paths(db, tmp_path):
+    """Same SKU + same filename must never overwrite the previous sample file."""
+    src = tmp_path / "std.png"
+    src.write_bytes(b"version-1" + b"\x00" * 10)
+
+    s1 = import_sample(db, "SKU-DUP", str(src))
+    first_content = open(s1.image_path, "rb").read()
+
+    # Overwrite the source file in-place (simulates a different upload)
+    src.write_bytes(b"version-2" + b"\x00" * 10)
+    s2 = import_sample(db, "SKU-DUP", str(src))
+
+    assert s1.image_path != s2.image_path, "duplicate import must produce a different path"
+    assert open(s1.image_path, "rb").read() == first_content, "first sample file must not be overwritten"
+
+
+def test_path_traversal_is_sanitised(db, tmp_path):
+    """Malicious SKU like '../evil' must not escape the sample store directory."""
+    from pathlib import Path
+    src = tmp_path / "img.png"
+    src.write_bytes(b"\x00" * 10)
+    item = import_sample(db, "../../../etc/evil", str(src))
+    store = Path(str(tmp_path / "samples"))
+    assert Path(item.image_path).resolve().is_relative_to(store.resolve())
+
+
+def test_sample_store_dir_read_at_call_time(tmp_path, monkeypatch):
+    """SAMPLE_STORE_DIR env change takes effect without importlib.reload()."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from src.db.models import Base
+
+    new_store = tmp_path / "dynamic_store"
+    monkeypatch.setenv("SAMPLE_STORE_DIR", str(new_store))
+
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    src = tmp_path / "img.png"
+    src.write_bytes(b"\x00" * 10)
+    item = import_sample(session, "SKU-RT", str(src))
+    session.close()
+
+    from pathlib import Path
+    assert Path(item.image_path).is_relative_to(new_store)
