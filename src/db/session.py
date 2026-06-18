@@ -1,26 +1,91 @@
-"""DB session factory — engine + session maker."""
+"""DB session factory — engine + session maker.
+
+Fix C: engine and SessionLocal are created lazily so tests can monkeypatch
+QC_DB_URL before the engine is created.
+"""
 import os
+from typing import Generator
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
+
 from src.db.models import Base
 
-_DB_URL = os.getenv("QC_DB_URL", "sqlite:///./giraffe_qc.db")
+# Lazy state container — engine is created on first use
+_state: dict = {}
 
-# SQLite needs check_same_thread=False for multi-threaded FastAPI use
-_connect_args = {"check_same_thread": False} if _DB_URL.startswith("sqlite") else {}
 
-engine = create_engine(_DB_URL, connect_args=_connect_args, echo=False)
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+def _get_engine():
+    """Return the engine, creating it lazily from QC_DB_URL on first call."""
+    if "engine" not in _state:
+        url = os.getenv("QC_DB_URL", "sqlite:///./giraffe_qc.db")
+        connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
+        _state["engine"] = create_engine(url, connect_args=connect_args, echo=False)
+    return _state["engine"]
+
+
+def _get_session_local():
+    """Return the SessionLocal factory, creating it lazily on first call."""
+    if "session_local" not in _state:
+        _state["session_local"] = sessionmaker(
+            bind=_get_engine(), autocommit=False, autoflush=False
+        )
+    return _state["session_local"]
+
+
+def reset_db_state() -> None:
+    """Reset cached engine and session for testing.
+
+    Call this before monkeypatching QC_DB_URL in tests so the new URL
+    is picked up when the engine is next created.
+    """
+    _state.clear()
+
+
+# Module-level aliases for backward compatibility with existing code that
+# imports 'engine' or 'SessionLocal' directly.
+# These are lazy descriptors via a module __getattr__ mechanism.
+
+class _LazyModule:
+    """Wrapper that provides lazy module-level attributes."""
+
+    @property
+    def engine(self):
+        return _get_engine()
+
+    @property
+    def SessionLocal(self):
+        return _get_session_local()
+
+
+# Keep backward-compat names accessible at module level via properties
+# The simplest approach: expose engine and SessionLocal as module-level
+# functions that look up the lazy state. However, to maintain strict
+# backward compatibility with `from src.db.session import engine`, we
+# keep the module-level names but make them re-evaluate via __getattr__.
+
+def __getattr__(name: str):
+    """Module-level __getattr__ for lazy evaluation of engine/SessionLocal."""
+    if name == "engine":
+        return _get_engine()
+    if name == "SessionLocal":
+        return _get_session_local()
+    raise AttributeError(f"module 'src.db.session' has no attribute {name!r}")
 
 
 def init_db() -> None:
-    """Create all tables (idempotent — uses CREATE TABLE IF NOT EXISTS)."""
-    Base.metadata.create_all(bind=engine)
+    """Create all tables (idempotent — uses CREATE TABLE IF NOT EXISTS).
+
+    Creates tables for BOTH old models and new qc_models.
+    """
+    # Import qc_models to ensure its tables are registered with Base.metadata
+    import src.db.qc_models  # noqa: F401 — side-effect import registers tables
+    Base.metadata.create_all(bind=_get_engine())
 
 
-def get_db():
+def get_db() -> Generator[Session, None, None]:
     """FastAPI dependency: yield a session then close it."""
-    db: Session = SessionLocal()
+    db: Session = _get_session_local()()
     try:
         yield db
     finally:
