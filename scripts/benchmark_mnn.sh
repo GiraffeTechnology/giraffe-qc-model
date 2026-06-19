@@ -110,21 +110,22 @@ if ! $ADB_CMD shell pm list packages 2>/dev/null | grep -q "$PACKAGE"; then
     exit 1
 fi
 
-# Verify model directory and key files exist on device
-if ! $ADB_CMD shell test -d "$MODEL_PATH" 2>/dev/null; then
-    echo "ERROR: Model directory not found on device at: $MODEL_PATH" >&2
-    echo "Provision the model first (app-scoped external storage, no root needed):" >&2
-    echo "  adb push <local_model_dir>/ \"$MODEL_PATH/\"" >&2
-    echo "  See docs/DEPLOYMENT_LOCAL_QWEN.md for full instructions." >&2
-    exit 1
-fi
-
-if ! $ADB_CMD shell test -f "$MODEL_PATH/llm.mnn" 2>/dev/null; then
-    echo "ERROR: llm.mnn not found in $MODEL_PATH" >&2
-    echo "The model directory must contain: llm.mnn llm.mnn.weight visual.mnn visual.mnn.weight" >&2
-    echo "Download from: https://huggingface.co/taobao-mnn/Qwen2-VL-2B-Instruct-MNN" >&2
-    exit 1
-fi
+## Verify model directory and key files exist on device
+## (Skipped: app auto-imports model from /sdcard/Download/qwen_mnn/ on first run)
+#if ! $ADB_CMD shell test -d "$MODEL_PATH" 2>/dev/null; then
+#    echo "ERROR: Model directory not found on device at: $MODEL_PATH" >&2
+#    echo "Provision the model first (app-scoped external storage, no root needed):" >&2
+#    echo "  adb push <local_model_dir>/ \"$MODEL_PATH/\"" >&2
+#    echo "  See docs/DEPLOYMENT_LOCAL_QWEN.md for full instructions." >&2
+#    exit 1
+#fi
+#
+#if ! $ADB_CMD shell test -f "$MODEL_PATH/llm.mnn" 2>/dev/null; then
+#    echo "ERROR: llm.mnn not found in $MODEL_PATH" >&2
+#    echo "The model directory must contain: llm.mnn llm.mnn.weight visual.mnn visual.mnn.weight" >&2
+#    echo "Download from: https://huggingface.co/taobao-mnn/Qwen2-VL-2B-Instruct-MNN" >&2
+#    exit 1
+#fi
 
 log "Starting BenchmarkActivity..."
 log "  model_path=$MODEL_PATH  iterations=$ITERATIONS  model_name=$MODEL_NAME  cpu_only=$CPU_ONLY"
