@@ -10,6 +10,7 @@
 #   -d DEVICE      ADB device serial (default: first connected)
 #   -i ITERATIONS  Number of inference iterations (default: 10)
 #   -m MODEL_NAME  Model name label (default: Qwen3-VL-4B-Instruct-MNN)
+#   -p MODEL_PATH  Device path to model directory (default: /sdcard/qwen3_vl_4b_mnn)
 #   -o OUTPUT      Local output file for JSON results (default: benchmark_results.json)
 #   -a APK_PATH    Local path to app-debug.apk; installs before benchmark if provided
 #   -c             CPU-only mode (disables GPU/NPU delegates, passes --ez cpu_only true)
@@ -19,11 +20,11 @@
 #   - ADB in PATH and device connected with USB debugging enabled
 #   - APK installed (or pass -a <apk_path> to install automatically)
 #   - Model pushed to device — choose ONE of:
-#       (A) Public Downloads (preferred, ADB always has write access):
-#           adb push <local_model_dir>/ /sdcard/Download/qwen_mnn/
+#       (A) Named path (matches -p default /sdcard/qwen3_vl_4b_mnn):
+#           adb push <local_model_dir>/ /sdcard/qwen3_vl_4b_mnn/
 #       (B) App-scoped staging (guaranteed fallback, no permissions needed):
 #           adb push <local_model_dir>/ \
-#             /sdcard/Android/data/com.giraffetechnology.qc/files/import/qwen_mnn/
+#             /sdcard/Android/data/com.giraffetechnology.qc/files/import/qwen3_vl_4b_mnn/
 #     The app auto-imports to internal filesDir on first run (~2-3 min for 4 GB).
 #     Subsequent runs skip the import.
 #     See docs/DEPLOYMENT_LOCAL_QWEN.md for full instructions.
@@ -51,6 +52,7 @@ EXT_FILES_DIR="/sdcard/Android/data/${PACKAGE}/files"
 DEVICE=""
 ITERATIONS=10
 MODEL_NAME="Qwen3-VL-4B-Instruct-MNN"
+MODEL_PATH="/sdcard/qwen3_vl_4b_mnn"
 OUTPUT="benchmark_results.json"
 APK_PATH=""
 CPU_ONLY=false
@@ -61,11 +63,12 @@ usage() {
     exit 0
 }
 
-while getopts "d:i:m:o:a:ch" opt; do
+while getopts "d:i:m:p:o:a:ch" opt; do
     case $opt in
         d) DEVICE="$OPTARG" ;;
         i) ITERATIONS="$OPTARG" ;;
         m) MODEL_NAME="$OPTARG" ;;
+        p) MODEL_PATH="$OPTARG" ;;
         o) OUTPUT="$OPTARG" ;;
         a) APK_PATH="$OPTARG" ;;
         c) CPU_ONLY=true ;;
@@ -112,33 +115,32 @@ if ! $ADB_CMD shell pm list packages 2>/dev/null | grep -q "$PACKAGE"; then
 fi
 
 # Check that at least one model source exists on device before launching.
-# (filesDir is not accessible via adb without root, so we check staging sources.)
-DOWNLOAD_SRC="/sdcard/Download/qwen_mnn"
-STAGING_SRC="${EXT_FILES_DIR}/import/qwen_mnn"
+# (filesDir is not accessible via adb without root, so we check external sources.)
+STAGING_SRC="${EXT_FILES_DIR}/import/qwen3_vl_4b_mnn"
 
 MODEL_SRC_FOUND=false
-if $ADB_CMD shell test -f "${DOWNLOAD_SRC}/llm.mnn" 2>/dev/null; then
-    log "Model source: $DOWNLOAD_SRC (public Downloads)"
+if $ADB_CMD shell test -f "${MODEL_PATH}/llm.mnn" 2>/dev/null; then
+    log "Model source: $MODEL_PATH"
     MODEL_SRC_FOUND=true
 elif $ADB_CMD shell test -f "${STAGING_SRC}/llm.mnn" 2>/dev/null; then
     log "Model source: $STAGING_SRC (app-scoped staging)"
     MODEL_SRC_FOUND=true
 elif $ADB_CMD shell test -f "${EXT_FILES_DIR}/models/qwen_mnn/llm.mnn" 2>/dev/null; then
-    log "Model already in app external files dir (legacy path — will be imported to filesDir)"
+    log "Model already in app internal files dir (will be reused)"
     MODEL_SRC_FOUND=true
 fi
 
 if [[ "$MODEL_SRC_FOUND" == "false" ]]; then
     echo "ERROR: llm.mnn not found in any source location." >&2
     echo "Push model to the device first (choose one):" >&2
-    echo "  (A) adb push <local_dir>/ /sdcard/Download/qwen_mnn/" >&2
+    echo "  (A) adb push <local_dir>/ ${MODEL_PATH}/  # then pass -p ${MODEL_PATH}" >&2
     echo "  (B) adb push <local_dir>/ ${STAGING_SRC}/" >&2
     echo "See docs/DEPLOYMENT_LOCAL_QWEN.md for download instructions." >&2
     exit 1
 fi
 
 log "Starting BenchmarkActivity..."
-log "  iterations=$ITERATIONS  model_name=$MODEL_NAME  cpu_only=$CPU_ONLY"
+log "  iterations=$ITERATIONS  model_name=$MODEL_NAME  model_path=$MODEL_PATH  cpu_only=$CPU_ONLY"
 
 # Clear logcat buffer so the fallback parser sees only this run's output
 $ADB_CMD logcat -c 2>/dev/null || true
@@ -146,6 +148,7 @@ $ADB_CMD logcat -c 2>/dev/null || true
 $ADB_CMD shell am start -n "${PACKAGE}/${ACTIVITY}" \
     --ei iterations "$ITERATIONS" \
     --es model_name "$MODEL_NAME" \
+    --es model_path "$MODEL_PATH" \
     --ez cpu_only "$CPU_ONLY"
 
 # Wait for benchmark to finish. First run auto-imports ~4 GB (2-3 min); allow 15 min total.

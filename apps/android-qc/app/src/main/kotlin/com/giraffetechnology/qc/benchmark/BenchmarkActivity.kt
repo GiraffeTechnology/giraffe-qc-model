@@ -18,11 +18,13 @@ import java.time.Instant
  * Model storage strategy (Android 16 FUSE bypass):
  *   - Model lives in filesDir (internal private storage, regular ext4, always accessible).
  *   - On first run the activity auto-imports from the first source that has llm.mnn:
- *       1. Environment.getExternalStoragePublicDirectory(DIRECTORY_DOWNLOADS)/qwen_mnn/
- *          Push via ADB: adb push <model_dir>/ /sdcard/Download/qwen_mnn/
- *       2. getExternalFilesDir(null)/import/qwen_mnn/  (fallback, always accessible)
+ *       0. --es model_path <path> intent extra (highest priority, explicit device path)
+ *          Example: --es model_path /sdcard/qwen3_vl_4b_mnn
+ *       1. Environment.getExternalStoragePublicDirectory(DIRECTORY_DOWNLOADS)/qwen3_vl_4b_mnn/
+ *          Push via ADB: adb push <model_dir>/ /sdcard/Download/qwen3_vl_4b_mnn/
+ *       2. getExternalFilesDir(null)/import/qwen3_vl_4b_mnn/  (fallback, always accessible)
  *          Push via ADB: adb push <model_dir>/ \
- *            /sdcard/Android/data/com.giraffetechnology.qc/files/import/qwen_mnn/
+ *            /sdcard/Android/data/com.giraffetechnology.qc/files/import/qwen3_vl_4b_mnn/
  *   - Import is a one-time file copy (~4 GB, runs in IO coroutine). Subsequent runs skip it.
  *   - Results are written to getExternalFilesDir() (adb pull) AND logcat (fallback).
  *
@@ -30,6 +32,7 @@ import java.time.Instant
  *   adb shell am start -n com.giraffetechnology.qc/.benchmark.BenchmarkActivity \
  *     --ei iterations 10 \
  *     --es model_name "Qwen3-VL-4B-Instruct-MNN" \
+ *     --es model_path /sdcard/qwen3_vl_4b_mnn \
  *     --ez cpu_only false
  *
  * Result JSON fields include:
@@ -48,16 +51,17 @@ class BenchmarkActivity : Activity() {
 
         val iterations = intent.getIntExtra("iterations", 10)
         val modelName  = intent.getStringExtra("model_name") ?: "Qwen3-VL-4B-Instruct-MNN"
+        val modelPath  = intent.getStringExtra("model_path")
         val cpuOnly    = intent.getBooleanExtra("cpu_only", false)
 
         // Results go to getExternalFilesDir() so adb pull works; logcat is always the fallback.
         val outputFile = File(getExternalFilesDir(null) ?: filesDir, RESULTS_FILENAME)
 
-        Log.i(TAG, "Benchmark start: iterations=$iterations  modelName=$modelName  cpuOnly=$cpuOnly")
+        Log.i(TAG, "Benchmark start: iterations=$iterations  modelName=$modelName  cpuOnly=$cpuOnly  modelPath=$modelPath")
         Log.i(TAG, "Results file: ${outputFile.absolutePath}")
 
         CoroutineScope(Dispatchers.Main).launch {
-            val results = runBenchmark(iterations, modelName, cpuOnly)
+            val results = runBenchmark(iterations, modelName, cpuOnly, modelPath)
             writeResults(results, outputFile)
             Log.i(TAG, "Benchmark complete")
             finish()
@@ -68,10 +72,15 @@ class BenchmarkActivity : Activity() {
      * Resolves the model directory in filesDir, importing files from external storage
      * if not already present. The import runs on Dispatchers.IO (never on main thread).
      *
+     * Source priority:
+     *   1. modelPath intent extra (explicit, e.g. /sdcard/qwen3_vl_4b_mnn)
+     *   2. Public Downloads (/storage/emulated/0/Download/qwen3_vl_4b_mnn)
+     *   3. App-scoped external staging (import/qwen3_vl_4b_mnn)
+     *
      * filesDir = /data/data/<package>/files/ — plain ext4, no FUSE, no Android 16
      * scoped-storage symlink issues with Java File.exists() or FileInputStream.
      */
-    private suspend fun resolveOrImportModel(): ImportResult = withContext(Dispatchers.IO) {
+    private suspend fun resolveOrImportModel(modelPath: String? = null): ImportResult = withContext(Dispatchers.IO) {
         val dest = File(filesDir, "models/qwen_mnn")
 
         if (File(dest, "llm.mnn").exists()) {
@@ -79,20 +88,20 @@ class BenchmarkActivity : Activity() {
             return@withContext ImportResult.Ready(dest)
         }
 
-        // Source 1: public Downloads — canonical /storage/emulated/0/Download path
-        // (avoids /sdcard/ FUSE symlink; accessible on Android ≤12 with READ_EXTERNAL_STORAGE)
-        // Push: adb push <dir>/ /sdcard/Download/qwen_mnn/
         val downloadsSrc = File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            "qwen_mnn"
+            "qwen3_vl_4b_mnn"
         )
+        val stagingSrc = File(getExternalFilesDir(null) ?: filesDir, "import/qwen3_vl_4b_mnn")
 
-        // Source 2: app-scoped external staging — always accessible, no storage permission needed
-        // Push: adb push <dir>/ /sdcard/Android/data/com.giraffetechnology.qc/files/import/qwen_mnn/
-        val stagingSrc = File(getExternalFilesDir(null) ?: filesDir, "import/qwen_mnn")
+        val sources = buildList {
+            if (modelPath != null) add(File(modelPath))
+            add(downloadsSrc)
+            add(stagingSrc)
+        }
 
         val checkedPaths = mutableListOf<String>()
-        for (src in listOf(downloadsSrc, stagingSrc)) {
+        for (src in sources) {
             checkedPaths.add(src.absolutePath)
             if (File(src, "llm.mnn").exists()) {
                 Log.i(TAG, "Importing model: ${src.absolutePath} → ${dest.absolutePath}")
@@ -129,8 +138,9 @@ class BenchmarkActivity : Activity() {
         iterations: Int,
         modelName: String,
         cpuOnly: Boolean = false,
+        modelPath: String? = null,
     ): Map<String, Any> = withContext(Dispatchers.Default) {
-        val importResult = resolveOrImportModel()
+        val importResult = resolveOrImportModel(modelPath)
 
         when (importResult) {
             is ImportResult.NotFound -> return@withContext mapOf(
@@ -140,8 +150,8 @@ class BenchmarkActivity : Activity() {
                 "total_ram_mb"  to totalRamMb(),
                 "checked_paths" to importResult.checkedPaths,
                 "push_commands" to listOf(
-                    "adb push <local_model_dir>/ /sdcard/Download/qwen_mnn/",
-                    "adb push <local_model_dir>/ /sdcard/Android/data/com.giraffetechnology.qc/files/import/qwen_mnn/",
+                    "adb push <local_model_dir>/ /sdcard/qwen3_vl_4b_mnn/  # then launch with --es model_path /sdcard/qwen3_vl_4b_mnn",
+                    "adb push <local_model_dir>/ /sdcard/Android/data/com.giraffetechnology.qc/files/import/qwen3_vl_4b_mnn/",
                 ),
             )
             is ImportResult.ImportFailed -> return@withContext mapOf(
