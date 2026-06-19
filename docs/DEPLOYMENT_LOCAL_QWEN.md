@@ -2,24 +2,19 @@
 
 ## Target Hardware
 
-| Attribute       | Specification                        |
-|-----------------|--------------------------------------|
-| SoC             | Snapdragon 8 Gen                     |
-| RAM             | 8 GB                                 |
-| Storage         | 128 GB                               |
-| OS              | Android 12+                          |
-| Default model   | Qwen2-VL-2B-Instruct-MNN (INT4)      |
+| Attribute       | Specification                           |
+|-----------------|-----------------------------------------|
+| SoC             | Snapdragon 8 Gen                        |
+| RAM             | 8 GB                                    |
+| Storage         | 128 GB                                  |
+| OS              | Android 12+                             |
+| Default model   | Qwen3-VL-4B-Instruct-MNN (INT4)         |
 
-The 2B INT4 model requires approximately 3–4 GB at runtime. On an 8 GB device this leaves sufficient headroom for the OS and camera pipeline.
-
-For devices with less than 4 GB available RAM, use Qwen2-VL-0.5B-Instruct-MNN instead.
+The INT4-quantized 4B model is viable on 8 GB devices. Runtime memory usage is pending physical-device measurement; see `MNN_DEVICE_TEST_PLAN.md` for the benchmark plan.
 
 ## Model Source
 
-**HuggingFace repository:** `taobao-mnn/Qwen2-VL-2B-Instruct-MNN`
-`https://huggingface.co/taobao-mnn/Qwen2-VL-2B-Instruct-MNN`
-
-Total size: ~4.3 GB. Last updated: 2025-05-07.
+**ModelScope repository:** `MNN/Qwen3-VL-4B-Instruct-MNN`
 
 ## Model Directory Structure
 
@@ -43,18 +38,17 @@ The checksum file is mandatory. The app will refuse to run inference if it is ab
 
 ## Downloading the Model
 
-### Using huggingface-cli (recommended)
+### Using modelscope (recommended)
 
 ```bash
-pip install huggingface_hub
-huggingface-cli download taobao-mnn/Qwen2-VL-2B-Instruct-MNN \
-    --local-dir ./qwen_2b_mnn
+pip install modelscope
+modelscope download MNN/Qwen3-VL-4B-Instruct-MNN --local_dir ./Qwen3-VL-4B-Instruct-MNN
 ```
 
 After download, generate the checksum file for `llm.mnn`:
 
 ```bash
-cd qwen_2b_mnn
+cd Qwen3-VL-4B-Instruct-MNN
 sha256sum llm.mnn | awk '{print $1}' > checksum.sha256
 ```
 
@@ -62,8 +56,8 @@ sha256sum llm.mnn | awk '{print $1}' > checksum.sha256
 
 ```bash
 git lfs install
-git clone https://huggingface.co/taobao-mnn/Qwen2-VL-2B-Instruct-MNN qwen_2b_mnn
-cd qwen_2b_mnn
+git clone https://modelscope.cn/MNN/Qwen3-VL-4B-Instruct-MNN.git Qwen3-VL-4B-Instruct-MNN
+cd Qwen3-VL-4B-Instruct-MNN
 sha256sum llm.mnn | awk '{print $1}' > checksum.sha256
 ```
 
@@ -77,8 +71,8 @@ weight shards must be bundled in assets or sideloaded separately.
 ```kotlin
 ProvisioningConfig(
     mode             = ProvisioningMode.DOWNLOAD_ON_FIRST_RUN,
-    modelName        = "Qwen2-VL-2B-Instruct-MNN",
-    modelDownloadUrl = "https://your-cdn.example.com/qwen_2b_mnn/llm.mnn",
+    modelName        = "Qwen3-VL-4B-Instruct-MNN",
+    modelDownloadUrl = "https://your-cdn.example.com/qwen3_vl_4b_mnn/llm.mnn",
     expectedSha256   = "<sha256_hex_of_llm_mnn>",
 )
 ```
@@ -92,7 +86,7 @@ For factory deployments where the model ships with the APK as an asset:
 ```kotlin
 ProvisioningConfig(
     mode      = ProvisioningMode.BUNDLED,
-    modelName = "Qwen2-VL-2B-Instruct-MNN",
+    modelName = "Qwen3-VL-4B-Instruct-MNN",
 )
 ```
 
@@ -107,17 +101,17 @@ scoped storage. ADB can push to the app's scoped external directory without root
 Push the model directory to the device:
 
 ```bash
-adb push ./qwen_2b_mnn/ \
-  /sdcard/Android/data/com.giraffetechnology.qc/files/models/qwen_mnn/
+adb push ./Qwen3-VL-4B-Instruct-MNN/ /sdcard/qwen3_vl_4b_mnn/
 ```
 
-Then launch via the BenchmarkActivity (`model_path` defaults to the above
-location so `--es model_path` can be omitted when using the default):
+Then launch via the BenchmarkActivity (pass `--es model_path` so the app knows
+where to look on this device):
 
 ```bash
 adb shell am start -n com.giraffetechnology.qc/.benchmark.BenchmarkActivity \
     --ei iterations 10 \
-    --es model_name "Qwen2-VL-2B-Instruct-MNN" \
+    --es model_name "Qwen3-VL-4B-Instruct-MNN" \
+    --es model_path /sdcard/qwen3_vl_4b_mnn \
     --ez cpu_only true
 ```
 
@@ -130,6 +124,7 @@ Or use the benchmark script (pass `-c` for CPU-only, `-a` to auto-install the AP
 ./scripts/benchmark_mnn.sh \
     -d <device_serial> \
     -i 10 \
+    -p /sdcard/qwen3_vl_4b_mnn \
     -a apps/android-qc/app/build/outputs/apk/debug/app-debug.apk \
     -c
 ```
@@ -149,6 +144,8 @@ cd apps/android-qc
 | Cold-start load   | ≤ 30 s          |
 | p95 per-image     | ≤ 10 s          |
 | Peak memory       | ≤ 6 GB          |
+
+Actual measurements pending physical-device benchmark run. See `MNN_DEVICE_TEST_PLAN.md`.
 
 Results are written to `/sdcard/qc_benchmark_results.json` and logcat tag `QCBenchmark`.
 
