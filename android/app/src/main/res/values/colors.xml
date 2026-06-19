@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="pass_green">#4CAF50</color>
+    <color name="fail_red">#F44336</color>
+    <color name="neutral_gray">#616161</color>
+    <color name="camera_background">#0A0A0A</color>
+    <color name="panel_background">#1A1A1A</color>
+    <color name="background_dark">#0D1117</color>
+</resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.GiraffeQcPad" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/pass_green</item>
+        <item name="colorPrimaryVariant">#388E3C</item>
+        <item name="colorOnPrimary">@android:color/white</item>
+        <item name="colorSecondary">@color/neutral_gray</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowKeepScreenOn">true</item>
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
+</resources>

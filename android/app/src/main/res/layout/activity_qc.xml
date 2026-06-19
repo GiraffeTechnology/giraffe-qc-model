@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:keepScreenOn="true">
+
+    <!-- Left 3/4 — live camera feed -->
+    <FrameLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="3"
+        android:background="@color/camera_background">
+
+        <SurfaceView
+            android:id="@+id/surfaceViewCamera"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <TextView
+            android:id="@+id/cameraPlaceholder"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="@string/camera_disconnected"
+            android:textColor="@android:color/white"
+            android:textSize="18sp"
+            android:gravity="center"
+            android:visibility="visible" />
+
+    </FrameLayout>
+
+    <!-- Right 1/4 — status panel -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:background="@color/panel_background">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnLogout"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:layout_margin="8dp"
+            android:text="@string/btn_logout" />
+
+        <!-- Reference photo (placeholder until backend delivers SKU images) -->
+        <ImageView
+            android:id="@+id/ivReferencePhoto"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="2"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_reference_placeholder"
+            android:contentDescription="@string/reference_photo_description"
+            android:padding="8dp" />
+
+        <!-- Detection result label (通过 / 不通过) -->
+        <TextView
+            android:id="@+id/tvDetectionResult"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:visibility="invisible" />
+
+        <!-- Aggregate status block (full width, colored) -->
+        <FrameLayout
+            android:id="@+id/aggregateStatusBlock"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="2"
+            android:background="@color/neutral_gray">
+
+            <TextView
+                android:id="@+id/tvAggregateLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="@string/aggregate_waiting"
+                android:textColor="@android:color/white"
+                android:textSize="32sp"
+                android:textStyle="bold" />
+
+        </FrameLayout>
+
+    </LinearLayout>
+
+</LinearLayout>

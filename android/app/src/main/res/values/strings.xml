@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Giraffe QC Pad</string>
+
+    <!-- Login screen -->
+    <string name="tab_account">Account</string>
+    <string name="tab_wechat">WeChat QR</string>
+    <string name="hint_username">Username</string>
+    <string name="hint_password">Password</string>
+    <string name="btn_login">Login</string>
+    <string name="logo_description">Giraffe Technology logo</string>
+    <string name="wechat_scan_prompt">Scan QR code with WeChat</string>
+    <string name="wechat_qr_placeholder">QR Code\n(Integration pending)</string>
+
+    <!-- QC inspection screen -->
+    <string name="result_pass">&#36890;&#36807;</string>
+    <string name="result_fail">&#19981;&#36890;&#36807;</string>
+    <string name="aggregate_pass">&#36890;&#36807;</string>
+    <string name="aggregate_fail">&#20154;&#24037;&#22797;&#26816;</string>
+    <string name="aggregate_waiting">&#31561;&#24453;&#26816;&#27979;&#8230;</string>
+    <string name="camera_disconnected">Camera disconnected\nPlease reconnect USB camera</string>
+    <string name="reference_photo_description">SKU reference photo</string>
+    <string name="btn_logout">Logout</string>
+</resources>

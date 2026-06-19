@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Placeholder: replace with the real Giraffe Technology logo asset. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    <path
+        android:fillColor="#4CAF50"
+        android:pathData="M60,8 C31.8,8 8,31.8 8,60 C8,88.2 31.8,112 60,112 C88.2,112 112,88.2 112,60 C112,31.8 88.2,8 60,8 Z" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:pathData="M42,38 L42,82 M78,38 L78,82 M42,60 L78,60" />
+</vector>
