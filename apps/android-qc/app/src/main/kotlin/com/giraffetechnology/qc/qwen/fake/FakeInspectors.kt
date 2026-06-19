@@ -3,15 +3,16 @@ package com.giraffetechnology.qc.qwen.fake
 import com.giraffetechnology.qc.qwen.*
 import kotlinx.coroutines.delay
 
-// §4.9.3 — Deterministic fake inspectors for unit/CI tests.
+// Deterministic fake inspectors for unit/CI tests.
 // Never load the real MNN model or call real cloud APIs in tests.
+// Model name reflects the Pad branch target: Qwen3-VL-4B-Instruct-MNN.
 
 class FakeOnDeviceQwenInspector(
     private val resultOverride: String = "pass",
     private val confidence: Float = 0.95f,
 ) : QwenInspector {
     override val engineName = "local_qwen_mnn"
-    override val modelName  = "FakeQwen-2B"
+    override val modelName  = "Qwen3-VL-4B-Instruct-MNN"
 
     override suspend fun inspect(
         standardPhotos: List<StandardPhotoInput>,
@@ -34,7 +35,7 @@ class FakeOnDeviceQwenInspector(
 
 class FailingOnDeviceQwenInspector : QwenInspector {
     override val engineName = "local_qwen_mnn"
-    override val modelName  = "FailingFake"
+    override val modelName  = "Qwen3-VL-4B-Instruct-MNN"
     override suspend fun inspect(
         standardPhotos: List<StandardPhotoInput>,
         capturedPhoto: CapturePhotoInput,
@@ -45,7 +46,7 @@ class FailingOnDeviceQwenInspector : QwenInspector {
 
 class TimeoutOnDeviceQwenInspector(private val delayMs: Long = 15_000L) : QwenInspector {
     override val engineName = "local_qwen_mnn"
-    override val modelName  = "TimeoutFake"
+    override val modelName  = "Qwen3-VL-4B-Instruct-MNN"
     override suspend fun inspect(
         standardPhotos: List<StandardPhotoInput>,
         capturedPhoto: CapturePhotoInput,
@@ -59,7 +60,7 @@ class TimeoutOnDeviceQwenInspector(private val delayMs: Long = 15_000L) : QwenIn
 
 class InvalidJsonOnDeviceQwenInspector : QwenInspector {
     override val engineName = "local_qwen_mnn"
-    override val modelName  = "InvalidJsonFake"
+    override val modelName  = "Qwen3-VL-4B-Instruct-MNN"
     override suspend fun inspect(
         standardPhotos: List<StandardPhotoInput>,
         capturedPhoto: CapturePhotoInput,
@@ -78,7 +79,7 @@ class InvalidJsonOnDeviceQwenInspector : QwenInspector {
 
 class NotProvisionedOnDeviceQwenInspector : QwenInspector {
     override val engineName = "local_qwen_mnn"
-    override val modelName  = "NotProvisionedFake"
+    override val modelName  = "Qwen3-VL-4B-Instruct-MNN"
     override suspend fun inspect(
         standardPhotos: List<StandardPhotoInput>,
         capturedPhoto: CapturePhotoInput,

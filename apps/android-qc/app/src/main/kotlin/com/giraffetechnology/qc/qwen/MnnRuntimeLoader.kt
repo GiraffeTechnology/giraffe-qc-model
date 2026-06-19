@@ -7,14 +7,15 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Manages MNN model lifecycle (load/unload, native library binding).
+ * MNN runtime loader for Qwen3-VL-4B-Instruct-MNN on Android Pad.
  *
- * Production: wires to MNN-android.aar JNI layer.
- * CI/test: MNN native libs absent → loadNativeLibs() returns false → scaffold mode.
+ * Target: Snapdragon Android Pad, 8+ GB RAM.
+ * Model: Qwen3-VL-4B-Instruct-MNN (INT4) — requires llm.mnn + visual.mnn + 8 supporting files.
  *
- * Device: Snapdragon 8 Gen, 8 GB RAM.
- * Model: Qwen2-VL-2B-Instruct-MNN (INT4) — ~2GB weights, ~3-4GB at runtime including
- * vision encoder and KV cache. Within the 8GB budget.
+ * When MNN AAR is absent (CI/tests): loadNativeLibs() returns false → scaffold mode.
+ * When model directory is incomplete: loadModel() returns false → review_required.
+ *
+ * IMPORTANT: A failed load NEVER triggers cloud fallback. Missing MNN = review_required.
  */
 class MnnRuntimeLoader(private val context: Context) {
 
@@ -42,18 +43,18 @@ class MnnRuntimeLoader(private val context: Context) {
 
     suspend fun loadModel(modelDir: File): Boolean = withContext(Dispatchers.IO) {
         if (!loadNativeLibs()) {
-            Log.e(TAG, "MNN native libs not loaded — on-device inference unavailable")
+            Log.e(TAG, "MNN native libs missing — local inference unavailable, result: review_required")
             return@withContext false
         }
-        val modelFile = File(modelDir, "model.mnn")
-        if (!modelFile.exists()) {
-            Log.e(TAG, "model.mnn not found at ${modelFile.absolutePath}")
+        if (!ModelProvisioning.isModelReady(modelDir)) {
+            val missing = ModelProvisioning.missingFiles(modelDir)
+            Log.e(TAG, "Model directory incomplete — missing $missing, result: review_required")
             return@withContext false
         }
         // Production: modelPtr = nativeLoadModel(modelDir.absolutePath)
-        // Scaffold: mark loaded if file exists (real call requires MNN AAR)
+        // Scaffold: mark loaded when full file set is present (real JNI requires MNN AAR)
         modelLoaded = true
-        Log.i(TAG, "Model loaded from ${modelDir.absolutePath}")
+        Log.i(TAG, "Qwen3-VL-4B scaffold-loaded from ${modelDir.absolutePath}")
         true
     }
 

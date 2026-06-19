@@ -5,6 +5,15 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 
+/**
+ * Router tests for the Android Pad local-only branch.
+ *
+ * Cloud tests that existed on main have been replaced with Pad safety invariant tests:
+ *   - All failure paths must produce review_required.
+ *   - Cloud is FORBIDDEN: even passing cloudInspector and cloudEnabled=true, the
+ *     Pad router must never call cloud and must never produce a cloud-sourced pass.
+ *   - local fail → cloud pass escalation is FORBIDDEN.
+ */
 class QwenInspectorRouterTest {
 
     private val qcPoints = listOf(
@@ -25,44 +34,33 @@ class QwenInspectorRouterTest {
         assertEquals("local_qwen_mnn", r.engine)
     }
 
-    // --- §4.5.4: on-device FAIL is final ---
+    // --- Fail is final — no cloud escalation ---
 
-    @Test fun `on-device fail is final — cloud not called`() = runBlocking {
-        val cloud = FakeOnDeviceQwenInspector("pass", 0.99f) // would produce pass if called
+    @Test fun `on-device fail is final — cloud inspector is never called`() = runBlocking {
         val router = QwenInspectionRouter(
             onDeviceInspector = FakeOnDeviceQwenInspector("fail", 0.95f),
-            cloudInspector    = cloud,
+            cloudInspector    = FakeOnDeviceQwenInspector("pass", 0.99f),
             config            = RouterConfig(cloudEnabled = true, onDeviceFailIsFinal = true),
         )
         val r = router.route(stdPhotos, capPhoto, qcPoints, ctx)
-        assertEquals("fail should remain fail", "fail", r.overallResult)
+        assertEquals("fail should remain fail — cloud forbidden on Pad branch", "fail", r.overallResult)
     }
 
-    @Test fun `on-device fail with flag disabled falls back to cloud`() = runBlocking {
+    @Test fun `on-device fail with onDeviceFailIsFinal false still returns fail on Pad branch`() = runBlocking {
         val router = QwenInspectionRouter(
             onDeviceInspector = FakeOnDeviceQwenInspector("fail", 0.95f),
             cloudInspector    = FakeOnDeviceQwenInspector("pass", 0.99f),
             config            = RouterConfig(cloudEnabled = true, onDeviceFailIsFinal = false),
         )
         val r = router.route(stdPhotos, capPhoto, qcPoints, ctx)
-        assertEquals("pass", r.overallResult)
-        assertTrue("fallback must be used", r.fallback.used)
+        // isAcceptable returns false for "fail" (confidence check irrelevant for fail)
+        // Router falls to makeReviewRequired — not cloud
+        assertNotEquals("cloud-sourced pass is FORBIDDEN on Pad branch", "pass", r.overallResult)
     }
 
-    // --- Low confidence → fallback ---
+    // --- Low confidence → review_required (no cloud) ---
 
-    @Test fun `low confidence triggers cloud fallback`() = runBlocking {
-        val router = QwenInspectionRouter(
-            onDeviceInspector = FakeOnDeviceQwenInspector("pass", 0.50f),
-            cloudInspector    = FakeOnDeviceQwenInspector("pass", 0.97f),
-            config            = RouterConfig(cloudEnabled = true, minConfidence = 0.82f),
-        )
-        val r = router.route(stdPhotos, capPhoto, qcPoints, ctx)
-        assertEquals("pass", r.overallResult)
-        assertTrue("fallback used for low confidence", r.fallback.used)
-    }
-
-    @Test fun `low confidence with cloud disabled becomes review_required`() = runBlocking {
+    @Test fun `low confidence with cloud disabled returns review_required`() = runBlocking {
         val router = QwenInspectionRouter(
             onDeviceInspector = FakeOnDeviceQwenInspector("pass", 0.50f),
             config            = RouterConfig(cloudEnabled = false),
@@ -72,9 +70,21 @@ class QwenInspectorRouterTest {
         r.items.forEach { assertEquals("review_required", it.result) }
     }
 
-    // --- On-device error paths ---
+    @Test fun `low confidence with cloudEnabled flag still returns review_required on Pad`() = runBlocking {
+        // cloudEnabled flag is ignored on the Pad branch — cloud is never called
+        val router = QwenInspectionRouter(
+            onDeviceInspector = FakeOnDeviceQwenInspector("pass", 0.50f),
+            cloudInspector    = FakeOnDeviceQwenInspector("pass", 0.99f),
+            config            = RouterConfig(cloudEnabled = true, minConfidence = 0.82f),
+        )
+        val r = router.route(stdPhotos, capPhoto, qcPoints, ctx)
+        assertEquals("review_required", r.overallResult)
+        assertFalse("Cloud fallback.used must be false — cloud not called on Pad", r.fallback.used)
+    }
 
-    @Test fun `on-device runtime error triggers review_required when cloud disabled`() = runBlocking {
+    // --- On-device error → review_required ---
+
+    @Test fun `on-device runtime error returns review_required`() = runBlocking {
         val router = QwenInspectionRouter(
             onDeviceInspector = FailingOnDeviceQwenInspector(),
             config            = RouterConfig(cloudEnabled = false),
@@ -83,20 +93,21 @@ class QwenInspectorRouterTest {
         assertEquals("review_required", r.overallResult)
     }
 
-    @Test fun `on-device error triggers cloud fallback when enabled`() = runBlocking {
+    @Test fun `on-device error does not escalate to cloud — fallback used must be false`() = runBlocking {
         val router = QwenInspectionRouter(
             onDeviceInspector = FailingOnDeviceQwenInspector(),
-            cloudInspector    = FakeOnDeviceQwenInspector("pass", 0.97f),
+            cloudInspector    = FakeOnDeviceQwenInspector("pass", 0.99f),
             config            = RouterConfig(cloudEnabled = true),
         )
         val r = router.route(stdPhotos, capPhoto, qcPoints, ctx)
-        assertEquals("pass", r.overallResult)
-        assertTrue(r.fallback.used)
+        assertEquals("Cloud must never be called — result must be review_required",
+            "review_required", r.overallResult)
+        assertFalse("fallback.used must be false — cloud was not used", r.fallback.used)
     }
 
-    // --- Timeout path ---
+    // --- Timeout → review_required ---
 
-    @Test fun `on-device timeout triggers review_required`() = runBlocking {
+    @Test fun `on-device timeout returns review_required`() = runBlocking {
         val router = QwenInspectionRouter(
             onDeviceInspector = TimeoutOnDeviceQwenInspector(delayMs = 200L),
             config            = RouterConfig(onDeviceTimeoutMs = 50L, cloudEnabled = false),
@@ -105,9 +116,9 @@ class QwenInspectorRouterTest {
         assertEquals("review_required", r.overallResult)
     }
 
-    // --- Not provisioned path ---
+    // --- Not provisioned → review_required ---
 
-    @Test fun `not-provisioned inspector triggers review_required`() = runBlocking {
+    @Test fun `not-provisioned inspector returns review_required`() = runBlocking {
         val router = QwenInspectionRouter(
             onDeviceInspector = NotProvisionedOnDeviceQwenInspector(),
             config            = RouterConfig(cloudEnabled = false),
@@ -127,19 +138,7 @@ class QwenInspectorRouterTest {
         assertEquals("review_required", r.overallResult)
     }
 
-    // --- Cloud also fails ---
-
-    @Test fun `cloud fallback failure returns review_required`() = runBlocking {
-        val router = QwenInspectionRouter(
-            onDeviceInspector = FailingOnDeviceQwenInspector(),
-            cloudInspector    = FailingOnDeviceQwenInspector(),
-            config            = RouterConfig(cloudEnabled = true),
-        )
-        val r = router.route(stdPhotos, capPhoto, qcPoints, ctx)
-        assertEquals("review_required", r.overallResult)
-    }
-
-    // --- review_required from on-device treated as non-pass ---
+    // --- review_required is not accepted ---
 
     @Test fun `review_required on-device result is not accepted`() = runBlocking {
         val router = QwenInspectionRouter(
@@ -150,11 +149,45 @@ class QwenInspectorRouterTest {
         assertEquals("review_required", r.overallResult)
     }
 
-    // --- All items covered ---
+    // --- Item coverage ---
 
     @Test fun `result items count matches qc_points count`() = runBlocking {
         val router = QwenInspectionRouter(FakeOnDeviceQwenInspector("pass", 0.95f))
         val r = router.route(stdPhotos, capPhoto, qcPoints, ctx)
         assertEquals(qcPoints.size, r.items.size)
+    }
+
+    // --- Pad branch safety invariants ---
+
+    @Test fun `local fail never produces pass even if cloud inspector would say pass`() = runBlocking {
+        val router = QwenInspectionRouter(
+            onDeviceInspector = FakeOnDeviceQwenInspector("fail", 0.95f),
+            cloudInspector    = FakeOnDeviceQwenInspector("pass", 1.0f),
+            config            = RouterConfig(cloudEnabled = true, onDeviceFailIsFinal = true),
+        )
+        val r = router.route(stdPhotos, capPhoto, qcPoints, ctx)
+        assertNotEquals("local fail → cloud pass escalation is FORBIDDEN", "pass", r.overallResult)
+    }
+
+    @Test fun `all failure modes produce review_required or fail — never cloud-sourced pass`() = runBlocking {
+        val failureScenarios: List<Pair<String, QwenInspector>> = listOf(
+            "failing"          to FailingOnDeviceQwenInspector(),
+            "not_provisioned"  to NotProvisionedOnDeviceQwenInspector(),
+            "invalid_json"     to InvalidJsonOnDeviceQwenInspector(),
+            "low_confidence"   to FakeOnDeviceQwenInspector("pass", 0.10f),
+        )
+        val cloudPass = FakeOnDeviceQwenInspector("pass", 1.0f)
+        for ((name, inspector) in failureScenarios) {
+            val router = QwenInspectionRouter(
+                onDeviceInspector = inspector,
+                cloudInspector    = cloudPass,
+                config            = RouterConfig(cloudEnabled = true),
+            )
+            val r = router.route(stdPhotos, capPhoto, qcPoints, ctx)
+            assertNotEquals(
+                "Scenario '$name' must not produce a cloud-sourced pass",
+                "pass", r.overallResult,
+            )
+        }
     }
 }

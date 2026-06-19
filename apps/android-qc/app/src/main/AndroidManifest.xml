@@ -1,14 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android Pad local-only app manifest.
+  INTERNET permission is NOT declared: Pad app is fully offline.
+  No Qwen API, no DashScope, no cloud inference path.
+-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- READ_EXTERNAL_STORAGE / MANAGE_EXTERNAL_STORAGE for sdcard model sideload path -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
     <uses-feature android:name="android.hardware.camera.any" android:required="true" />
 
     <application
         android:allowBackup="false"
-        android:label="GiraffeQC"
+        android:label="GiraffeQC-Pad"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar">
 
         <activity
@@ -21,7 +28,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Benchmark activity — launched via adb for §4.3.0 latency measurement -->
+        <!-- Benchmark activity — launched via adb for latency measurement -->
         <activity
             android:name=".benchmark.BenchmarkActivity"
             android:exported="true">

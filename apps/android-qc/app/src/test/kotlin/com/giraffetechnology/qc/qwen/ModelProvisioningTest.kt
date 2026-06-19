@@ -6,23 +6,38 @@ import java.io.File
 
 class ModelProvisioningTest {
 
-    // Note: These tests run on JVM (not Android), so Context is null.
-    // ModelProvisioning.getModelDir() is tested indirectly; SHA256 and path logic
-    // are unit-tested here via the companion utilities.
+    // Note: runs on JVM (not Android), so Context is null.
+    // getModelDir(), sideload provisioning, and sha256/path logic are unit-tested here.
 
-    @Test fun `default model name is 2B variant for 8GB device`() {
-        assertEquals("Qwen2-VL-2B-Instruct-MNN", ModelProvisioning.DEFAULT_MODEL_NAME)
+    @Test fun `default model name is Qwen3-VL-4B-Instruct-MNN`() {
+        assertEquals("Qwen3-VL-4B-Instruct-MNN", ModelProvisioning.DEFAULT_MODEL_NAME)
     }
 
-    @Test fun `provisioning mode enum has expected values`() {
+    @Test fun `provisioning mode enum has BUNDLED and SIDELOAD_FROM_SDCARD`() {
         val modes = ProvisioningMode.values().map { it.name }
         assertTrue("BUNDLED mode required", modes.contains("BUNDLED"))
-        assertTrue("DOWNLOAD_ON_FIRST_RUN mode required", modes.contains("DOWNLOAD_ON_FIRST_RUN"))
+        assertTrue("SIDELOAD_FROM_SDCARD mode required", modes.contains("SIDELOAD_FROM_SDCARD"))
+        assertFalse("DOWNLOAD_ON_FIRST_RUN must not exist on Pad branch",
+            modes.contains("DOWNLOAD_ON_FIRST_RUN"))
+    }
+
+    @Test fun `required model files list has all 10 mandatory files`() {
+        val req = ModelProvisioning.REQUIRED_MODEL_FILES
+        assertTrue(req.contains("llm.mnn"))
+        assertTrue(req.contains("llm.mnn.weight"))
+        assertTrue(req.contains("visual.mnn"))
+        assertTrue(req.contains("visual.mnn.weight"))
+        assertTrue(req.contains("llm.mnn.json"))
+        assertTrue(req.contains("llm_config.json"))
+        assertTrue(req.contains("embeddings_bf16.bin"))
+        assertTrue(req.contains("tokenizer.txt"))
+        assertTrue(req.contains("config.json"))
+        assertTrue(req.contains("checksum.sha256"))
+        assertEquals("exactly 10 required files", 10, req.size)
     }
 
     @Test fun `sha256 of empty bytes is known constant`() {
         val emptyHash = ModelProvisioning.sha256(ByteArray(0))
-        // SHA-256 of zero bytes is well-known
         assertEquals(
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             emptyHash,
@@ -30,7 +45,6 @@ class ModelProvisioningTest {
     }
 
     @Test fun `sha256 of single byte matches expected`() {
-        // SHA-256 of [0x00] = 6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d
         val hash = ModelProvisioning.sha256(byteArrayOf(0x00.toByte()))
         assertEquals(
             "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
@@ -46,15 +60,14 @@ class ModelProvisioningTest {
 
     @Test fun `sha256 is deterministic`() {
         val data = "test_data_for_repeatability".toByteArray()
-        val h1 = ModelProvisioning.sha256(data)
-        val h2 = ModelProvisioning.sha256(data)
-        assertEquals(h1, h2)
+        assertEquals(ModelProvisioning.sha256(data), ModelProvisioning.sha256(data))
     }
 
     @Test fun `sha256 differs for different inputs`() {
-        val h1 = ModelProvisioning.sha256("abc".toByteArray())
-        val h2 = ModelProvisioning.sha256("abd".toByteArray())
-        assertNotEquals(h1, h2)
+        assertNotEquals(
+            ModelProvisioning.sha256("abc".toByteArray()),
+            ModelProvisioning.sha256("abd".toByteArray()),
+        )
     }
 
     @Test fun `isModelReady returns false when directory does not exist`() {
@@ -63,31 +76,77 @@ class ModelProvisioningTest {
     }
 
     @Test fun `isModelReady returns false for empty directory`() {
-        val emptyDir = createTempDir()
-        try {
-            assertFalse(ModelProvisioning.isModelReady(emptyDir))
-        } finally {
-            emptyDir.deleteRecursively()
-        }
-    }
-
-    @Test fun `isModelReady returns true when model file present`() {
         val dir = createTempDir()
         try {
-            File(dir, "model.mnn").writeText("fake model content")
-            assertTrue(ModelProvisioning.isModelReady(dir))
+            assertFalse(ModelProvisioning.isModelReady(dir))
         } finally {
             dir.deleteRecursively()
         }
     }
 
-    @Test fun `isModelReady requires model_mnn file specifically`() {
+    @Test fun `isModelReady returns false with only llm_mnn present`() {
         val dir = createTempDir()
         try {
-            // Only a config file, no model.mnn — should not be ready
-            File(dir, "config.json").writeText("{}")
-            assertFalse("config.json alone should not satisfy isModelReady",
+            File(dir, "llm.mnn").writeText("fake")
+            assertFalse("llm.mnn alone is insufficient — all 10 files required",
                 ModelProvisioning.isModelReady(dir))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test fun `isModelReady returns false when only config json present`() {
+        val dir = createTempDir()
+        try {
+            File(dir, "config.json").writeText("{}")
+            assertFalse("config.json alone must not satisfy isModelReady",
+                ModelProvisioning.isModelReady(dir))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test fun `isModelReady returns true when all 10 required files present`() {
+        val dir = createTempDir()
+        try {
+            ModelProvisioning.REQUIRED_MODEL_FILES.forEach { name ->
+                File(dir, name).writeText("fake_$name")
+            }
+            assertTrue("All required files present — isModelReady should be true",
+                ModelProvisioning.isModelReady(dir))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test fun `missingFiles returns all when directory is empty`() {
+        val dir = createTempDir()
+        try {
+            val missing = ModelProvisioning.missingFiles(dir)
+            assertEquals(ModelProvisioning.REQUIRED_MODEL_FILES.size, missing.size)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test fun `missingFiles returns only the absent files`() {
+        val dir = createTempDir()
+        try {
+            ModelProvisioning.REQUIRED_MODEL_FILES
+                .filter { it != "visual.mnn" }
+                .forEach { File(dir, it).writeText("fake") }
+            val missing = ModelProvisioning.missingFiles(dir)
+            assertEquals(listOf("visual.mnn"), missing)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test fun `missingFiles returns empty list when all files present`() {
+        val dir = createTempDir()
+        try {
+            ModelProvisioning.REQUIRED_MODEL_FILES.forEach { File(dir, it).writeText("fake") }
+            assertTrue(ModelProvisioning.missingFiles(dir).isEmpty())
         } finally {
             dir.deleteRecursively()
         }

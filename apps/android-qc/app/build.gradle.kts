@@ -12,14 +12,38 @@ android {
         applicationId = "com.giraffetechnology.qc"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
-
+        versionCode = 2
+        versionName = "0.2.0-pad-local"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Android Pad local-only — locked at build time, cannot be overridden at runtime
+        buildConfigField("String",  "QWEN_MODEL_NAME",                "\"Qwen3-VL-4B-Instruct-MNN\"")
+        buildConfigField("String",  "QWEN_PROVISIONING_MODE",         "\"sideload_or_factory_preload\"")
+        buildConfigField("int",     "QWEN_TIMEOUT_SECONDS",           "60")
+        buildConfigField("boolean", "QWEN_CLOUD_ENABLED",             "false")
+        buildConfigField("boolean", "PAD_LOCAL_ONLY",                 "true")
+        buildConfigField("boolean", "ALLOW_SEND_IMAGES_TO_CLOUD_QWEN","false")
+        buildConfigField("boolean", "ALLOW_STUB_PASS",                "false")
+    }
+
+    flavorDimensions += "target"
+
+    productFlavors {
+        create("padLocal") {
+            dimension = "target"
+            versionNameSuffix = "-padLocal"
+            // Restated explicitly so no other flavor can accidentally enable cloud
+            buildConfigField("String",  "QWEN_MODEL_NAME",                "\"Qwen3-VL-4B-Instruct-MNN\"")
+            buildConfigField("boolean", "PAD_LOCAL_ONLY",                 "true")
+            buildConfigField("boolean", "QWEN_CLOUD_ENABLED",             "false")
+            buildConfigField("boolean", "ALLOW_SEND_IMAGES_TO_CLOUD_QWEN","false")
+            buildConfigField("boolean", "ALLOW_STUB_PASS",                "false")
+        }
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true   // required by AGP 8.x
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"
@@ -32,11 +56,6 @@ android {
             isMinifyEnabled = false
         }
     }
-    // On-device model config
-    buildConfigField("String", "QWEN_MODEL_NAME", "\"Qwen2-VL-2B-Instruct-MNN\"")
-    buildConfigField("String", "QWEN_PROVISIONING_MODE", "\"download_on_first_run\"")
-    buildConfigField("int", "QWEN_TIMEOUT_SECONDS", "10")
-    buildConfigField("boolean", "QWEN_CLOUD_ENABLED", "false")
 }
 
 dependencies {
@@ -50,8 +69,6 @@ dependencies {
     kapt("androidx.room:room-compiler:2.6.1")
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.0")
-    // Network
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // Compose
     implementation(platform("androidx.compose:compose-bom:2024.02.00"))
     implementation("androidx.compose.ui:ui")
@@ -61,8 +78,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    // MNN Android AAR — fetched at build time per docs/DEPLOYMENT_LOCAL_QWEN.md
+    // MNN Android AAR — sideloaded per docs/PAD_LOCAL_MNN_DEPLOYMENT.md
     // compileOnly(files("libs/MNN-android.aar"))  // Uncomment once AAR is available
+    // OkHttp is NOT included: Pad local-only app must not make network calls
     // Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
