@@ -33,13 +33,12 @@ a separate backend node calling an OpenAI-compatible endpoint. That
 assumption was replaced: the product requirement is a **single APK,
 installable by a normal user with no root and no separate server**,
 running on mainstream Snapdragon-driven phones/pads. That constraint
-rules out larger models (3B+ multimodal models take tens of seconds to
-minutes even on flagship Snapdragon hardware with a dedicated mobile
-inference engine) and points to a small (≤2B parameter), heavily
-quantized model run through **MNN** (Alibaba's open-source mobile
-inference engine), accepting that a model this size needs more
-frequent escalation to human review or cloud fallback than a
-server-grade model would.
+rules out larger models (tens of seconds to minutes even on flagship
+Snapdragon hardware with a dedicated mobile inference engine) and
+points to a compact (4B parameter), heavily quantized model run through
+**MNN** (Alibaba's open-source mobile inference engine), accepting that
+a model this size needs more frequent escalation to human review or
+cloud fallback than a server-grade model would.
 
 This tradeoff is acceptable here because real QC inspections in this
 product are narrow, single-SKU comparisons (one captured photo vs. that
@@ -135,7 +134,7 @@ land rather than letting it drift.
 - [ ] **Real on-device MNN benchmark not yet run.** The on-device
   inspector (`MnnQwenInspector`) is currently a stub; the real
   `nativeRunInference()` JNI call against an MNN-converted model
-  (default candidate: Qwen2-VL-2B-Instruct-MNN) has not been
+  (default model: Qwen3-VL-4B-Instruct-MNN) has not been
   exercised on physical hardware. This is the next concrete
   milestone — see [Next milestone](#next-milestone).
 - [ ] Android app's full capture → on-device-inspect → router →
@@ -150,7 +149,7 @@ land rather than letting it drift.
 
 Once a physical Snapdragon test device is available:
 
-1. Provision the Qwen2-VL-2B-Instruct-MNN model on the device per
+1. Provision the Qwen3-VL-4B-Instruct-MNN model on the device per
    `docs/DEPLOYMENT_LOCAL_QWEN.md`.
 1. Run `./scripts/benchmark_mnn.sh` against it and record p50/p95
    latency, cold-start time, and peak memory.
