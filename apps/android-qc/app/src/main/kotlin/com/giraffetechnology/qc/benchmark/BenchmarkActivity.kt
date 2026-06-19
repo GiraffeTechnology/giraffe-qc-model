@@ -46,7 +46,7 @@ class BenchmarkActivity : Activity() {
         // is visible to `adb shell ls` but Java File.exists() cannot follow it on
         // Android 16 scoped storage. getExternalFilesDir() returns the real
         // /storage/emulated/0/... path that the app sandbox can actually read.
-        val extDir     = getExternalFilesDir(null) ?: filesDir
+        val extDir = filesDir
         val modelPath  = File(extDir, "models/qwen_mnn").absolutePath
         val outputFile = File(extDir, RESULTS_FILENAME)
 
@@ -62,7 +62,13 @@ class BenchmarkActivity : Activity() {
         Log.i(TAG, "Benchmark start: model=$modelPath  iterations=$iterations  modelName=$modelName  cpuOnly=$cpuOnly")
         Log.i(TAG, "Results file: ${outputFile.absolutePath}")
 
-        CoroutineScope(Dispatchers.Main).launch {
+        // Import model files from /sdcard/Download/qwen_mnn if needed
+        val modelDir = java.io.File(extDir, "models/qwen_mnn")
+        if (!modelDir.exists() || modelDir.listFiles().isNullOrEmpty()) {
+            importModelFiles(modelDir)
+        }
+
+                CoroutineScope(Dispatchers.Main).launch {
             val results = runBenchmark(modelPath, iterations, modelName, cpuOnly)
             writeResults(results, outputFile)
             Log.i(TAG, "Benchmark complete")
@@ -177,7 +183,25 @@ class BenchmarkActivity : Activity() {
         Log.i(TAG, "BENCHMARK_RESULTS_JSON_END")
     }
 
-    private fun totalRamMb(): Long {
+    private fun importModelFiles(modelDir: java.io.File) {
+        val srcDir = java.io.File("/sdcard/Download/qwen_mnn")
+        if (!srcDir.exists() || !srcDir.isDirectory) {
+            Log.w(TAG, "Source dir not found: ${srcDir.absolutePath}")
+            return
+        }
+        modelDir.mkdirs()
+        srcDir.listFiles()?.forEach { src ->
+            val dst = java.io.File(modelDir, src.name)
+            if (!dst.exists()) {
+                Log.i(TAG, "Importing: ${src.name}")
+                src.copyTo(dst, overwrite = true)
+                Log.i(TAG, "Imported: ${src.name} (${dst.length()} bytes)")
+            }
+        }
+        Log.i(TAG, "Import complete. Files: ${modelDir.listFiles()?.size}")
+    }
+
+        private fun totalRamMb(): Long {
         val mi = ActivityManager.MemoryInfo()
         (getSystemService(ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(mi)
         return mi.totalMem / 1_048_576
