@@ -58,15 +58,25 @@ class QcWebSocketClient : QcMessageSource {
         })
     }
 
-    // Update only this function when the backend JSON schema is finalised.
+    // Maps the /ws/pad backend message schema to the typed QcMessage boundary.
+    // Backend sends:
+    //   {"type": "inspection_result", "sku_id": "...", "passed": true, "confidence": 0.95, "summary": "..."}
+    //   {"type": "no_result", "sku_id": "..."}
     private fun parseMessage(json: String): QcMessage? = runCatching {
         val obj = JSONObject(json)
-        QcMessage.DetectionResult(
-            skuId = obj.getString("sku_id"),
-            passed = obj.getBoolean("passed"),
-            referenceImageUrl = obj.optString("reference_url").takeIf { it.isNotEmpty() }
-        )
+        when (obj.optString("type")) {
+            "inspection_result" -> QcMessage.DetectionResult(
+                skuId = obj.getString("sku_id"),
+                passed = obj.getBoolean("passed"),
+                referenceImageUrl = null
+            )
+            else -> null
+        }
     }.getOrNull()
+
+    fun sendRefresh() {
+        webSocket?.send("{\"type\":\"refresh\"}")
+    }
 
     private fun scheduleReconnect(backoffMs: Long = 3_000) {
         val url = currentUrl ?: return

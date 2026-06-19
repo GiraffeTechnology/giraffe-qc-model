@@ -7,12 +7,14 @@ import com.giraffetechnology.qcpad.model.AggregateStatus
 import com.giraffetechnology.qcpad.model.QcMessage
 import com.giraffetechnology.qcpad.ui.qc.websocket.MockQcMessageSource
 import com.giraffetechnology.qcpad.ui.qc.websocket.QcMessageSource
+import com.giraffetechnology.qcpad.ui.qc.websocket.QcWebSocketClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 class QcViewModel(
-    private val messageSource: QcMessageSource = MockQcMessageSource()
+    // Swap MockQcMessageSource -> QcWebSocketClient() to connect to the real backend.
+    private val messageSource: QcMessageSource = QcWebSocketClient()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(QcUiState())
@@ -22,7 +24,11 @@ class QcViewModel(
         viewModelScope.launch {
             messageSource.messages.collect { handleMessage(it) }
         }
-        messageSource.connect(SessionConfig.WS_URL)
+        messageSource.connect(SessionConfig.wsUrl())
+    }
+
+    fun requestRefresh() {
+        (messageSource as? QcWebSocketClient)?.sendRefresh()
     }
 
     private fun handleMessage(message: QcMessage) {
