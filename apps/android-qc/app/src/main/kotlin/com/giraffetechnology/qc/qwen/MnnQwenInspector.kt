@@ -19,6 +19,12 @@ import kotlin.random.Random
  *     Benchmark pipeline is fully exercised end-to-end; output is clearly marked STUB_MODE.
  *   PRODUCTION (stubMode = false): real JNI call via nativeRunInference().
  *     Requires MNN-android.aar dependency to be added to build.gradle.kts.
+ *
+ * Qwen3 thinking mode:
+ *   Disabled via enable_thinking=false in buildInferenceParams() passed to nativeRunInference().
+ *   QcResultParser.stripThinkingBlocks() provides a second layer of defence in case the
+ *   MNN build ignores the flag (e.g. older runtime) or a future model re-enables thinking.
+ *   Model-side: set "thinking_mode": false in the model's llm_config.json if available.
  */
 class MnnQwenInspector(
     private val context: Context,
@@ -88,6 +94,7 @@ class MnnQwenInspector(
         //     runtimeLoader.modelPtr,
         //     buildImageInputJson(standardPhotos, capturedPhoto),
         //     prompt,
+        //     buildInferenceParams(),  // passes enable_thinking=false to suppress Qwen3 thinking mode
         // )
         // return@withContext QcResultParser.parse(rawJson, expectedIds, engineName)
 
@@ -95,4 +102,16 @@ class MnnQwenInspector(
             "MNN inference JNI not wired — add MNN-android.aar to build.gradle.kts"
         )
     }
+
+    /**
+     * JSON parameters forwarded to nativeRunInference().
+     * enable_thinking=false suppresses Qwen3's <think>…</think> reasoning prefix so the
+     * model outputs structured JSON directly. QcResultParser.stripThinkingBlocks() is a
+     * second safeguard in case the runtime ignores this flag.
+     */
+    private fun buildInferenceParams(): String =
+        org.json.JSONObject().apply {
+            put("enable_thinking", false)
+            put("max_new_tokens", 512)
+        }.toString()
 }

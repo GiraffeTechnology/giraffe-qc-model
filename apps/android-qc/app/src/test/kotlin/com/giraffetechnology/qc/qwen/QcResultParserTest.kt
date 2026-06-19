@@ -86,4 +86,39 @@ class QcResultParserTest {
             assertTrue("${item.qcPointId} confidence ≤1", item.confidence <= 1.0f)
         }
     }
+
+    // ── Qwen3 thinking-mode stripping ───────────────────────────────────────────
+
+    @Test fun `single-line thinking block before JSON is stripped and parsed`() {
+        val json = """{"overall_result":"pass","engine":"local_qwen_mnn","model_name":"m",
+            "confidence":0.9,"summary":"ok","fallback":{"used":false,"reason":null},
+            "items":[
+              {"qc_point_id":"QC-01","qc_point_code":"c","name":"c","result":"pass","confidence":0.9,"reason":"ok","evidence":{}},
+              {"qc_point_id":"QC-02","qc_point_code":"b","name":"b","result":"pass","confidence":0.9,"reason":"ok","evidence":{}}
+            ]}""".trimIndent()
+        val raw = "<think>Inspecting border and color alignment.</think>$json"
+        val r = QcResultParser.parse(raw, ids, "local_qwen_mnn")
+        assertEquals("pass", r.overallResult)
+        assertEquals(2, r.items.size)
+        assertEquals("pass", r.items.first { it.qcPointId == "QC-01" }.result)
+    }
+
+    @Test fun `multiline thinking block is fully stripped`() {
+        val json = """{"overall_result":"fail","engine":"local_qwen_mnn","model_name":"m",
+            "confidence":0.7,"summary":"","fallback":{"used":false,"reason":null},
+            "items":[
+              {"qc_point_id":"QC-01","qc_point_code":"c","name":"c","result":"fail","confidence":0.7,"reason":"bad","evidence":{}},
+              {"qc_point_id":"QC-02","qc_point_code":"b","name":"b","result":"pass","confidence":0.9,"reason":"ok","evidence":{}}
+            ]}""".trimIndent()
+        val raw = "<think>\nStep 1: examine border.\nStep 2: compare color.\n</think>\n$json"
+        val r = QcResultParser.parse(raw, ids, "local_qwen_mnn")
+        assertEquals("fail", r.overallResult)
+        assertEquals(2, r.items.size)
+    }
+
+    @Test fun `stripThinkingBlocks removes block and trims whitespace`() {
+        val input = "  <think>reasoning here</think>  {\"key\": \"value\"}  "
+        val result = QcResultParser.stripThinkingBlocks(input)
+        assertEquals("{\"key\": \"value\"}", result)
+    }
 }

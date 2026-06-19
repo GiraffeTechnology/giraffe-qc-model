@@ -14,13 +14,20 @@ object QcResultParser {
         engine: String,
     ): QwenInspectionOutput {
         if (raw.isBlank()) return failClosed(engine, "empty_response")
-        val jsonStr = extractJson(raw) ?: return failClosed(engine, "json_parse_failed")
+        // Strip Qwen3 <think>…</think> blocks before JSON extraction.
+        // Guards against thinking-mode output even if enable_thinking=false is ignored by MNN.
+        val stripped = stripThinkingBlocks(raw)
+        val jsonStr = extractJson(stripped) ?: return failClosed(engine, "json_parse_failed")
         return try {
             parseJson(jsonStr, expectedQcPointIds, engine)
         } catch (_: Exception) {
             failClosed(engine, "json_parse_failed")
         }
     }
+
+    // Removes every <think>…</think> span (including multiline) produced by Qwen3 thinking mode.
+    fun stripThinkingBlocks(raw: String): String =
+        raw.replace(Regex("<think>.*?</think>", RegexOption.DOT_MATCHES_ALL), "").trim()
 
     private fun extractJson(raw: String): String? {
         // Try markdown code block
