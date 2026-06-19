@@ -20,7 +20,7 @@ enum class ProvisioningStatus {
 
 data class ProvisioningConfig(
     val mode: ProvisioningMode = ProvisioningMode.DOWNLOAD_ON_FIRST_RUN,
-    // Default: Qwen3-VL-4B-Instruct-MNN (INT4) — suitable for 8GB RAM Snapdragon 8 Gen devices.
+    // Qwen3-VL-4B-Instruct-MNN is the active candidate. 8GB viability is pending physical-device MNN benchmark.
     // For devices with <3GB available RAM, switch to a smaller model variant.
     val modelName: String = "Qwen3-VL-4B-Instruct-MNN",
     val modelDownloadUrl: String = "",
@@ -138,6 +138,13 @@ class ModelProvisioning(
             val modelFile = File(modelDir, "llm.mnn")
             tmpFile.renameTo(modelFile)
             File(modelDir, "checksum.sha256").writeText(config.expectedSha256)
+            // Guard: a single-file download cannot satisfy the full Qwen3-VL-4B MNN layout.
+            // llm.mnn.weight, visual.mnn, and visual.mnn.weight must also be present.
+            if (!isModelReady(modelDir)) {
+                Log.e(TAG, "downloadAndVerify: llm.mnn written but layout incomplete " +
+                    "(missing weight shards or visual.mnn) — returning NOT_PROVISIONED")
+                return ProvisioningStatus.NOT_PROVISIONED
+            }
             Log.i(TAG, "Model downloaded and verified: ${config.modelName}")
             ProvisioningStatus.READY
         } catch (e: Exception) {

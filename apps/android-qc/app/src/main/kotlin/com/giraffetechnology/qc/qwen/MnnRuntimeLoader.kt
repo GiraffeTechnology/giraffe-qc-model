@@ -11,7 +11,7 @@ import java.io.File
  *
  * Production: wires to MNN-android.aar JNI layer.
  * CI/test: MNN native libs absent → loadNativeLibs() returns false → stub mode.
- * Stub mode: native libs absent but llm.mnn exists on device → simulated inference.
+ * Stub mode: native libs absent → inspector returns review_required (real inference unavailable).
  *
  * GPU backend selection (Snapdragon 8 Gen+ / Adreno):
  *   cpuOnly=false (default): tries OpenCL first, then Vulkan, falls back to CPU.
@@ -33,8 +33,8 @@ class MnnRuntimeLoader(private val context: Context) {
         private var gpuLibsAttempted = false
 
         /**
-         * True when llm.mnn was found on device but MNN native libs are absent.
-         * MnnQwenInspector will simulate inference instead of calling JNI.
+         * True when MNN native libs are absent — real inference is not available.
+         * Downstream inspector must return review_required (confidence 0.0f), never simulate inference.
          */
         var stubMode = false
             private set
@@ -44,7 +44,7 @@ class MnnRuntimeLoader(private val context: Context) {
          * "opencl"  — Adreno GPU via OpenCL (Snapdragon 8 Gen+, preferred)
          * "vulkan"  — Adreno GPU via Vulkan (fallback if OpenCL unavailable)
          * "cpu"     — CPU-only (cpuOnly=true or GPU libs unavailable on this device)
-         * "stub"    — MNN native libs absent; benchmark simulates inference
+         * "stub"    — MNN native libs absent; inspector returns review_required
          */
         var inferenceBackend: String = "stub"
             private set
@@ -139,13 +139,13 @@ class MnnRuntimeLoader(private val context: Context) {
         resolvedModelDir = effectiveDir
 
         if (!nativeAvailable) {
-            // STUB MODE: model files present but MNN AAR not yet integrated.
-            // Inspector will simulate inference with realistic latency rather than fail.
+            // STUB MODE: MNN AAR not integrated — real inference is not available.
+            // Downstream inspector must return review_required (confidence 0.0f), never pass.
             stubMode = true
             inferenceBackend = "stub"
             modelLoaded = true
-            Log.w(TAG, "STUB MODE — llm.mnn found at ${effectiveDir.absolutePath} " +
-                "but MNN native libs absent. Benchmark will simulate inference. " +
+            Log.w(TAG, "STUB MODE — MNN native libs absent. " +
+                "Inspector will return review_required (confidence 0.0f). " +
                 "Integrate MNN-android.aar for real numbers.")
             return@withContext true
         }

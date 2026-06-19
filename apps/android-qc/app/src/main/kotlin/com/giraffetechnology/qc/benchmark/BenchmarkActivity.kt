@@ -36,7 +36,7 @@ import java.time.Instant
  *     --ez cpu_only false
  *
  * Result JSON fields include:
- *   stub_mode        — true if MNN native libs are absent (simulated inference)
+ *   stub_mode        — true if MNN native libs are absent (returns review_required, not real inference)
  *   inference_backend — "opencl" | "vulkan" | "cpu" | "stub"
  */
 class BenchmarkActivity : Activity() {

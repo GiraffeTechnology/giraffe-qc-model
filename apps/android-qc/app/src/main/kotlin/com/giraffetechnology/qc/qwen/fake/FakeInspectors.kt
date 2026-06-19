@@ -11,7 +11,7 @@ class FakeOnDeviceQwenInspector(
     private val confidence: Float = 0.95f,
 ) : QwenInspector {
     override val engineName = "local_qwen_mnn"
-    override val modelName  = "FakeQwen-2B"
+    override val modelName  = "FakeQwenVL"
 
     override suspend fun inspect(
         standardPhotos: List<StandardPhotoInput>,

@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, "claude/**" ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  python-tests:
+    name: Python tests (3 consecutive runs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: uv sync --group dev
+      - name: Run Python tests
+        run: |
+          for i in 1 2 3; do
+            echo "=== Python test run $i ==="
+            uv run pytest tests/ -v || exit 1
+          done
+
+  android-unit-tests:
+    name: Android JVM unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - name: Write local.properties
+        run: echo "sdk.dir=$ANDROID_HOME" > apps/android-qc/local.properties
+      - name: Download MNN AAR (non-blocking — warns on 404, does not fail build)
+        working-directory: apps/android-qc
+        run: ./gradlew :app:downloadMnnAar
+      - name: Assemble debug APK
+        working-directory: apps/android-qc
+        run: ./gradlew :app:assembleDebug
+      - name: Run JVM unit tests
+        working-directory: apps/android-qc
+        run: ./gradlew :app:testDebugUnitTest
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-unit-test-report
+          path: apps/android-qc/app/build/reports/tests/testDebugUnitTest/

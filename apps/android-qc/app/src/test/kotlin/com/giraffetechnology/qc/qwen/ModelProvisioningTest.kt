@@ -167,4 +167,24 @@ class ModelProvisioningTest {
             dir.deleteRecursively()
         }
     }
+
+    @Test fun `downloadAndVerify cannot return READY for partial model — isModelReady guard`() {
+        // downloadAndVerify writes llm.mnn + checksum.sha256 then calls isModelReady().
+        // A folder with only llm.mnn (single-file download result) must not satisfy
+        // isModelReady, so downloadAndVerify must return NOT_PROVISIONED, not READY.
+        val dir = createTempDir()
+        try {
+            File(dir, "llm.mnn").writeText("fake_model_data")
+            File(dir, "checksum.sha256").writeText("abc123")
+            // Missing: llm.mnn.weight, visual.mnn, visual.mnn.weight
+            assertFalse(
+                "isModelReady (the guard used inside downloadAndVerify) must return false " +
+                    "when weight shards and visual.mnn are missing — so downloadAndVerify " +
+                    "returns NOT_PROVISIONED rather than READY",
+                ModelProvisioning.isModelReady(dir),
+            )
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
 }
