@@ -30,7 +30,11 @@ import java.time.Instant
  *   adb shell am start -n com.giraffetechnology.qc/.benchmark.BenchmarkActivity \
  *     --ei iterations 10 \
  *     --es model_name "Qwen2-VL-2B-Instruct-MNN" \
- *     --ez cpu_only true
+ *     --ez cpu_only false
+ *
+ * Result JSON fields include:
+ *   stub_mode        — true if MNN native libs are absent (simulated inference)
+ *   inference_backend — "opencl" | "vulkan" | "cpu" | "stub"
  */
 class BenchmarkActivity : Activity() {
 
@@ -213,6 +217,7 @@ class BenchmarkActivity : Activity() {
             "model_load_time_ms" to loadTimeMs,
             "cpu_only"           to cpuOnly,
             "stub_mode"          to MnnRuntimeLoader.stubMode,
+            "inference_backend"  to MnnRuntimeLoader.inferenceBackend,
             "iterations"         to iterations,
             "error_count"        to errorCount,
             "p50_latency_ms"     to p50,

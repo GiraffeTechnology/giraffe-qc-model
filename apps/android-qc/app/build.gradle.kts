@@ -4,6 +4,49 @@ plugins {
     id("kotlin-kapt")
 }
 
+// ─── MNN Android AAR — auto-download ─────────────────────────────────────────
+// The MNN Android AAR (>100 MB) is not committed to the repo. Instead it is
+// fetched from GitHub releases on first build. Update mnnVersion to the release
+// tag you want; verify the asset name at https://github.com/alibaba/MNN/releases.
+val mnnVersion = "2.9.6"
+val mnnAarFile = File("${projectDir}/libs/MNN-android.aar")
+
+tasks.register("downloadMnnAar") {
+    description = "Download MNN Android AAR from GitHub releases if not already present."
+    group       = "setup"
+    outputs.file(mnnAarFile)
+    onlyIf { !mnnAarFile.exists() }
+    doLast {
+        mnnAarFile.parentFile.mkdirs()
+        val url = "https://github.com/alibaba/MNN/releases/download/$mnnVersion/MNN-android-$mnnVersion.aar"
+        println("Downloading MNN $mnnVersion …\n  $url")
+        runCatching {
+            java.net.URI.create(url).toURL().openStream().use { input ->
+                mnnAarFile.outputStream().use { output -> input.copyTo(output) }
+            }
+        }.onSuccess {
+            println("MNN AAR saved: ${mnnAarFile.absolutePath}  (${mnnAarFile.length() / 1_048_576} MB)")
+        }.onFailure { err ->
+            mnnAarFile.delete()
+            error(
+                "Failed to download MNN AAR:\n" +
+                "  URL:   $url\n" +
+                "  Cause: ${err.message}\n\n" +
+                "  Fix options:\n" +
+                "   1. Update mnnVersion in build.gradle.kts to match a real release tag.\n" +
+                "   2. Manually place the AAR at: ${mnnAarFile.absolutePath}\n" +
+                "   3. See https://github.com/alibaba/MNN/releases for available assets."
+            )
+        }
+    }
+}
+
+// Ensure the AAR is present before Android's preBuild (which triggers all compilation)
+tasks.whenTaskAdded {
+    if (name == "preBuild") dependsOn("downloadMnnAar")
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 android {
     namespace = "com.giraffetechnology.qc"
     compileSdk = 34
@@ -70,8 +113,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    // MNN Android AAR — fetched at build time per docs/DEPLOYMENT_LOCAL_QWEN.md
-    // compileOnly(files("libs/MNN-android.aar"))  // Uncomment once AAR is available
+    // MNN Android AAR — fetched automatically by :app:downloadMnnAar before preBuild.
+    // Bundles libMNN.so, libMNN_Express.so, libMNN_CL.so (OpenCL), libMNN_Vulkan.so.
+    // The AAR is git-ignored in app/libs/ (binary, >100 MB).
+    implementation(fileTree("libs") { include("*.aar") })
     // Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")

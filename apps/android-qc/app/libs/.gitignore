@@ -1,0 +1,4 @@
+# MNN Android AAR — auto-downloaded by Gradle at build time (binary, >100 MB)
+# Run: ./gradlew downloadMnnAar
+# Or it downloads automatically when you run assembleDebug.
+*.aar
