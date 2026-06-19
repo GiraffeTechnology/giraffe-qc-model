@@ -15,16 +15,19 @@ import java.time.Instant
  * §4.3.0 On-device latency benchmark activity.
  *
  * Target device: Snapdragon 8 Gen, 8 GB RAM.
- * Default model: Qwen2-VL-2B-Instruct-MNN (INT4).
+ * Default model: Qwen3-VL-4B-Instruct-MNN (INT4).
  * Measures cold-start load time, per-image p50/p95, peak memory, thermal behavior.
  *
  * Launch via ADB:
  *   adb shell am start -n com.giraffetechnology.qc/.benchmark.BenchmarkActivity \
- *     --es model_path /sdcard/qwen_2b_mnn \
+ *     --es model_path /sdcard/qwen3_vl_4b_mnn \
  *     --ei iterations 10 \
- *     --es model_name "Qwen2-VL-2B-Instruct-MNN"
+ *     --es model_name "Qwen3-VL-4B-Instruct-MNN"
  *
  * Results written to /sdcard/qc_benchmark_results.json and logcat tag QCBenchmark.
+ * See docs/PAD_LOCAL_MNN_DEPLOYMENT.md for model provisioning instructions.
+ *
+ * NOTE: If MNN runtime is not wired, the inspector returns review_required — never pass.
  */
 class BenchmarkActivity : Activity() {
 
@@ -38,7 +41,7 @@ class BenchmarkActivity : Activity() {
         val modelPath  = intent.getStringExtra("model_path")
             ?: ModelProvisioning.getModelDir(applicationContext).absolutePath
         val iterations = intent.getIntExtra("iterations", 10)
-        val modelName  = intent.getStringExtra("model_name") ?: "Qwen2-VL-2B-Instruct-MNN"
+        val modelName  = intent.getStringExtra("model_name") ?: "Qwen3-VL-4B-Instruct-MNN"
 
         Log.i(TAG, "Benchmark start: model=$modelPath, iterations=$iterations, modelName=$modelName")
 
@@ -68,7 +71,7 @@ class BenchmarkActivity : Activity() {
                 "model_name"   to modelName,
                 "device_model" to Build.MODEL,
                 "total_ram_mb" to totalRamMb(),
-                "note"         to "Ensure model is provisioned per docs/DEPLOYMENT_LOCAL_QWEN.md",
+                "note"         to "Ensure model is provisioned per docs/PAD_LOCAL_MNN_DEPLOYMENT.md",
             )
         }
 

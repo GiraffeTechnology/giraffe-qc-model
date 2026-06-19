@@ -151,4 +151,72 @@ class ModelProvisioningTest {
             dir.deleteRecursively()
         }
     }
+
+    // --- verifyModelChecksum tests ---
+
+    @Test fun `verifyModelChecksum returns false when checksum file is absent`() {
+        val dir = createTempDir()
+        try {
+            File(dir, "llm.mnn").writeText("model_data")
+            // checksum.sha256 intentionally not created
+            assertFalse("Missing checksum.sha256 must return false",
+                ModelProvisioning.verifyModelChecksum(dir))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test fun `verifyModelChecksum returns false when llm_mnn is absent`() {
+        val dir = createTempDir()
+        try {
+            val data = "fake_model_bytes"
+            val hash = ModelProvisioning.sha256(data.toByteArray())
+            File(dir, "checksum.sha256").writeText(hash)
+            // llm.mnn intentionally not created
+            assertFalse("Missing llm.mnn must return false",
+                ModelProvisioning.verifyModelChecksum(dir))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test fun `verifyModelChecksum returns false when checksum file is blank`() {
+        val dir = createTempDir()
+        try {
+            File(dir, "llm.mnn").writeText("model_data")
+            File(dir, "checksum.sha256").writeText("   ") // blank — bypass not permitted
+            assertFalse("Blank checksum.sha256 must return false — bypass not permitted on Pad branch",
+                ModelProvisioning.verifyModelChecksum(dir))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test fun `verifyModelChecksum returns false when hash mismatches`() {
+        val dir = createTempDir()
+        try {
+            File(dir, "llm.mnn").writeText("model_data")
+            File(dir, "checksum.sha256").writeText(
+                "0000000000000000000000000000000000000000000000000000000000000000"
+            )
+            assertFalse("Mismatched hash must return false — model rejected",
+                ModelProvisioning.verifyModelChecksum(dir))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test fun `verifyModelChecksum returns true when hash matches`() {
+        val dir = createTempDir()
+        try {
+            val content = "valid_model_bytes_for_checksum_test"
+            File(dir, "llm.mnn").writeBytes(content.toByteArray())
+            val correctHash = ModelProvisioning.sha256(content.toByteArray())
+            File(dir, "checksum.sha256").writeText(correctHash)
+            assertTrue("Correct hash must return true — model accepted",
+                ModelProvisioning.verifyModelChecksum(dir))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
 }

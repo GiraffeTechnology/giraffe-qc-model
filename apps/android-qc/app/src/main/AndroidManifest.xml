@@ -3,11 +3,10 @@
   Android Pad local-only app manifest.
   INTERNET permission is NOT declared: Pad app is fully offline.
   No Qwen API, no DashScope, no cloud inference path.
+  Location permissions are not declared: no QC requirement for device location.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- READ_EXTERNAL_STORAGE / MANAGE_EXTERNAL_STORAGE for sdcard model sideload path -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />

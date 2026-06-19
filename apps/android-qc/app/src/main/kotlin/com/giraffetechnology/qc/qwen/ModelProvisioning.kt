@@ -38,6 +38,8 @@ data class ProvisioningConfig(
  *
  * All 10 required model files must be present before the model is considered READY.
  * A partial model is treated as NOT_READY and returns review_required.
+ * checksum.sha256 is a required file and is always verified against llm.mnn — bypass
+ * is not permitted regardless of expectedSha256 config value.
  *
  * Required files: llm.mnn, llm.mnn.weight, visual.mnn, visual.mnn.weight,
  *   llm.mnn.json, llm_config.json, embeddings_bf16.bin, tokenizer.txt,
@@ -82,6 +84,27 @@ class ModelProvisioning(
         }
 
         /**
+         * Verifies llm.mnn against checksum.sha256 in the given model directory.
+         * Returns true only when both files exist, the checksum is non-blank,
+         * and the actual SHA-256 of llm.mnn matches the recorded value.
+         * A blank or absent checksum always returns false — bypass is not permitted.
+         */
+        fun verifyModelChecksum(modelDir: File): Boolean {
+            val checksumFile = File(modelDir, "checksum.sha256")
+            val llmFile = File(modelDir, "llm.mnn")
+            if (!checksumFile.exists() || !llmFile.exists()) return false
+            val expectedHex = checksumFile.readText().trim()
+            if (expectedHex.isBlank()) return false
+            val digest = MessageDigest.getInstance("SHA-256")
+            llmFile.inputStream().use { s ->
+                val buf = ByteArray(65536); var n: Int
+                while (s.read(buf).also { n = it } != -1) digest.update(buf, 0, n)
+            }
+            val actual = digest.digest().joinToString("") { "%02x".format(it) }
+            return actual.equals(expectedHex, ignoreCase = true)
+        }
+
+        /**
          * Returns true only if ALL 10 required model files are present.
          * Partial model presence is treated as NOT_READY.
          */
@@ -104,13 +127,12 @@ class ModelProvisioning(
             Log.w(TAG, "Partial model at ${modelDir.absolutePath} — missing: $missing")
             return ProvisioningStatus.PARTIAL_MODEL
         }
-        val checksumFile = File(modelDir, "checksum.sha256")
-        val llmFile = File(modelDir, "llm.mnn")
-        return if (
-            config.expectedSha256.isBlank() ||
-            verifySha256(llmFile, checksumFile.readText().trim())
-        ) ProvisioningStatus.READY
-        else ProvisioningStatus.CHECKSUM_FAILED
+        // checksum.sha256 is a required file; always verify — bypass not permitted on Pad branch
+        if (!verifyModelChecksum(modelDir)) {
+            Log.e(TAG, "llm.mnn checksum mismatch — refusing to use model")
+            return ProvisioningStatus.CHECKSUM_FAILED
+        }
+        return ProvisioningStatus.READY
     }
 
     suspend fun provision(onProgress: (Float) -> Unit = {}): ProvisioningStatus =
@@ -137,13 +159,10 @@ class ModelProvisioning(
                 Log.e(TAG, "Bundled assets missing required files: $missing")
                 return ProvisioningStatus.PARTIAL_MODEL
             }
-            val checksumFile = File(modelDir, "checksum.sha256")
-            val llmFile = File(modelDir, "llm.mnn")
-            if (checksumFile.exists() && config.expectedSha256.isNotBlank()) {
-                if (!verifySha256(llmFile, checksumFile.readText().trim())) {
-                    Log.e(TAG, "Bundled model checksum mismatch — refusing to use")
-                    return ProvisioningStatus.CHECKSUM_FAILED
-                }
+            // Always verify checksum — bypass not permitted on Pad branch
+            if (!verifyModelChecksum(modelDir)) {
+                Log.e(TAG, "Bundled model checksum mismatch — refusing to use")
+                return ProvisioningStatus.CHECKSUM_FAILED
             }
             Log.i(TAG, "Bundled model provisioned: ${config.modelName}")
             ProvisioningStatus.READY
@@ -183,22 +202,16 @@ class ModelProvisioning(
                 Log.e(TAG, "Copy incomplete — missing: ${missingFiles(destDir)}")
                 return ProvisioningStatus.PARTIAL_MODEL
             }
+            // Always verify checksum after copy — bypass not permitted on Pad branch
+            if (!verifyModelChecksum(destDir)) {
+                Log.e(TAG, "Imported model checksum mismatch — refusing to use")
+                return ProvisioningStatus.CHECKSUM_FAILED
+            }
             Log.i(TAG, "Model imported from ${srcDir.absolutePath}")
             ProvisioningStatus.READY
         } catch (e: Exception) {
             Log.e(TAG, "Sdcard import failed: ${e.message}")
             ProvisioningStatus.NOT_PROVISIONED
         }
-    }
-
-    private fun verifySha256(file: File, expectedHex: String): Boolean {
-        if (expectedHex.isBlank() || !file.exists()) return false
-        val digest = MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { s ->
-            val buf = ByteArray(65536); var n: Int
-            while (s.read(buf).also { n = it } != -1) digest.update(buf, 0, n)
-        }
-        val actual = digest.digest().joinToString("") { "%02x".format(it) }
-        return actual.equals(expectedHex, ignoreCase = true)
     }
 }

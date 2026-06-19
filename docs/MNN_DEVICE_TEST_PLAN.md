@@ -9,8 +9,8 @@ Test plan to be executed when the physical Snapdragon test device arrives. No ph
 | Requirement | Detail |
 |-------------|--------|
 | Device | Snapdragon 8 Gen, 8 GB RAM, 128 GB storage, Android 12+ |
-| APK | Built from `apps/android-qc/` with `./gradlew assembleDebug` |
-| Model | Qwen2-VL-2B-Instruct-MNN (INT4), provisioned per `DEPLOYMENT_LOCAL_QWEN.md` |
+| APK | Built from `apps/android-qc/` with `./gradlew :app:assemblePadLocalDebug` |
+| Model | Qwen3-VL-4B-Instruct-MNN (INT4), provisioned per `PAD_LOCAL_MNN_DEPLOYMENT.md` |
 | ADB | Connected with USB debugging enabled, `adb devices` shows device |
 | Network | WiFi available for initial provisioning; must be disableable for offline tests |
 
@@ -20,18 +20,18 @@ All phases must be run in order. A failure in an earlier phase is a blocker for 
 
 ## Phase 1: Model Provisioning
 
-**Goal**: Confirm the Qwen2-VL-2B-Instruct-MNN (INT4) model weights are correctly placed on the device and recognized by the app.
+**Goal**: Confirm the Qwen3-VL-4B-Instruct-MNN (INT4) model weights are correctly placed on the device and recognized by the app.
 
 **Steps**:
 
 1. Push the model directory to the device:
    ```bash
-   adb push <model_dir>/ /sdcard/qwen_2b_mnn/
+   adb push <model_dir>/ /sdcard/qwen3_vl_4b_mnn/
    ```
 
 2. Verify the checksum of the pushed files matches the expected value:
    ```bash
-   adb shell "cd /sdcard/qwen_2b_mnn && sha256sum -c checksum.sha256"
+   adb shell "cd /sdcard/qwen3_vl_4b_mnn && sha256sum -c checksum.sha256"
    ```
    All files must report `OK`. Any mismatch is a blocker.
 
@@ -71,7 +71,7 @@ All phases must be run in order. A failure in an earlier phase is a blocker for 
 Do not relax the budget. Report the measured numbers and select a mitigation from the following options:
 
 | Mitigation | Trade-off |
-|------------|-----------|
+|------------|----------|
 | Switch to a smaller model variant | Reduced accuracy |
 | Reduce input image resolution | May miss fine-grained defects |
 | Narrow inspection scope (fewer QC points per call) | Multiple passes required per garment |
@@ -98,13 +98,13 @@ The budget is fixed; the implementation must adapt.
 
 3. Run the Kotlin unit tests:
    ```bash
-   ./gradlew :app:test
+   ./gradlew :app:testPadLocalDebugUnitTest
    ```
 
 4. Confirm that `FakeOnDeviceQwenInspector` tests still pass — the fake inspector must not be broken by changes to the real inspector's wiring.
 
 **Pass criteria for Phase 3**:
-- [ ] `./gradlew :app:test` exits with no failures
+- [ ] `./gradlew :app:testPadLocalDebugUnitTest` exits with no failures
 - [ ] All `FakeOnDeviceQwenInspector` tests pass
 - [ ] Real `nativeRunInference()` is called (confirm via logcat, not stub log line)
 
@@ -118,7 +118,7 @@ The budget is fixed; the implementation must adapt.
 
 1. Install the debug APK:
    ```bash
-   adb install app/build/outputs/apk/debug/app-debug.apk
+   adb install app/build/outputs/apk/padLocal/debug/app-padLocal-debug.apk
    ```
 
 2. Disable WiFi and mobile data on the device.
@@ -150,26 +150,21 @@ The budget is fixed; the implementation must adapt.
 
 ## Phase 5: §4.5.4 Fail-is-Final on Device
 
-**Goal**: Confirm that an on-device `fail` result cannot be overridden by the cloud fallback path, even when cloud is enabled.
+**Goal**: Confirm that an on-device `fail` result cannot be promoted by any path.
 
 **Steps**:
 
-1. Enable cloud fallback: set `QWEN_CLOUD_ENABLED=true` and `ALLOW_SEND_IMAGES_TO_CLOUD_QWEN=true` in the app's debug configuration.
+1. Capture or load a clearly defective garment image that reliably produces a `fail` from on-device inference.
 
-2. Capture or load a clearly defective garment image that reliably produces a `fail` from on-device inference.
-
-3. Trigger inspection and observe:
+2. Trigger inspection and observe:
    - On-device result is `fail`
-   - Cloud fallback endpoint is **not** called (confirm via network log or test server)
    - Final result displayed is `fail`
-
-4. Attempt to inject a cloud response of `pass` for the same image via the test backend — confirm the app ignores it and retains `fail`.
+   - No mechanism exists to promote `fail` to `pass` (cloud is disabled at compile time)
 
 **Pass criteria for Phase 5**:
 - [ ] On-device `fail` is returned
-- [ ] Cloud fallback is not invoked (§4.5.4)
-- [ ] Result remains `fail` after any cloud response is received
-- [ ] No mechanism exists to promote `fail` to `pass` via cloud
+- [ ] Result remains `fail` with no override possible
+- [ ] No mechanism exists to promote `fail` to `pass`
 
 ---
 
@@ -185,23 +180,27 @@ The budget is fixed; the implementation must adapt.
 
 ### Branch 2: Model Not Provisioned
 
-- Move the model directory to a temporary location: `adb shell mv /sdcard/qwen_2b_mnn /sdcard/qwen_2b_mnn_bak`
+- Move the model directory to a temporary location:
+  ```bash
+  adb shell mv /sdcard/qwen3_vl_4b_mnn /sdcard/qwen3_vl_4b_mnn_bak
+  ```
 - Trigger inspection
 - Expected result: `review_required`
-- Restore directory: `adb shell mv /sdcard/qwen_2b_mnn_bak /sdcard/qwen_2b_mnn`
+- Restore directory:
+  ```bash
+  adb shell mv /sdcard/qwen3_vl_4b_mnn_bak /sdcard/qwen3_vl_4b_mnn
+  ```
 
 ### Branch 3: Low Confidence / Uncertain Result
 
 - Capture an intentionally ambiguous or underexposed image
-- Trigger inspection with cloud enabled
-- If `QWEN_CLOUD_ENABLED=true` and `ALLOW_SEND_IMAGES_TO_CLOUD_QWEN=true`: expected result is cloud fallback triggered, result from cloud displayed
-- If cloud disabled: expected result is `review_required`
+- Trigger inspection
+- Expected result: `review_required` (cloud is disabled at compile time on Android Pad)
 
 **Pass criteria for Phase 6**:
 - [ ] Timeout → `review_required`
 - [ ] Not provisioned → `review_required`
-- [ ] Low confidence + cloud enabled → cloud fallback triggered
-- [ ] Low confidence + cloud disabled → `review_required`
+- [ ] Low confidence → `review_required` (no cloud path on Android Pad)
 
 ---
 
@@ -217,7 +216,7 @@ All of the following must be satisfied before the device test milestone is consi
 | All 6 phases complete with no failures | [ ] |
 | On-device `fail` stays `fail` — §4.5.4 confirmed | [ ] |
 | Offline inspection works (no network calls) | [ ] |
-| 166+ existing Python tests still pass after JNI integration | [ ] |
+| 203+ existing Python tests still pass after JNI integration | [ ] |
 
 The Python test suite must be re-run from the development environment after JNI integration changes are merged:
 
@@ -225,7 +224,7 @@ The Python test suite must be re-run from the development environment after JNI 
 pytest tests/ -v
 ```
 
-All 166+ tests must pass. A regression in the Python suite blocks the merge even if device tests pass.
+All 203+ tests must pass. A regression in the Python suite blocks the merge even if device tests pass.
 
 ---
 

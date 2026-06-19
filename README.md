@@ -1,12 +1,17 @@
 # Giraffe QC Model
 
+> **Android Pad Branch (`android-pad-app`)** — This branch implements the
+> offline-only Android Pad build. The Pad app uses on-device
+> Qwen3-VL-4B-Instruct-MNN (MNN runtime) exclusively. There is **no cloud
+> inference path, no DashScope call, and no Qwen API call** on this branch.
+> If local MNN inference is not ready, the result is always `review_required`.
+> See [`docs/ANDROID_PAD_LOCAL_ONLY.md`](docs/ANDROID_PAD_LOCAL_ONLY.md).
+
 On-device-first visual quality-control product for Giraffe Technology's
 apparel/textile QC workflows. A QC operator captures a photo on an
 Android phone or pad; the device compares it against that SKU's
 standard reference photo using a small Qwen vision-language model
-running **on the device itself**, and only escalates to a cloud model
-(DashScope/Qwen API) when the on-device result is uncertain, times out,
-fails to parse, or the device is overloaded. Uncertain results are
+running **on the device itself**. Uncertain results are
 never silently treated as a pass.
 
 > **Status: active development.** This README describes the target
@@ -22,13 +27,10 @@ a separate backend node calling an OpenAI-compatible endpoint. That
 assumption was replaced: the product requirement is a **single APK,
 installable by a normal user with no root and no separate server**,
 running on mainstream Snapdragon-driven phones/pads. That constraint
-rules out larger models (3B+ multimodal models take tens of seconds to
-minutes even on flagship Snapdragon hardware with a dedicated mobile
-inference engine) and points to a small (≤2B parameter), heavily
+rules out larger models and points to a small, heavily
 quantized model run through **MNN** (Alibaba's open-source mobile
 inference engine), accepting that a model this size needs more
-frequent escalation to human review or cloud fallback than a
-server-grade model would.
+frequent escalation to human review than a server-grade model would.
 
 This tradeoff is acceptable here because real QC inspections in this
 product are narrow, single-SKU comparisons (one captured photo vs. that
@@ -44,7 +46,7 @@ The single rule every module in this repository is built around:
 
 This applies whether the uncertainty comes from a missing image, an
 unparseable model response, an unrecognized QC point, an on-device
-timeout, an unavailable cloud fallback, or anything else. No code path
+timeout, a provisioning error, or anything else. No code path
 should convert "we don't know" into "it's fine."
 
 ## Architecture
@@ -53,23 +55,23 @@ should convert "we don't know" into "it's fine."
 Android QC App (single APK, no root, no separate server required)
   ├── CameraX live camera, auto-capture with quality/stability gating
   ├── Local-first photo + metadata storage (Room)
-  ├── On-device MNN runtime running a small Qwen VL model
-  ├── Inspection router: on-device first, cloud fallback if allowed
-  └── Result display, labeling which engine produced each result
+  ├── On-device MNN runtime running Qwen3-VL-4B-Instruct-MNN
+  ├── Inspection router: local-only (no cloud path on Android Pad)
+  └── Result display, showing engine/mode/status
 
 giraffe-qc-model backend (this repo's Python service — optional for
 an individual device's inspection to work; required for fleet-level
 aggregation, reporting, and abcdYi integration)
   ├── FastAPI
   ├── SKU / standard photo / QC point / inspection data model
-  ├── DashScope/Qwen cloud fallback provider
+  ├── Backend aggregation provider (cloud inference not active on Android Pad)
   └── abcdYi-compatible asset registry APIs + events
 ```
 
 Inference is the operative word for "on-device first": a device with
 the model already provisioned can complete a full inspection with zero
-network connectivity. The backend's role is aggregation and the cloud
-fallback leg, not running the primary inspection.
+network connectivity. The backend's role is aggregation, not running
+the primary inspection.
 
 ## Repository structure
 
@@ -87,17 +89,19 @@ giraffe-qc-model/
 │           │   └── MainActivity.kt
 │           └── test/kotlin/...  # JVM unit tests (no device required)
 ├── scripts/
-│   └── benchmark_mnn.sh   # ADB benchmark for Snapdragon / 2B model
+│   └── benchmark_mnn.sh   # ADB benchmark for Snapdragon / 4B model
 ├── src/
 │   ├── cv/                # classical CV comparator (pre-dates this effort)
 │   ├── db/                # SQLAlchemy models, session, config
 │   ├── api/               # FastAPI routers
 │   └── qwen/              # QWEN provider abstraction, schema, parser,
-│                          # router, DashScope cloud provider, fake providers
+│                          # router, fake providers
 ├── tests/                 # 203 Python unit tests + 6 opt-in integration tests
 └── docs/
     ├── LOCAL_FIRST_QWEN_QC.md
     ├── DEPLOYMENT_LOCAL_QWEN.md
+    ├── ANDROID_PAD_LOCAL_ONLY.md
+    ├── PAD_LOCAL_MNN_DEPLOYMENT.md
     ├── ANDROID_QC_APP.md
     └── API_CONTRACT.md
 ```
@@ -123,8 +127,8 @@ land rather than letting it drift.
 - [x] Inspection router implemented with the on-device-first / fail-closed
   policy, including the `on_device_fail_is_final` guard (§4.5.4),
   exercised against mock on-device and cloud providers.
-- [x] Cloud fallback (DashScope) integration implemented and
-  end-to-end tested against a real DashScope API key.
+- [x] Android Pad branch: local-only router enforced; all uncertain/failed
+  results return `review_required`; no cloud inference path exists on this branch.
 - [x] `scripts/benchmark_mnn.sh` written: ADB-based on-device latency
   benchmark targeting Snapdragon 8 Gen / 8 GB RAM device, reporting
   p50/p95 against the 10-second-per-image budget.
@@ -145,14 +149,13 @@ land rather than letting it drift.
   failure modes via parametrized tests.
 - [x] Full Python test suite: **203 tests pass 5× consecutively**, 6
   Qwen integration tests skipped by default (require
-  `RUN_QWEN_INTEGRATION=1` + real key)
-  (latest run on branch `claude/new-session-0rw6k5`).
+  `RUN_QWEN_INTEGRATION=1` + real key).
 - [ ] **Real on-device MNN benchmark not yet run.** The on-device
   inspector (`MnnQwenInspector`) is currently a stub; the real
   `nativeRunInference()` JNI call against an MNN-converted model
-  (default candidate: Qwen2-VL-2B-Instruct-MNN) has not been
-  exercised on physical hardware. This is the next concrete
-  milestone — see [Next milestone](#next-milestone).
+  (Qwen3-VL-4B-Instruct-MNN) has not been exercised on physical
+  hardware. This is the next concrete milestone — see
+  [Next milestone](#next-milestone).
 - [ ] Android app has not yet been installed and run on a physical
   device. The capture → on-device-inspect → router → result-display
   flow has been validated in a simulated environment only.
@@ -162,8 +165,8 @@ land rather than letting it drift.
 Once a physical Snapdragon test device is available (target: Snapdragon
 8 Gen, 8 GB RAM, 128 GB storage):
 
-1. Provision the Qwen2-VL-2B-Instruct-MNN model on the device per
-   `docs/DEPLOYMENT_LOCAL_QWEN.md`.
+1. Provision the Qwen3-VL-4B-Instruct-MNN model on the device per
+   `docs/PAD_LOCAL_MNN_DEPLOYMENT.md`.
 1. Run `./scripts/benchmark_mnn.sh` against it and record p50/p95
    latency, cold-start time, and peak memory.
 1. If the 10-second-per-image budget is met, replace the
@@ -245,8 +248,8 @@ A few project-wide rules worth knowing before contributing:
 
 - **Never commit model weights or other large binary model artifacts**
   into this repository's normal git history. Model provisioning is a
-  documented, scripted fetch (bundled at build time or downloaded and
-  checksum-verified on first run) — see `docs/DEPLOYMENT_LOCAL_QWEN.md`.
+  documented, scripted sideload (via `adb push`) and checksum-verified
+  on device — see `docs/PAD_LOCAL_MNN_DEPLOYMENT.md`.
 - **Mock everything expensive in tests.** Unit/CI tests must never call
   the real MNN model or the real DashScope API. Use the deterministic
   fake providers/inspectors (`FakeOnDeviceQwenInspector`,
@@ -261,14 +264,14 @@ A few project-wide rules worth knowing before contributing:
   afterthought — any new endpoint or query touching `ProductStandard`,
   `StandardPhoto`, `QCPoint`, `CapturePhoto`, `InspectionRun`, or
   `QCAsset` must be covered by a cross-tenant-access-denied test.
-- **This feature branch (`claude/new-session-0rw6k5`) is not merged
-  to `main` autonomously.** Merges happen after explicit human review.
+- **This branch (`android-pad-app`) is not merged to `main`
+  autonomously.** Merges happen after explicit human review.
 
 ## Related documentation
 
 - `docs/LOCAL_FIRST_QWEN_QC.md` — full product/architecture spec
-- `docs/DEPLOYMENT_LOCAL_QWEN.md` — on-device model provisioning and
-  backend cloud-fallback configuration
+- `docs/PAD_LOCAL_MNN_DEPLOYMENT.md` — Android Pad model sideloading and deployment
+- `docs/ANDROID_PAD_LOCAL_ONLY.md` — Android Pad local-only architecture
 - `docs/ANDROID_QC_APP.md` — Android app module layout and capture flow
 - `docs/API_CONTRACT.md` — backend API contract for the Android app
   and any fleet-aggregation consumers

@@ -1,24 +1,37 @@
 package com.giraffetechnology.qc
 
-import android.app.Activity
 import android.os.Bundle
 import android.util.Log
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.giraffetechnology.qc.qwen.*
+import com.giraffetechnology.qc.ui.PadStatusScreen
 import kotlinx.coroutines.*
 
-class MainActivity : Activity() {
+class MainActivity : ComponentActivity() {
 
     companion object { private const val TAG = "QCPadMain" }
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
+    private var modelReady by mutableStateOf(false)
+    private var runtimeReady by mutableStateOf(false)
+    private var inspectionResult by mutableStateOf<String?>(null)
+    private var isRunning by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.i(TAG, "GiraffeQC Android Pad started")
-        Log.i(TAG, "Engine: Local Qwen3-VL-4B MNN")
-        Log.i(TAG, "Mode: Offline Pad")
-        Log.i(TAG, "Cloud: Disabled")
-        Log.i(TAG, "Network: Not used")
+        setContent {
+            PadStatusScreen(
+                modelReady = modelReady,
+                runtimeReady = runtimeReady,
+                inspectionResult = inspectionResult,
+                isRunning = isRunning,
+            )
+        }
         scope.launch { initInspectionPipeline() }
     }
 
@@ -29,18 +42,20 @@ class MainActivity : Activity() {
 
     private suspend fun initInspectionPipeline() {
         val modelDir = ModelProvisioning.getModelDir(this)
-        val modelReady = ModelProvisioning.isModelReady(modelDir)
+        modelReady = ModelProvisioning.isModelReady(modelDir)
 
-        if (modelReady) {
-            Log.i(TAG, "Local model ready: $modelDir")
-        } else {
+        if (!modelReady) {
             val missing = ModelProvisioning.missingFiles(modelDir)
-            Log.w(TAG, "Local model NOT ready — missing files: $missing")
-            Log.w(TAG, "Result will be review_required until model is provisioned via:")
+            Log.w(TAG, "Local model NOT ready — missing: $missing")
             Log.w(TAG, "  adb push ./Qwen3-VL-4B-Instruct-MNN/ /sdcard/qwen3_vl_4b_mnn/")
+            return
         }
 
         val runtimeLoader = MnnRuntimeLoader(this)
+        isRunning = true
+        runtimeReady = withContext(Dispatchers.Default) { runtimeLoader.loadModel(modelDir) }
+        isRunning = false
+
         val config = RouterConfig(
             mode                = "local_only",
             onDeviceEnabled     = true,
@@ -57,6 +72,5 @@ class MainActivity : Activity() {
         )
         val router = QwenInspectionRouter(onDeviceInspector, config = config)
         Log.i(TAG, "Inspection pipeline ready: engine=${onDeviceInspector.engineName}")
-        // PadStatusScreen composable wires here once Compose setContent is added
     }
 }

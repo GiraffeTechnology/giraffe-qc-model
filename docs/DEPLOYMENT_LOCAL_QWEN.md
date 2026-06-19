@@ -1,18 +1,22 @@
 # Deploying the Local QWEN Model (On-Device)
 
+> **Android Pad branch**: This document describes the general on-device deployment
+> architecture. For Android Pad-specific sideloading instructions (Qwen3-VL-4B-Instruct-MNN,
+> approved sdcard paths, checksum verification), see
+> [`docs/PAD_LOCAL_MNN_DEPLOYMENT.md`](PAD_LOCAL_MNN_DEPLOYMENT.md).
+
 ## Target Hardware
 
-| Attribute       | Specification                        |
-|-----------------|--------------------------------------|
-| SoC             | Snapdragon 8 Gen                     |
-| RAM             | 8 GB                                 |
-| Storage         | 128 GB                               |
-| OS              | Android 12+                          |
-| Default model   | Qwen2-VL-2B-Instruct-MNN (INT4)      |
+| Attribute       | Specification                               |
+|-----------------|---------------------------------------------|
+| SoC             | Snapdragon 8 Gen                            |
+| RAM             | 8 GB                                        |
+| Storage         | 128 GB                                      |
+| OS              | Android 12+                                 |
+| Default model   | Qwen3-VL-4B-Instruct-MNN (INT4)             |
 
-The 2B INT4 model requires approximately 3–4 GB at runtime. On an 8 GB device this leaves sufficient headroom for the OS and camera pipeline.
-
-For devices with less than 4 GB available RAM, use Qwen2-VL-0.5B-Instruct-MNN instead.
+The INT4-quantized model requires approximately 4–6 GB at runtime. On an 8 GB
+device this leaves sufficient headroom for the OS and camera pipeline.
 
 ## Model Directory Structure
 
@@ -20,30 +24,40 @@ The app expects the model at `<app_files_dir>/models/qwen_mnn/`:
 
 ```
 models/qwen_mnn/
-  model.mnn          ← INT4 quantized model weights
-  checksum.sha256    ← SHA-256 hex of model.mnn (mandatory)
-  config.json        ← tokenizer config (optional)
-  tokenizer.json     ← tokenizer vocab (optional)
+  llm.mnn               ← INT4 quantized LLM weights
+  llm.mnn.weight        ← external weight shard
+  visual.mnn            ← visual encoder weights
+  visual.mnn.weight     ← visual encoder weight shard
+  llm.mnn.json          ← LLM graph config
+  llm_config.json       ← model config
+  embeddings_bf16.bin   ← embedding table
+  tokenizer.txt         ← tokenizer vocab
+  config.json           ← tokenizer config
+  checksum.sha256       ← SHA-256 hex of llm.mnn (mandatory)
 ```
 
-The checksum file is mandatory. The app will refuse to run inference if it is absent or if the checksum mismatches.
+All 10 files are mandatory. The app will refuse to run inference if any file is
+absent or if `checksum.sha256` does not match `llm.mnn`.
 
 ## Provisioning Modes
 
-### DOWNLOAD_ON_FIRST_RUN (default)
+### SIDELOAD_FROM_SDCARD (Android Pad default)
 
-Configure via `ProvisioningConfig`:
+Push the model directory to the device via ADB:
 
-```kotlin
-ProvisioningConfig(
-    mode             = ProvisioningMode.DOWNLOAD_ON_FIRST_RUN,
-    modelName        = "Qwen2-VL-2B-Instruct-MNN",
-    modelDownloadUrl = "https://your-cdn.example.com/qwen_2b_mnn/model.mnn",
-    expectedSha256   = "<sha256_hex_of_model_mnn>",
-)
+```bash
+adb push path/to/local/Qwen3-VL-4B-Instruct-MNN/ /sdcard/qwen3_vl_4b_mnn/
 ```
 
-The app downloads on first launch, verifies the SHA-256, then stores the model locally. Subsequent launches skip the download.
+The app searches these sdcard paths in order and imports to app-private storage:
+
+```
+/sdcard/qwen3_vl_4b_mnn
+/sdcard/Download/qwen3_vl_4b_mnn
+/sdcard/Android/data/com.giraffetechnology.qc/files/import/qwen3_vl_4b_mnn
+```
+
+See `docs/PAD_LOCAL_MNN_DEPLOYMENT.md` for the complete step-by-step guide.
 
 ### BUNDLED
 
@@ -52,33 +66,34 @@ For factory deployments where the model ships with the APK as an asset:
 ```kotlin
 ProvisioningConfig(
     mode      = ProvisioningMode.BUNDLED,
-    modelName = "Qwen2-VL-2B-Instruct-MNN",
+    modelName = "Qwen3-VL-4B-Instruct-MNN",
 )
 ```
 
-Place model files under `app/src/main/assets/models/qwen_mnn/` (including `checksum.sha256`).
+Place all 10 model files under `app/src/main/assets/models/qwen_mnn/`
+(including `checksum.sha256`). Checksum is always verified on first use.
 
 ## ADB Sideloading (Development / Benchmark)
 
 Push the model directory to the device:
 
 ```bash
-adb push path/to/local/qwen_2b_mnn/ /sdcard/qwen_2b_mnn/
+adb push path/to/local/Qwen3-VL-4B-Instruct-MNN/ /sdcard/qwen3_vl_4b_mnn/
 ```
 
 Then launch via the BenchmarkActivity:
 
 ```bash
 adb shell am start -n com.giraffetechnology.qc/.benchmark.BenchmarkActivity \
-    --es model_path /sdcard/qwen_2b_mnn \
+    --es model_path /sdcard/qwen3_vl_4b_mnn \
     --ei iterations 10 \
-    --es model_name "Qwen2-VL-2B-Instruct-MNN"
+    --es model_name "Qwen3-VL-4B-Instruct-MNN"
 ```
 
 Or use the benchmark script:
 
 ```bash
-./scripts/benchmark_mnn.sh -p /sdcard/qwen_2b_mnn -i 10
+./scripts/benchmark_mnn.sh -p /sdcard/qwen3_vl_4b_mnn -i 10
 ```
 
 ## Performance Budgets (§4.3.0)
@@ -94,6 +109,7 @@ Results are written to `/sdcard/qc_benchmark_results.json` and logcat tag `QCBen
 ## Security Constraints
 
 - The model file must pass SHA-256 verification before any inference call.
-- Cloud credentials must never be embedded in the APK.
-- Cloud fallback requires both `QWEN_CLOUD_ENABLED=true` and `ALLOW_SEND_IMAGES_TO_CLOUD_QWEN=true`.
-- On-device FAIL results are final and must not be overridden by cloud (§4.5.4).
+- Checksum bypass is not permitted — a blank or absent `checksum.sha256` always
+  returns `CHECKSUM_FAILED`, never `READY`.
+- The INTERNET permission is not declared in the Android Pad manifest.
+- On-device FAIL results are final and must not be overridden (§4.5.4).

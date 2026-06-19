@@ -1,35 +1,37 @@
 #!/usr/bin/env bash
 # §4.3.0 On-device MNN benchmark runner.
 # Target device: Snapdragon 8 Gen, 8 GB RAM, 128 GB storage.
-# Default model: Qwen2-VL-2B-Instruct-MNN (INT4) — viable on 8 GB RAM.
+# Default model: Qwen3-VL-4B-Instruct-MNN (INT4) — required for Android Pad local-only build.
 #
 # Usage:
 #   ./scripts/benchmark_mnn.sh [OPTIONS]
 #
 # Options:
 #   -d DEVICE    ADB device serial (default: first connected)
-#   -p MODEL_PATH  Path on device to model dir (default: /sdcard/qwen_2b_mnn)
+#   -p MODEL_PATH  Path on device to model dir (default: /sdcard/qwen3_vl_4b_mnn)
 #   -i ITERATIONS  Number of inference iterations (default: 10)
-#   -m MODEL_NAME  Model name label (default: Qwen2-VL-2B-Instruct-MNN)
+#   -m MODEL_NAME  Model name label (default: Qwen3-VL-4B-Instruct-MNN)
 #   -o OUTPUT      Local output file for JSON results (default: benchmark_results.json)
 #   -h             Show this help
 #
 # Prerequisites:
 #   - ADB in PATH and device connected with USB debugging enabled
-#   - APK installed: adb install app/build/outputs/apk/debug/app-debug.apk
-#   - Model provisioned to device: adb push <model_dir> /sdcard/qwen_2b_mnn/
+#   - APK installed: adb install app/build/outputs/apk/padLocal/debug/app-padLocal-debug.apk
+#   - Model provisioned to device: adb push <model_dir> /sdcard/qwen3_vl_4b_mnn/
 #
 # Budget targets (§4.3.0):
 #   - Cold start load:  ≤ 30 s
 #   - p95 per-image:    ≤ 10 s
 #   - Peak memory:      ≤ 6 GB (leaves 2 GB headroom on 8 GB device)
+#
+# See docs/PAD_LOCAL_MNN_DEPLOYMENT.md for full deployment instructions.
 
 set -euo pipefail
 
 DEVICE=""
-MODEL_PATH="/sdcard/qwen_2b_mnn"
+MODEL_PATH="/sdcard/qwen3_vl_4b_mnn"
 ITERATIONS=10
-MODEL_NAME="Qwen2-VL-2B-Instruct-MNN"
+MODEL_NAME="Qwen3-VL-4B-Instruct-MNN"
 OUTPUT="benchmark_results.json"
 PACKAGE="com.giraffetechnology.qc"
 ACTIVITY=".benchmark.BenchmarkActivity"
@@ -73,7 +75,7 @@ log "Device: $DEVICE_MODEL  (Android $ANDROID_VER)"
 # Verify APK installed
 if ! $ADB_CMD shell pm list packages 2>/dev/null | grep -q "$PACKAGE"; then
     echo "ERROR: APK not installed. Run:" >&2
-    echo "  adb install app/build/outputs/apk/debug/app-debug.apk" >&2
+    echo "  adb install app/build/outputs/apk/padLocal/debug/app-padLocal-debug.apk" >&2
     exit 1
 fi
 
@@ -82,7 +84,7 @@ if ! $ADB_CMD shell test -d "$MODEL_PATH" 2>/dev/null; then
     echo "ERROR: Model directory not found on device at: $MODEL_PATH" >&2
     echo "Provision the model first:" >&2
     echo "  adb push <local_model_dir>/ $MODEL_PATH/" >&2
-    echo "  See docs/DEPLOYMENT_LOCAL_QWEN.md for full instructions." >&2
+    echo "  See docs/PAD_LOCAL_MNN_DEPLOYMENT.md for full instructions." >&2
     exit 1
 fi
 

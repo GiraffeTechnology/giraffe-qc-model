@@ -5,8 +5,8 @@
 Deliver a single Android APK for apparel and textile quality control (QC) inspection that:
 
 - Installs on a standard Android device with no root and no separate server
-- Uses **Qwen2-VL-2B-Instruct-MNN** running on-device via the **MNN inference framework** as the primary inspection engine
-- Operates fully offline by default — cloud connectivity is optional and dual-gated
+- Uses **Qwen3-VL-4B-Instruct-MNN** running on-device via the **MNN inference framework** as the primary inspection engine
+- Operates fully offline — no cloud connectivity required or used on Android Pad
 - Meets the latency and memory budget of Snapdragon 8 Gen class hardware
 
 The target hardware profile is:
@@ -16,10 +16,10 @@ The target hardware profile is:
 | SoC | Snapdragon 8 Gen |
 | RAM | 8 GB |
 | Storage | 128 GB |
-| Model | Qwen2-VL-2B-Instruct-MNN (INT4) |
-| Estimated runtime memory | ~3–4 GB |
+| Model | Qwen3-VL-4B-Instruct-MNN (INT4) |
+| Estimated runtime memory | ~4–6 GB |
 
-The INT4-quantized 2B model is viable on this hardware. Larger models or FP16 weights are out of scope for v3.
+The INT4-quantized 4B model is targeted for this hardware. Larger models or FP16 weights are out of scope for this branch.
 
 ---
 
@@ -27,26 +27,26 @@ The INT4-quantized 2B model is viable on this hardware. Larger models or FP16 we
 
 The system is configured via the `QC_ENGINE_MODE` environment variable. Three modes are defined:
 
-### 1. `cloud_qwen_dev` (temporary)
+### 1. `cloud_qwen_dev` (temporary, Python backend only)
 
-- Routes all inspection requests to the cloud Qwen API
-- Used for development and validation before the physical Android test device arrives
-- Not intended for production; should be disabled once on-device testing begins
+- Routes all inspection requests to the cloud Qwen API (Python backend)
+- Used for backend development and validation before the physical Android test device arrives
+- Not applicable to the Android Pad build; the Pad build has no cloud path
 - Allows iterating on schema, parser, and prompt logic without hardware
 
-### 2. `on_device_first` (final architecture)
+### 2. `on_device_first` (Android Pad architecture)
 
-- On-device MNN inference is the **primary engine**
-- Cloud fallback is available only when explicitly enabled and only for uncertain results
-- This is the shipping architecture
+- On-device MNN inference is the **primary and only engine** on Android Pad
+- No cloud path is available or configured
 - Offline inspection is fully supported
+- This is the Android Pad shipping architecture
 
 ### 3. `backend_proxy` (specific use cases only)
 
 - Cloud Qwen is the primary engine
 - On-device MNN is not used
 - Reserved for use cases where network connectivity is guaranteed and on-device latency budget cannot be met (e.g., bulk audit workstations)
-- Not the default; requires explicit configuration
+- Not applicable to the Android Pad build
 
 ---
 
@@ -59,7 +59,7 @@ Capture image
 Standard photo + QC point config loaded
      │
      ▼
-On-device MNN inference (Qwen2-VL-2B-Instruct-MNN)
+On-device MNN inference (Qwen3-VL-4B-Instruct-MNN)
      │
      ▼
 Parser validates strict JSON schema
@@ -69,24 +69,22 @@ Parser validates strict JSON schema
      └─ schema invalid / uncertain                         │
               │                                            │
               ▼                                            ▼
-     Optional cloud fallback               Result display (pass / fail /
-     (if QWEN_CLOUD_ENABLED +              review_required)
-      ALLOW_SEND_IMAGES_TO_CLOUD_QWEN)           │
-              │                                  │
-              ▼                                  ▼
-     Cloud result merged             Optional backend sync
-     (cannot override fail)          (audit / fleet reporting)
+     review_required                        Result display (pass / fail /
+     (no cloud path on Android Pad)         review_required)
+                                                   │
+                                                   ▼
+                                        Optional backend sync
+                                        (audit / fleet reporting)
 ```
 
 Steps in detail:
 
 1. **Capture** — camera captures the production garment image
 2. **QC point config** — standard reference photo and per-point inspection criteria are loaded
-3. **On-device inference** — MnnQwenInspector runs Qwen2-VL-2B-Instruct-MNN via MNN JNI
+3. **On-device inference** — MnnQwenInspector runs Qwen3-VL-4B-Instruct-MNN via MNN JNI
 4. **Parser** — output is validated against the strict JSON schema; malformed output is rejected
 5. **Result display** — one of `pass`, `fail`, or `review_required` is shown to the operator
-6. **Cloud fallback** (optional) — triggered only if the result is uncertain and both cloud guards are enabled
-7. **Backend sync** (optional) — result, metadata, and audit trail pushed to backend when connectivity is available
+6. **Backend sync** (optional) — result, metadata, and audit trail pushed to backend when connectivity is available
 
 ---
 
@@ -103,7 +101,7 @@ The system is designed to fail closed. An uncertain or degraded result is never 
 | Output fails JSON schema validation | `review_required` |
 | On-device timeout | `review_required` |
 | Model not provisioned | `review_required` |
-| Confidence below threshold | `review_required` (or cloud fallback if enabled) |
+| Confidence below threshold | `review_required` (no cloud path on Android Pad) |
 
 `review_required` always routes the item to a human inspector. It never becomes an automatic pass.
 
@@ -111,9 +109,9 @@ The system is designed to fail closed. An uncertain or degraded result is never 
 
 When the on-device engine returns `fail`, that result is **final**:
 
-- Cloud fallback is **not called**, even if cloud is enabled
+- No override path exists on Android Pad
 - The backend **cannot override** a device `fail` to `pass`
-- This rule exists to prevent a misconfigured or compromised cloud endpoint from clearing defective items
+- This rule exists to prevent a misconfigured or compromised endpoint from clearing defective items
 
 ---
 
@@ -121,22 +119,22 @@ When the on-device engine returns `fail`, that result is **final**:
 
 ### Local-Only Default
 
-All inference runs on-device. No image data leaves the device unless the operator has explicitly enabled cloud transmission.
+All inference runs on-device. On Android Pad, no image data leaves the device under any condition — INTERNET permission is not declared in the manifest.
 
-### Dual Guards for Cloud Image Transmission
+### Compile-Time Guards on Android Pad
 
-Sending images to the cloud Qwen API requires **both** of the following to be set:
+The following BuildConfig fields are locked at compile time in the `padLocal` product flavor:
 
-| Guard | Purpose |
-|-------|---------|
-| `QWEN_CLOUD_ENABLED=true` | Enables cloud API connectivity at all |
-| `ALLOW_SEND_IMAGES_TO_CLOUD_QWEN=true` | Explicitly permits image data to leave the device |
-
-If either guard is absent or false, images remain on-device regardless of network availability.
+| Guard | Value | Purpose |
+|-------|-------|---------|
+| `PAD_LOCAL_ONLY` | `true` | Identifies Pad local-only build |
+| `QWEN_CLOUD_ENABLED` | `false` | Disables cloud API connectivity |
+| `ALLOW_SEND_IMAGES_TO_CLOUD_QWEN` | `false` | Prevents image data leaving device |
+| `ALLOW_STUB_PASS` | `false` | Prevents stub from returning pass |
 
 ### `contains_pii` Flag
 
-Assets in the abcdYi/Giraffe CAP asset registry carry a `contains_pii` boolean flag. Assets with `contains_pii=true` are never eligible for cloud transmission, independent of the dual-guard setting.
+Assets in the abcdYi/Giraffe CAP asset registry carry a `contains_pii` boolean flag. Assets with `contains_pii=true` are never eligible for cloud transmission, independent of any other setting.
 
 ---
 
@@ -149,7 +147,7 @@ The backend is **not** the primary inspection engine. Its responsibilities are l
 | Audit trail | Stores inspection outcomes with timestamps and device ID |
 | Fleet reporting | Aggregates pass/fail/review_required rates across devices |
 | CAP asset registry | Manages abcdYi/Giraffe standard reference photos and QC point configs |
-| Cloud fallback | Accepts cloud Qwen inference requests when explicitly enabled |
+| Backend aggregation | Receives completed inspection results from devices |
 
 The backend does not make primary pass/fail decisions. It receives results that the device has already determined.
 
@@ -165,21 +163,20 @@ The following components are implemented and tested in the simulated/CI environm
 |-----------|--------|
 | Strict JSON output schema | Implemented |
 | Schema parser and validator | Implemented |
-| Inspection router (`on_device_first` / `cloud_qwen_dev` / `backend_proxy`) | Implemented |
+| Inspection router (`on_device_first` / local-only for Pad) | Implemented |
 | FakeOnDeviceQwenInspector (stub for unit tests) | Implemented |
-| FakeCloudQwenInspector (stub for unit tests) | Implemented |
 | FastAPI backend endpoints (inspection, audit, fleet, asset registry) | Implemented |
 | Android skeleton (MnnQwenInspector.kt with stub JNI) | Implemented |
 | §4.5.4 fail-is-final logic (router level) | Implemented |
-| Dual privacy guards (router level) | Implemented |
-| Python unit/integration test suite (166+ tests) | Implemented |
+| Compile-time privacy guards (padLocal BuildConfig) | Implemented |
+| Python unit/integration test suite (203+ tests) | Implemented |
 
 ### Requires Physical Android Test Device
 
 The following cannot be validated without hardware:
 
 | Component | Blocker |
-|-----------|---------|
+|-----------|--------|
 | Real MnnQwenInspector JNI (`nativeRunInference()`) | Requires MNN native libs on target ABI |
 | Cold-start load time (budget: ≤30s) | Requires Snapdragon hardware |
 | p50 / p95 per-image latency (budget: ≤10s p95) | Requires Snapdragon hardware |
@@ -193,10 +190,10 @@ See `MNN_DEVICE_TEST_PLAN.md` for the complete test plan to be executed when the
 
 ## Key Design Decisions
 
-1. **Model choice**: Qwen2-VL-2B-Instruct-MNN (INT4) is chosen because the 2B parameter count and INT4 quantization fit within the 6 GB runtime memory budget on 8 GB RAM devices. Larger models are deferred.
+1. **Model choice**: Qwen3-VL-4B-Instruct-MNN (INT4) is chosen as the target model for the Android Pad build. INT4 quantization fits within the 6 GB runtime memory budget on 8 GB RAM devices.
 
 2. **MNN over other runtimes**: MNN is selected for its Android JNI support, low dependency footprint, and suitability for vision-language model deployment without requiring NNAPI or GPU delegation.
 
-3. **Single APK, no root**: The deployment model is a standard user-space APK. Model weights are provisioned to `/sdcard/qwen_2b_mnn/` via ADB or in-app download; no system partition access is required.
+3. **Single APK, no root**: The deployment model is a standard user-space APK. Model weights are provisioned to `/sdcard/qwen3_vl_4b_mnn/` via ADB sideload; no system partition access is required.
 
 4. **Schema-first parsing**: The inspection engine always emits structured JSON. Free-text output is rejected by the parser and yields `review_required`. This makes the safety behavior deterministic and independent of prompt drift.

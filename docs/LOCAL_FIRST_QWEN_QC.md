@@ -1,9 +1,13 @@
 # Local-First QWEN QC Inspection
 
+> **Android Pad branch**: `cloudEnabled` is always `false` (compile-time BuildConfig).
+> Uncertain results always return `review_required` — there is no cloud escalation path
+> on this branch. See `docs/ANDROID_PAD_LOCAL_ONLY.md`.
+
 ## Design Principles
 
 1. **Local-first storage**: all standard photos and production captures are saved to device/server storage before any cloud operation.
-2. **On-device primary path**: MNN inference on the Android device is the default. Cloud is a fallback, not the primary path.
+2. **On-device primary path**: MNN inference on the Android device is the default. On Android Pad, there is no cloud path — all results are local-only.
 3. **Fail-closed**: any uncertainty, parse error, or timeout returns `review_required` — never `pass`.
 4. **On-device FAIL is final** (§4.5.4): a `fail` from on-device inference cannot be escalated to cloud for a `pass` result.
 5. **Explicit cloud consent**: images are never sent to cloud services without `cloudEnabled=true` AND `allowSendImages=true`.
@@ -17,9 +21,8 @@
 4. Run on-device inference               → MnnQwenInspector via MNN JNI
    ├── FAIL         → return fail (final, §4.5.4)
    ├── PASS + high confidence → return pass
-   └── uncertain / low confidence / error
-       ├── cloud enabled → DashScope API (with fallback flag set)
-       └── cloud disabled → return review_required
+   └── uncertain / low confidence / error → return review_required
+       (on Android Pad: no cloud escalation — review_required is always the ceiling)
 5. Parse & validate result               → QcResultParser (§4.3.5)
 6. Store result                          → local Room DB + optional backend sync
 ```
@@ -54,12 +57,12 @@ The Python FastAPI backend (see `src/api/`) exposes REST endpoints for:
 
 See [API_CONTRACT.md](API_CONTRACT.md) for endpoint details.
 
-## Cloud Fallback Configuration
+## Router Configuration
 
-| Config key              | Default | Effect                                      |
-|-------------------------|---------|---------------------------------------------|
-| `cloudEnabled`          | false   | Master switch for cloud fallback            |
-| `allowSendImages`       | false   | Second guard: images only sent if also true |
-| `onDeviceFailIsFinal`   | true    | Prevents cloud from overriding a fail       |
-| `minConfidence`         | 0.82    | Below this triggers fallback                |
-| `onDeviceTimeoutMs`     | 10000   | Timeout for on-device inference             |
+| Config key              | Default | Effect                                              |
+|-------------------------|---------|-----------------------------------------------------|
+| `cloudEnabled`          | false   | Always false on Android Pad (compile-time BuildConfig) |
+| `allowSendImages`       | false   | Always false on Android Pad (compile-time BuildConfig) |
+| `onDeviceFailIsFinal`   | true    | Prevents any override of an on-device fail          |
+| `minConfidence`         | 0.82    | Below this returns review_required                  |
+| `onDeviceTimeoutMs`     | 10000   | Timeout before returning review_required            |
