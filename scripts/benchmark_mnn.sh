@@ -8,8 +8,6 @@
 #
 # Options:
 #   -d DEVICE      ADB device serial (default: first connected)
-#   -p MODEL_PATH  Path on device to model dir
-#                  (default: /sdcard/Android/data/com.giraffetechnology.qc/files/models/qwen_mnn)
 #   -i ITERATIONS  Number of inference iterations (default: 10)
 #   -m MODEL_NAME  Model name label (default: Qwen2-VL-2B-Instruct-MNN)
 #   -o OUTPUT      Local output file for JSON results (default: benchmark_results.json)
@@ -19,15 +17,20 @@
 #
 # Prerequisites:
 #   - ADB in PATH and device connected with USB debugging enabled
-#   - APK installed: adb install app/build/outputs/apk/debug/app-debug.apk
-#     (or pass -a <apk_path> to install automatically)
-#   - Model pushed to device:
-#       adb push <local_model_dir>/ \
-#         /sdcard/Android/data/com.giraffetechnology.qc/files/models/qwen_mnn/
-#     See docs/DEPLOYMENT_LOCAL_QWEN.md for download + sideload instructions.
+#   - APK installed (or pass -a <apk_path> to install automatically)
+#   - Model pushed to device — choose ONE of:
+#       (A) Public Downloads (preferred, ADB always has write access):
+#           adb push <local_model_dir>/ /sdcard/Download/qwen_mnn/
+#       (B) App-scoped staging (guaranteed fallback, no permissions needed):
+#           adb push <local_model_dir>/ \
+#             /sdcard/Android/data/com.giraffetechnology.qc/files/import/qwen_mnn/
+#     The app auto-imports to internal filesDir on first run (~2-3 min for 4 GB).
+#     Subsequent runs skip the import.
+#     See docs/DEPLOYMENT_LOCAL_QWEN.md for full instructions.
 #
-# NOTE: Uses app-scoped external storage (getExternalFilesDir) — no
-#   MANAGE_EXTERNAL_STORAGE needed on Android 10+ / Android 16.
+# Android 16 FUSE bypass: model is stored in internal filesDir (ext4) after import.
+#   No MANAGE_EXTERNAL_STORAGE needed. Java File.exists() works on filesDir even
+#   where /sdcard/ symlinks fail under Android 16 scoped storage.
 #
 # Model directory must contain (taobao-mnn/Qwen2-VL-2B-Instruct-MNN layout):
 #   llm.mnn  llm.mnn.weight  visual.mnn  visual.mnn.weight
@@ -46,7 +49,6 @@ ACTIVITY=".benchmark.BenchmarkActivity"
 EXT_FILES_DIR="/sdcard/Android/data/${PACKAGE}/files"
 
 DEVICE=""
-MODEL_PATH="${EXT_FILES_DIR}/models/qwen_mnn"
 ITERATIONS=10
 MODEL_NAME="Qwen2-VL-2B-Instruct-MNN"
 OUTPUT="benchmark_results.json"
@@ -59,10 +61,9 @@ usage() {
     exit 0
 }
 
-while getopts "d:p:i:m:o:a:ch" opt; do
+while getopts "d:i:m:o:a:ch" opt; do
     case $opt in
         d) DEVICE="$OPTARG" ;;
-        p) MODEL_PATH="$OPTARG" ;;
         i) ITERATIONS="$OPTARG" ;;
         m) MODEL_NAME="$OPTARG" ;;
         o) OUTPUT="$OPTARG" ;;
@@ -110,38 +111,46 @@ if ! $ADB_CMD shell pm list packages 2>/dev/null | grep -q "$PACKAGE"; then
     exit 1
 fi
 
-## Verify model directory and key files exist on device
-## (Skipped: app auto-imports model from /sdcard/Download/qwen_mnn/ on first run)
-#if ! $ADB_CMD shell test -d "$MODEL_PATH" 2>/dev/null; then
-#    echo "ERROR: Model directory not found on device at: $MODEL_PATH" >&2
-#    echo "Provision the model first (app-scoped external storage, no root needed):" >&2
-#    echo "  adb push <local_model_dir>/ \"$MODEL_PATH/\"" >&2
-#    echo "  See docs/DEPLOYMENT_LOCAL_QWEN.md for full instructions." >&2
-#    exit 1
-#fi
-#
-#if ! $ADB_CMD shell test -f "$MODEL_PATH/llm.mnn" 2>/dev/null; then
-#    echo "ERROR: llm.mnn not found in $MODEL_PATH" >&2
-#    echo "The model directory must contain: llm.mnn llm.mnn.weight visual.mnn visual.mnn.weight" >&2
-#    echo "Download from: https://huggingface.co/taobao-mnn/Qwen2-VL-2B-Instruct-MNN" >&2
-#    exit 1
-#fi
+# Check that at least one model source exists on device before launching.
+# (filesDir is not accessible via adb without root, so we check staging sources.)
+DOWNLOAD_SRC="/sdcard/Download/qwen_mnn"
+STAGING_SRC="${EXT_FILES_DIR}/import/qwen_mnn"
+
+MODEL_SRC_FOUND=false
+if $ADB_CMD shell test -f "${DOWNLOAD_SRC}/llm.mnn" 2>/dev/null; then
+    log "Model source: $DOWNLOAD_SRC (public Downloads)"
+    MODEL_SRC_FOUND=true
+elif $ADB_CMD shell test -f "${STAGING_SRC}/llm.mnn" 2>/dev/null; then
+    log "Model source: $STAGING_SRC (app-scoped staging)"
+    MODEL_SRC_FOUND=true
+elif $ADB_CMD shell test -f "${EXT_FILES_DIR}/models/qwen_mnn/llm.mnn" 2>/dev/null; then
+    log "Model already in app external files dir (legacy path — will be imported to filesDir)"
+    MODEL_SRC_FOUND=true
+fi
+
+if [[ "$MODEL_SRC_FOUND" == "false" ]]; then
+    echo "ERROR: llm.mnn not found in any source location." >&2
+    echo "Push model to the device first (choose one):" >&2
+    echo "  (A) adb push <local_dir>/ /sdcard/Download/qwen_mnn/" >&2
+    echo "  (B) adb push <local_dir>/ ${STAGING_SRC}/" >&2
+    echo "See docs/DEPLOYMENT_LOCAL_QWEN.md for download instructions." >&2
+    exit 1
+fi
 
 log "Starting BenchmarkActivity..."
-log "  model_path=$MODEL_PATH  iterations=$ITERATIONS  model_name=$MODEL_NAME  cpu_only=$CPU_ONLY"
+log "  iterations=$ITERATIONS  model_name=$MODEL_NAME  cpu_only=$CPU_ONLY"
 
 # Clear logcat buffer so the fallback parser sees only this run's output
 $ADB_CMD logcat -c 2>/dev/null || true
 
 $ADB_CMD shell am start -n "${PACKAGE}/${ACTIVITY}" \
-    --es model_path "$MODEL_PATH" \
     --ei iterations "$ITERATIONS" \
     --es model_name "$MODEL_NAME" \
     --ez cpu_only "$CPU_ONLY"
 
-# Wait for benchmark to finish (poll logcat for completion marker)
-log "Waiting for benchmark to complete (up to 5 min)..."
-TIMEOUT=300
+# Wait for benchmark to finish. First run auto-imports ~4 GB (2-3 min); allow 15 min total.
+log "Waiting for benchmark to complete (up to 15 min — first run imports model to internal storage)..."
+TIMEOUT=900
 ELAPSED=0
 COMPLETED=0
 while [[ $ELAPSED -lt $TIMEOUT ]]; do
