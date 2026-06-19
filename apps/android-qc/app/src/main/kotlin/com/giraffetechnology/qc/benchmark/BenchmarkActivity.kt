@@ -12,12 +12,11 @@ import java.io.File
 import java.time.Instant
 
 /**
- * §4.3.0 On-device latency benchmark activity — Android Pad local-only build.
+ * On-device latency benchmark activity — Android Pad local-only build.
  *
  * Target model: Qwen3-VL-4B-Instruct-MNN (INT4), via MNN local runtime.
- * Target device: Snapdragon 8 Gen, 8 GB RAM.
  * No cloud inference path. All results are local-only.
- * If native MNN is not wired, inspector returns review_required — never pass.
+ * Proves real native MNN was called via mnn_native_called / native_run_inference_called fields.
  *
  * Launch via ADB:
  *   adb shell am start -n com.giraffetechnology.qc/.benchmark.BenchmarkActivity \
@@ -42,7 +41,7 @@ class BenchmarkActivity : Activity() {
         val iterations = intent.getIntExtra("iterations", 10)
         val modelName  = intent.getStringExtra("model_name") ?: "Qwen3-VL-4B-Instruct-MNN"
 
-        Log.i(TAG, "Benchmark start: model=$modelPath, iterations=$iterations")
+        Log.i(TAG, "Benchmark start: model=$modelPath iterations=$iterations")
         Log.i(TAG, "Mode: $MODE — local inference only, no external services")
 
         CoroutineScope(Dispatchers.Main).launch {
@@ -60,40 +59,68 @@ class BenchmarkActivity : Activity() {
     ): Map<String, Any> = withContext(Dispatchers.Default) {
         val runtimeLoader = MnnRuntimeLoader(applicationContext)
 
-        // Cold start
         val loadStart  = System.currentTimeMillis()
         val loaded     = runtimeLoader.loadModel(File(modelPath))
         val loadTimeMs = System.currentTimeMillis() - loadStart
 
         if (!loaded) {
-            Log.w(TAG, "MNN runtime not wired or model missing at $modelPath — result: review_required")
+            Log.w(TAG, "MNN load failed at $modelPath — result: review_required")
             return@withContext mapOf(
-                "model_name"                 to modelName,
-                "mode"                       to MODE,
-                "cloud_fallback"             to false,
-                "qwen_api_used"              to false,
-                "dashscope_used"             to false,
-                "native_inference_not_wired" to true,
-                "inspection_result"          to "review_required",
-                "error"                      to "Model failed to load from $modelPath",
-                "device_model"               to Build.MODEL,
-                "total_ram_mb"               to totalRamMb(),
-                "note"                       to "Ensure model is provisioned per docs/PAD_LOCAL_MNN_DEPLOYMENT.md",
+                "model_name"                  to modelName,
+                "mode"                        to MODE,
+                "cloud_fallback"              to false,
+                "cloud_fallback_used"         to false,
+                "qwen_api_used"               to false,
+                "qwen_api_calls"              to 0,
+                "dashscope_used"              to false,
+                "dashscope_calls"             to 0,
+                "mnn_native_called"           to false,
+                "native_load_called"          to false,
+                "native_run_inference_called" to false,
+                "model_ptr_nonzero"           to false,
+                "raw_output_length"           to -1,
+                "engine"                      to "local_qwen_mnn",
+                "native_inference_not_wired"  to true,
+                "inspection_result"           to "review_required",
+                "error"                       to "Model failed to load from $modelPath",
+                "device_model"                to Build.MODEL,
+                "total_ram_mb"                to totalRamMb(),
+                "note"                        to "Ensure model is provisioned per docs/PAD_LOCAL_MNN_DEPLOYMENT.md",
             )
         }
 
+        val modelPtrNonzero = runtimeLoader.modelPtr > 0L
+        Log.i(TAG, "nativeLoadModel success: modelPtr=${runtimeLoader.modelPtr}")
+
+        // Probe call: direct nativeRunInference to prove the bridge is wired and capture raw_output_length.
+        var nativeRunInferenceCalled = false
+        var rawOutputLength = -1
+        try {
+            val probeImgJson = """{"standard_photos":[],"captured_photo":"${syntheticImagePath("bench_probe")}"}"""
+            val probePrompt  = "QC benchmark inference probe. Respond only: {\"overall_result\":\"review_required\",\"confidence\":0.0,\"items\":[]}"
+            val probeParams  = """{"max_new_tokens":64,"temperature":0.1,"do_sample":false}"""
+            val raw = NativeMnnQwenBridge.nativeRunInference(
+                runtimeLoader.modelPtr, probeImgJson, probePrompt, probeParams,
+            )
+            nativeRunInferenceCalled = true
+            rawOutputLength = raw.length
+            Log.i(TAG, "nativeRunInference probe: raw_output_length=$rawOutputLength")
+        } catch (e: Exception) {
+            Log.e(TAG, "nativeRunInference probe threw: ${e.message}")
+        }
+
         val inspector = MnnQwenInspector(applicationContext, runtimeLoader, modelName)
-        val qcPoints = listOf(
+        val qcPoints  = listOf(
             QcPointInput("QC-01", "color_check",  "Color",  "Surface color match"),
             QcPointInput("QC-02", "border_check", "Border", "Border integrity"),
             QcPointInput("QC-03", "defect_check", "Defect", "No surface defects"),
         )
-        val ctx = InspectionContext("bench", "SKU-BENCH", "STD-BENCH", "INS-BENCH")
+        val ctx      = InspectionContext("bench", "SKU-BENCH", "STD-BENCH", "INS-BENCH")
         val stdPhoto = StandardPhotoInput("STD", syntheticImagePath("std_bench"), "front")
         val capPhoto = CapturePhotoInput("CAP", syntheticImagePath("cap_bench"))
 
-        val latencies = mutableListOf<Long>()
-        val memPeak   = mutableListOf<Long>()
+        val latencies  = mutableListOf<Long>()
+        val memPeak    = mutableListOf<Long>()
         var errorCount = 0
 
         repeat(iterations) { i ->
@@ -103,7 +130,7 @@ class BenchmarkActivity : Activity() {
                 inspector.inspect(listOf(stdPhoto), capPhoto, qcPoints, ctx)
             } catch (e: Exception) {
                 errorCount++
-                Log.w(TAG, "Iteration $i error: ${e.message}")
+                Log.w(TAG, "Iter $i error: ${e.message}")
             }
             val elapsed  = System.currentTimeMillis() - t0
             val memAfter = usedMemBytes()
@@ -112,32 +139,43 @@ class BenchmarkActivity : Activity() {
             Log.d(TAG, "Iter $i: ${elapsed}ms  mem=${memAfter / 1_048_576}MB")
         }
 
+        runtimeLoader.unloadModel()
+
         latencies.sort()
-        val p50 = if (latencies.isNotEmpty()) latencies[latencies.size / 2] else -1L
-        val p95 = if (latencies.isNotEmpty())
+        val p50    = if (latencies.isNotEmpty()) latencies[latencies.size / 2] else -1L
+        val p95    = if (latencies.isNotEmpty())
             latencies[(latencies.size * 0.95).toInt().coerceAtMost(latencies.size - 1)]
         else -1L
         val peakMb = memPeak.maxOrNull()?.div(1_048_576) ?: 0L
 
         mapOf(
-            "model_name"          to modelName,
-            "mode"                to MODE,
-            "cloud_fallback"      to false,
-            "qwen_api_used"       to false,
-            "dashscope_used"      to false,
-            "device_model"        to Build.MODEL,
-            "device_soc"          to Build.HARDWARE,
-            "android_version"     to Build.VERSION.RELEASE,
-            "total_ram_mb"        to totalRamMb(),
-            "model_load_time_ms"  to loadTimeMs,
-            "iterations"          to iterations,
-            "error_count"         to errorCount,
-            "p50_latency_ms"      to p50,
-            "p95_latency_ms"      to p95,
-            "peak_memory_mb"      to peakMb,
-            "budget_met_10s"      to (p95 <= 10_000L),
-            "latencies_ms"        to latencies,
-            "timestamp_utc"       to Instant.now().toString(),
+            "model_name"                  to modelName,
+            "mode"                        to MODE,
+            "cloud_fallback"              to false,
+            "cloud_fallback_used"         to false,
+            "qwen_api_used"               to false,
+            "qwen_api_calls"              to 0,
+            "dashscope_used"              to false,
+            "dashscope_calls"             to 0,
+            "mnn_native_called"           to modelPtrNonzero,
+            "native_load_called"          to modelPtrNonzero,
+            "native_run_inference_called" to nativeRunInferenceCalled,
+            "model_ptr_nonzero"           to modelPtrNonzero,
+            "raw_output_length"           to rawOutputLength,
+            "engine"                      to "local_qwen_mnn",
+            "device_model"                to Build.MODEL,
+            "device_soc"                  to Build.HARDWARE,
+            "android_version"             to Build.VERSION.RELEASE,
+            "total_ram_mb"                to totalRamMb(),
+            "model_load_time_ms"          to loadTimeMs,
+            "iterations"                  to iterations,
+            "error_count"                 to errorCount,
+            "p50_latency_ms"              to p50,
+            "p95_latency_ms"              to p95,
+            "peak_memory_mb"              to peakMb,
+            "budget_met_10s"              to (p95 <= 10_000L),
+            "latencies_ms"                to latencies,
+            "timestamp_utc"               to Instant.now().toString(),
         )
     }
 
@@ -145,7 +183,7 @@ class BenchmarkActivity : Activity() {
         val json = JSONObject(results).toString(2)
         try {
             File(OUTPUT_FILE).writeText(json)
-            Log.i(TAG, "Results → $OUTPUT_FILE")
+            Log.i(TAG, "Results -> $OUTPUT_FILE")
         } catch (e: Exception) {
             Log.w(TAG, "Write failed: ${e.message}")
         }

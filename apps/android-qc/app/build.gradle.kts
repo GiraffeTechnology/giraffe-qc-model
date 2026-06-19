@@ -24,6 +24,22 @@ android {
         buildConfigField("boolean", "PAD_LOCAL_ONLY",                 "true")
         buildConfigField("boolean", "ALLOW_SEND_IMAGES_TO_CLOUD_QWEN","false")
         buildConfigField("boolean", "ALLOW_STUB_PASS",                "false")
+
+        externalNativeBuild {
+            cmake {
+                cppFlags += "-std=c++17"
+            }
+        }
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     flavorDimensions += "target"
@@ -78,8 +94,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    // MNN Android AAR — sideloaded per docs/PAD_LOCAL_MNN_DEPLOYMENT.md
-    // compileOnly(files("libs/MNN-android.aar"))  // Uncomment once AAR is available
+    // MNN Android native libs are packaged from src/main/jniLibs/arm64-v8a/
+    // Run scripts/download_mnn_android_libs.sh to populate jniLibs/ and mnn_android/include/
     // OkHttp is NOT included: Pad local-only app must not make network calls
     // Testing
     testImplementation("junit:junit:4.13.2")
