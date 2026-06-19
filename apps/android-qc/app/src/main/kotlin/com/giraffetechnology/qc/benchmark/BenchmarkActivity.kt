@@ -163,7 +163,29 @@ class BenchmarkActivity : Activity() {
             is ImportResult.Ready -> Unit
         }
 
-        val modelDir      = (importResult as ImportResult.Ready).dir
+        val modelDir = (importResult as ImportResult.Ready).dir
+
+        // Validate all required Qwen3-VL-4B MNN layout files before running any inference.
+        // An incomplete folder must not silently proceed and produce stub review_required results.
+        val requiredFiles = listOf(
+            "llm.mnn", "llm.mnn.weight", "visual.mnn", "visual.mnn.weight",
+            "llm.mnn.json", "llm_config.json", "tokenizer.txt", "config.json",
+        )
+        val missingFiles = requiredFiles.filter { !File(modelDir, it).exists() }
+        if (missingFiles.isNotEmpty()) {
+            Log.e(TAG, "Incomplete model layout — missing: ${missingFiles.joinToString(", ")}")
+            return@withContext mapOf(
+                "error"          to "Incomplete model layout — missing required files. " +
+                    "Re-push the full model directory.",
+                "model_name"     to modelName,
+                "device_model"   to Build.MODEL,
+                "total_ram_mb"   to totalRamMb(),
+                "model_dir"      to modelDir.absolutePath,
+                "missing_files"  to missingFiles,
+                "required_files" to requiredFiles,
+            )
+        }
+
         val runtimeLoader = MnnRuntimeLoader(applicationContext)
 
         val loadStart  = System.currentTimeMillis()

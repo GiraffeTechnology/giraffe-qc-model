@@ -1,3 +1,6 @@
+@file:Suppress("HttpUrlsUsage")
+import java.net.URL
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -21,21 +24,23 @@ tasks.register("downloadMnnAar") {
         val url = "https://github.com/alibaba/MNN/releases/download/$mnnVersion/MNN-android-$mnnVersion.aar"
         println("Downloading MNN $mnnVersion …\n  $url")
         runCatching {
-            java.net.URI.create(url).toURL().openStream().use { input ->
+            URL(url).openStream().use { input ->
                 mnnAarFile.outputStream().use { output -> input.copyTo(output) }
             }
         }.onSuccess {
             println("MNN AAR saved: ${mnnAarFile.absolutePath}  (${mnnAarFile.length() / 1_048_576} MB)")
-        }.onFailure { err ->
+        }.onFailure { err: Throwable ->
             mnnAarFile.delete()
-            error(
-                "Failed to download MNN AAR:\n" +
+            // Non-blocking: warn but do not fail the build. Without the AAR, MnnRuntimeLoader
+            // enters stub mode and MnnQwenInspector returns review_required (never pass).
+            // To enable real inference, manually place the AAR at ${mnnAarFile.absolutePath}
+            // or update mnnVersion to a real release asset at https://github.com/alibaba/MNN/releases
+            println(
+                "WARNING: MNN AAR download failed — building without it (stub mode).\n" +
                 "  URL:   $url\n" +
-                "  Cause: ${err.message}\n\n" +
-                "  Fix options:\n" +
-                "   1. Update mnnVersion in build.gradle.kts to match a real release tag.\n" +
-                "   2. Manually place the AAR at: ${mnnAarFile.absolutePath}\n" +
-                "   3. See https://github.com/alibaba/MNN/releases for available assets."
+                "  Cause: ${err.message}\n" +
+                "  Stub mode: MnnQwenInspector returns review_required until AAR is present.\n" +
+                "  Fix: manually place MNN-android.aar at ${mnnAarFile.absolutePath}"
             )
         }
     }

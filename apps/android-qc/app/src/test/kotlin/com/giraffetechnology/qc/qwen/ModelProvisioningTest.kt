@@ -71,22 +71,97 @@ class ModelProvisioningTest {
         }
     }
 
-    @Test fun `isModelReady returns true when model file present`() {
+    @Test fun `isModelReady returns true when all four required MNN layout files present`() {
         val dir = createTempDir()
         try {
-            File(dir, "model.mnn").writeText("fake model content")
+            // isModelReady requires the full Qwen3-VL-4B-Instruct-MNN layout:
+            File(dir, "llm.mnn").writeText("fake")
+            File(dir, "llm.mnn.weight").writeText("fake")
+            File(dir, "visual.mnn").writeText("fake")
+            File(dir, "visual.mnn.weight").writeText("fake")
             assertTrue(ModelProvisioning.isModelReady(dir))
         } finally {
             dir.deleteRecursively()
         }
     }
 
-    @Test fun `isModelReady requires model_mnn file specifically`() {
+    @Test fun `isModelReady returns false when only llm_mnn is present — weight shards missing`() {
         val dir = createTempDir()
         try {
-            // Only a config file, no model.mnn — should not be ready
+            File(dir, "llm.mnn").writeText("fake")
+            // Missing: llm.mnn.weight, visual.mnn, visual.mnn.weight
+            assertFalse("llm.mnn alone must not satisfy isModelReady",
+                ModelProvisioning.isModelReady(dir))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test fun `isModelReady requires llm_mnn_weight file`() {
+        val dir = createTempDir()
+        try {
+            File(dir, "llm.mnn").writeText("fake")
+            File(dir, "visual.mnn").writeText("fake")
+            File(dir, "visual.mnn.weight").writeText("fake")
+            // Missing: llm.mnn.weight
+            assertFalse("Missing llm.mnn.weight must not satisfy isModelReady",
+                ModelProvisioning.isModelReady(dir))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test fun `getStatus is NOT_PROVISIONED when visual_mnn or weight shards are missing`() {
+        // getStatus() delegates to isModelReady(), so a partial model folder must not report READY.
+        // Tested via isModelReady() since getStatus() requires Android Context (unavailable in JVM).
+        val dir = createTempDir()
+        try {
+            File(dir, "llm.mnn").writeText("fake")
+            File(dir, "llm.mnn.weight").writeText("fake")
+            // Missing: visual.mnn, visual.mnn.weight
+            assertFalse(
+                "isModelReady (called by getStatus) must return false when visual shards missing",
+                ModelProvisioning.isModelReady(dir),
+            )
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test fun `isModelReady requires visual_mnn file`() {
+        val dir = createTempDir()
+        try {
+            File(dir, "llm.mnn").writeText("fake")
+            File(dir, "llm.mnn.weight").writeText("fake")
+            File(dir, "visual.mnn.weight").writeText("fake")
+            // Missing: visual.mnn
+            assertFalse("Missing visual.mnn must not satisfy isModelReady",
+                ModelProvisioning.isModelReady(dir))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test fun `isModelReady requires visual_mnn_weight file`() {
+        val dir = createTempDir()
+        try {
+            File(dir, "llm.mnn").writeText("fake")
+            File(dir, "llm.mnn.weight").writeText("fake")
+            File(dir, "visual.mnn").writeText("fake")
+            // Missing: visual.mnn.weight
+            assertFalse("Missing visual.mnn.weight must not satisfy isModelReady",
+                ModelProvisioning.isModelReady(dir))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test fun `isModelReady requires llm_mnn file specifically — config alone is insufficient`() {
+        val dir = createTempDir()
+        try {
+            // Only a config file — should not be ready
             File(dir, "config.json").writeText("{}")
-            assertFalse("config.json alone should not satisfy isModelReady",
+            assertFalse("config.json alone must not satisfy isModelReady",
                 ModelProvisioning.isModelReady(dir))
         } finally {
             dir.deleteRecursively()

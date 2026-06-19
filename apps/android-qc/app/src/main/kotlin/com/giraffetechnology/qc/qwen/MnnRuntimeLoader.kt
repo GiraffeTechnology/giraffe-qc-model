@@ -18,8 +18,8 @@ import java.io.File
  *   cpuOnly=true: CPU-only regardless of GPU availability.
  *
  * Device: Snapdragon 8 Gen, 8 GB RAM.
- * Model: Qwen3-VL-4B-Instruct-MNN (INT4) — ~4GB weights, ~5-6GB at runtime including
- * vision encoder and KV cache. Within the 8GB budget.
+ * Model: Qwen3-VL-4B-Instruct-MNN (INT4). 8 GB viability, peak memory, and p95 latency
+ * are pending the physical-device MNN benchmark — see MNN_DEVICE_TEST_PLAN.md.
  *
  * Model directory layout (MNN/Qwen3-VL-4B-Instruct-MNN):
  *   llm.mnn, llm.mnn.weight, visual.mnn, visual.mnn.weight,

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # §4.3.0 On-device MNN benchmark runner.
 # Target device: Snapdragon 8 Gen, 8 GB RAM, 128 GB storage.
-# Default model: Qwen3-VL-4B-Instruct-MNN (INT4) — viable on 8 GB RAM.
+# Default model: Qwen3-VL-4B-Instruct-MNN (INT4) — 8 GB viability pending physical-device MNN benchmark.
 #
 # Usage:
 #   ./scripts/benchmark_mnn.sh [OPTIONS]
@@ -218,8 +218,8 @@ print(f"  Budget met (10s):   {r.get('budget_met_10s','?')}")
 print(f"  Timestamp:          {r.get('timestamp_utc','?')}")
 print("=" * 60)
 if stub:
-    print("WARNING: STUB MODE — latencies are simulated (3–7 s/iter), NOT real MNN numbers.")
-    print("  Next step: add MNN-android.aar to build.gradle.kts and wire nativeRunInference().")
+    print("WARNING: STUB MODE — MNN native libs absent. Results are review_required (not real inference).")
+    print("  Next step: place MNN-android.aar in app/libs/ and wire nativeRunInference().")
 budget_ok = r.get('budget_met_10s', False)
 if budget_ok:
     suffix = " (simulated)" if stub else ""

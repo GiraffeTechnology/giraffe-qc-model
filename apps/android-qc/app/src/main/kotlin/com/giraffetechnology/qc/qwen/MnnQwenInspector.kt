@@ -3,20 +3,19 @@ package com.giraffetechnology.qc.qwen
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import kotlin.random.Random
 
 /**
  * On-device QWEN inspector backed by MNN inference engine (§4.3.3).
  *
  * Hardware target: Snapdragon 8 Gen, 8 GB RAM.
- * Default model: Qwen3-VL-4B-Instruct-MNN (INT4).
+ * Default model: Qwen3-VL-4B-Instruct-MNN (INT4). 8 GB viability and runtime memory
+ * are pending the physical-device MNN benchmark; do not assume from model size alone.
  *
  * Modes:
  *   STUB_MODE (MnnRuntimeLoader.stubMode = true): llm.mnn present but MNN AAR absent.
- *     inspect() simulates realistic inference latency and returns labeled stub results.
- *     Benchmark pipeline is fully exercised end-to-end; output is clearly marked STUB_MODE.
+ *     inspect() returns review_required immediately — no simulated pass, no fake latency.
+ *     Core invariant: unavailable real inference MUST become review_required, never pass.
  *   PRODUCTION (stubMode = false): real JNI call via nativeRunInference().
  *     Requires MNN-android.aar dependency to be added to build.gradle.kts.
  *
@@ -48,28 +47,27 @@ class MnnQwenInspector(
         }
 
         if (MnnRuntimeLoader.stubMode) {
-            // Simulate realistic Qwen3-VL-4B inference time on Snapdragon 8 Gen (3–7 s/image).
-            val simulatedMs = Random.nextLong(3_000L, 7_000L)
-            delay(simulatedMs)
-            Log.i(TAG, "STUB_MODE: simulated inference ${simulatedMs} ms")
+            // STUB_MODE: MNN native libs absent — real inference unavailable.
+            // Core invariant: unavailable inference MUST return review_required, never pass.
+            // Confidence=0.0 ensures QwenInspectionRouter.isAcceptable() rejects this result.
+            Log.w(TAG, "STUB_MODE: MNN not available — returning review_required (not pass)")
             return@withContext QwenInspectionOutput(
-                overallResult = "pass",
+                overallResult = "review_required",
                 engine        = "local_qwen_mnn_stub",
                 modelName     = "$modelName (STUB_MODE)",
-                confidence    = 0.94f,
+                confidence    = 0.0f,
                 items         = qcPoints.map { p ->
                     InspectionItemResult(
                         qcPointId   = p.qcPointId,
                         qcPointCode = p.qcPointCode,
                         name        = p.name,
-                        result      = "pass",
-                        confidence  = 0.94f,
-                        reason      = "STUB_MODE: simulated pass — integrate MNN-android.aar for real inference",
+                        result      = "review_required",
+                        confidence  = 0.0f,
+                        reason      = "stub_mode_real_mnn_not_available",
                     )
                 },
-                fallback = FallbackInfo(used = false),
-                summary  = "STUB_MODE — MNN native libs absent. Simulated ${simulatedMs} ms. " +
-                    "Wire MNN-android.aar to replace with real on-device numbers.",
+                fallback = FallbackInfo(used = false, reason = "stub_mode_real_mnn_not_available"),
+                summary  = "stub_mode_real_mnn_not_available",
             )
         }
 

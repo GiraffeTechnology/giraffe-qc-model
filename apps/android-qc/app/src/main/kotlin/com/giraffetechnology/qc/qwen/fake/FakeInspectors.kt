@@ -86,3 +86,28 @@ class NotProvisionedOnDeviceQwenInspector : QwenInspector {
         context: InspectionContext,
     ): QwenInspectionOutput = throw UnsupportedOperationException("on_device_model_not_provisioned")
 }
+
+// Mirrors MnnQwenInspector stub-mode behaviour (MNN AAR absent).
+// Core invariant: stub mode must return review_required, never pass (confidence must be 0.0f
+// so QwenInspectionRouter.isAcceptable() rejects it regardless of minConfidence threshold).
+class StubModeQwenInspector : QwenInspector {
+    override val engineName = "local_qwen_mnn_stub"
+    override val modelName  = "Qwen3-VL-4B-Instruct-MNN (STUB_MODE)"
+    override suspend fun inspect(
+        standardPhotos: List<StandardPhotoInput>,
+        capturedPhoto: CapturePhotoInput,
+        qcPoints: List<QcPointInput>,
+        context: InspectionContext,
+    ): QwenInspectionOutput = QwenInspectionOutput(
+        overallResult = "review_required",
+        engine        = engineName,
+        modelName     = modelName,
+        confidence    = 0.0f,
+        items         = qcPoints.map { p ->
+            InspectionItemResult(p.qcPointId, p.qcPointCode, p.name,
+                "review_required", 0.0f, "stub_mode_real_mnn_not_available")
+        },
+        fallback = FallbackInfo(used = false, reason = "stub_mode_real_mnn_not_available"),
+        summary  = "stub_mode_real_mnn_not_available",
+    )
+}

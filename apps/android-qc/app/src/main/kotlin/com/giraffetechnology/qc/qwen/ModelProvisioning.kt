@@ -33,8 +33,8 @@ data class ProvisioningConfig(
  * Checksum verification is MANDATORY.
  * A corrupted or partial download is NEVER silently used for inference.
  *
- * Hardware note: Qwen3-VL-4B-Instruct-MNN (INT4) requires ~8GB device RAM.
- * Tested device: Snapdragon 8 Gen, 8 GB RAM — 4B model is viable.
+ * Hardware note: Qwen3-VL-4B-Instruct-MNN (INT4) is the active on-device candidate.
+ * 8 GB viability and runtime memory are pending the physical-device MNN benchmark.
  */
 class ModelProvisioning(
     private val context: Context,
@@ -64,11 +64,12 @@ class ModelProvisioning(
 
     fun getStatus(): ProvisioningStatus {
         val modelDir = getModelDir(context)
-        if (!modelDir.exists()) return ProvisioningStatus.NOT_PROVISIONED
+        // isModelReady checks all four required MNN layout files (llm.mnn, llm.mnn.weight,
+        // visual.mnn, visual.mnn.weight). A partial model folder must not report READY.
+        if (!isModelReady(modelDir)) return ProvisioningStatus.NOT_PROVISIONED
         val checksumFile = File(modelDir, "checksum.sha256")
         if (!checksumFile.exists()) return ProvisioningStatus.NOT_PROVISIONED
         val modelFile = File(modelDir, "llm.mnn")
-        if (!modelFile.exists()) return ProvisioningStatus.NOT_PROVISIONED
         return if (verifySha256(modelFile, checksumFile.readText().trim()))
             ProvisioningStatus.READY
         else

@@ -150,6 +150,40 @@ class QwenInspectorRouterTest {
         assertEquals("review_required", r.overallResult)
     }
 
+    // --- Stub mode — must never produce pass ---
+
+    @Test fun `stub mode result is never accepted as pass by router`() = runBlocking {
+        val router = QwenInspectionRouter(
+            onDeviceInspector = StubModeQwenInspector(),
+            config            = RouterConfig(cloudEnabled = false),
+        )
+        val r = router.route(stdPhotos, capPhoto, qcPoints, ctx)
+        assertNotEquals("stub mode must not produce pass", "pass", r.overallResult)
+        assertEquals("stub mode must become review_required", "review_required", r.overallResult)
+    }
+
+    @Test fun `stub mode confidence zero is below router min confidence threshold`() = runBlocking {
+        val stub = StubModeQwenInspector()
+        val result = stub.inspect(stdPhotos, capPhoto, qcPoints, ctx)
+        assertEquals("stub confidence must be 0.0f", 0.0f, result.confidence)
+        assertTrue(
+            "stub confidence 0.0 must be below default minConfidence 0.82",
+            result.confidence < RouterConfig().minConfidence,
+        )
+    }
+
+    @Test fun `stub mode with cloud fallback still produces review_required when cloud disabled`() = runBlocking {
+        val router = QwenInspectionRouter(
+            onDeviceInspector = StubModeQwenInspector(),
+            config            = RouterConfig(cloudEnabled = false),
+        )
+        val r = router.route(stdPhotos, capPhoto, qcPoints, ctx)
+        assertEquals("review_required", r.overallResult)
+        r.items.forEach { item ->
+            assertEquals("each item must be review_required in stub mode", "review_required", item.result)
+        }
+    }
+
     // --- All items covered ---
 
     @Test fun `result items count matches qc_points count`() = runBlocking {
