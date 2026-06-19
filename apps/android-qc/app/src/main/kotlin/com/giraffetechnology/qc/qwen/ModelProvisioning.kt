@@ -37,13 +37,9 @@ data class ProvisioningConfig(
  * or factory preloaded into app assets.
  *
  * All 10 required model files must be present before the model is considered READY.
- * A partial model is treated as NOT_READY and returns review_required.
- * checksum.sha256 is a required file and is always verified against llm.mnn — bypass
- * is not permitted regardless of expectedSha256 config value.
- *
- * Required files: llm.mnn, llm.mnn.weight, visual.mnn, visual.mnn.weight,
- *   llm.mnn.json, llm_config.json, embeddings_bf16.bin, tokenizer.txt,
- *   config.json, checksum.sha256
+ * checksum.sha256 is a required file and is always verified against llm.mnn.
+ * A blank, missing, or mismatched checksum always returns CHECKSUM_FAILED — bypass
+ * is not permitted.
  */
 class ModelProvisioning(
     private val context: Context,
@@ -84,10 +80,23 @@ class ModelProvisioning(
         }
 
         /**
+         * Pure filesystem validation — no Android Context required; safe to call
+         * from JVM unit tests. Checks all 10 required files present and verifies
+         * llm.mnn against checksum.sha256.
+         */
+        fun validateModelDir(modelDir: File): ProvisioningStatus {
+            if (!modelDir.exists()) return ProvisioningStatus.NOT_PROVISIONED
+            val missing = missingFiles(modelDir)
+            if (missing.isNotEmpty()) return ProvisioningStatus.PARTIAL_MODEL
+            if (!verifyModelChecksum(modelDir)) return ProvisioningStatus.CHECKSUM_FAILED
+            return ProvisioningStatus.READY
+        }
+
+        /**
          * Verifies llm.mnn against checksum.sha256 in the given model directory.
          * Returns true only when both files exist, the checksum is non-blank,
          * and the actual SHA-256 of llm.mnn matches the recorded value.
-         * A blank or absent checksum always returns false — bypass is not permitted.
+         * A blank or absent checksum always returns false — bypass not permitted.
          */
         fun verifyModelChecksum(modelDir: File): Boolean {
             val checksumFile = File(modelDir, "checksum.sha256")
@@ -121,18 +130,13 @@ class ModelProvisioning(
 
     fun getStatus(): ProvisioningStatus {
         val modelDir = getModelDir(context)
-        if (!modelDir.exists()) return ProvisioningStatus.NOT_PROVISIONED
-        val missing = missingFiles(modelDir)
-        if (missing.isNotEmpty()) {
-            Log.w(TAG, "Partial model at ${modelDir.absolutePath} — missing: $missing")
-            return ProvisioningStatus.PARTIAL_MODEL
+        val status = validateModelDir(modelDir)
+        when (status) {
+            ProvisioningStatus.PARTIAL_MODEL   -> Log.w(TAG, "Partial model at ${modelDir.absolutePath} — missing: ${missingFiles(modelDir)}")
+            ProvisioningStatus.CHECKSUM_FAILED -> Log.e(TAG, "llm.mnn checksum mismatch — refusing to use model")
+            else -> {}
         }
-        // checksum.sha256 is a required file; always verify — bypass not permitted on Pad branch
-        if (!verifyModelChecksum(modelDir)) {
-            Log.e(TAG, "llm.mnn checksum mismatch — refusing to use model")
-            return ProvisioningStatus.CHECKSUM_FAILED
-        }
-        return ProvisioningStatus.READY
+        return status
     }
 
     suspend fun provision(onProgress: (Float) -> Unit = {}): ProvisioningStatus =

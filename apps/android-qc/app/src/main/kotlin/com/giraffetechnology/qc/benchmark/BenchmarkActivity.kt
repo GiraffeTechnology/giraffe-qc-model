@@ -12,11 +12,12 @@ import java.io.File
 import java.time.Instant
 
 /**
- * §4.3.0 On-device latency benchmark activity.
+ * §4.3.0 On-device latency benchmark activity — Android Pad local-only build.
  *
+ * Target model: Qwen3-VL-4B-Instruct-MNN (INT4), via MNN local runtime.
  * Target device: Snapdragon 8 Gen, 8 GB RAM.
- * Default model: Qwen3-VL-4B-Instruct-MNN (INT4).
- * Measures cold-start load time, per-image p50/p95, peak memory, thermal behavior.
+ * No cloud inference path. All results are local-only.
+ * If native MNN is not wired, inspector returns review_required — never pass.
  *
  * Launch via ADB:
  *   adb shell am start -n com.giraffetechnology.qc/.benchmark.BenchmarkActivity \
@@ -26,24 +27,23 @@ import java.time.Instant
  *
  * Results written to /sdcard/qc_benchmark_results.json and logcat tag QCBenchmark.
  * See docs/PAD_LOCAL_MNN_DEPLOYMENT.md for model provisioning instructions.
- *
- * NOTE: If MNN runtime is not wired, the inspector returns review_required — never pass.
  */
 class BenchmarkActivity : Activity() {
 
     companion object {
         private const val TAG = "QCBenchmark"
         private const val OUTPUT_FILE = "/sdcard/qc_benchmark_results.json"
+        private const val MODE = "android_pad_local_only"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val modelPath  = intent.getStringExtra("model_path")
-            ?: ModelProvisioning.getModelDir(applicationContext).absolutePath
+        val modelPath  = intent.getStringExtra("model_path") ?: "/sdcard/qwen3_vl_4b_mnn"
         val iterations = intent.getIntExtra("iterations", 10)
         val modelName  = intent.getStringExtra("model_name") ?: "Qwen3-VL-4B-Instruct-MNN"
 
-        Log.i(TAG, "Benchmark start: model=$modelPath, iterations=$iterations, modelName=$modelName")
+        Log.i(TAG, "Benchmark start: model=$modelPath, iterations=$iterations")
+        Log.i(TAG, "Mode: $MODE — local inference only, no external services")
 
         CoroutineScope(Dispatchers.Main).launch {
             val results = runBenchmark(modelPath, iterations, modelName)
@@ -66,12 +66,19 @@ class BenchmarkActivity : Activity() {
         val loadTimeMs = System.currentTimeMillis() - loadStart
 
         if (!loaded) {
+            Log.w(TAG, "MNN runtime not wired or model missing at $modelPath — result: review_required")
             return@withContext mapOf(
-                "error"        to "Model failed to load from $modelPath",
-                "model_name"   to modelName,
-                "device_model" to Build.MODEL,
-                "total_ram_mb" to totalRamMb(),
-                "note"         to "Ensure model is provisioned per docs/PAD_LOCAL_MNN_DEPLOYMENT.md",
+                "model_name"                 to modelName,
+                "mode"                       to MODE,
+                "cloud_fallback"             to false,
+                "qwen_api_used"              to false,
+                "dashscope_used"             to false,
+                "native_inference_not_wired" to true,
+                "inspection_result"          to "review_required",
+                "error"                      to "Model failed to load from $modelPath",
+                "device_model"               to Build.MODEL,
+                "total_ram_mb"               to totalRamMb(),
+                "note"                       to "Ensure model is provisioned per docs/PAD_LOCAL_MNN_DEPLOYMENT.md",
             )
         }
 
@@ -114,6 +121,10 @@ class BenchmarkActivity : Activity() {
 
         mapOf(
             "model_name"          to modelName,
+            "mode"                to MODE,
+            "cloud_fallback"      to false,
+            "qwen_api_used"       to false,
+            "dashscope_used"      to false,
             "device_model"        to Build.MODEL,
             "device_soc"          to Build.HARDWARE,
             "android_version"     to Build.VERSION.RELEASE,

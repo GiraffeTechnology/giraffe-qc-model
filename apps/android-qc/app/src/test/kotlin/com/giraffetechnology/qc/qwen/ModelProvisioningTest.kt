@@ -6,8 +6,9 @@ import java.io.File
 
 class ModelProvisioningTest {
 
-    // Note: runs on JVM (not Android), so Context is null.
-    // getModelDir(), sideload provisioning, and sha256/path logic are unit-tested here.
+    // Runs on JVM (not Android) — Context is null.
+    // All companion functions (validateModelDir, verifyModelChecksum, sha256,
+    // isModelReady, missingFiles) are testable here without a device.
 
     @Test fun `default model name is Qwen3-VL-4B-Instruct-MNN`() {
         assertEquals("Qwen3-VL-4B-Instruct-MNN", ModelProvisioning.DEFAULT_MODEL_NAME)
@@ -158,7 +159,6 @@ class ModelProvisioningTest {
         val dir = createTempDir()
         try {
             File(dir, "llm.mnn").writeText("model_data")
-            // checksum.sha256 intentionally not created
             assertFalse("Missing checksum.sha256 must return false",
                 ModelProvisioning.verifyModelChecksum(dir))
         } finally {
@@ -169,10 +169,8 @@ class ModelProvisioningTest {
     @Test fun `verifyModelChecksum returns false when llm_mnn is absent`() {
         val dir = createTempDir()
         try {
-            val data = "fake_model_bytes"
-            val hash = ModelProvisioning.sha256(data.toByteArray())
+            val hash = ModelProvisioning.sha256("fake".toByteArray())
             File(dir, "checksum.sha256").writeText(hash)
-            // llm.mnn intentionally not created
             assertFalse("Missing llm.mnn must return false",
                 ModelProvisioning.verifyModelChecksum(dir))
         } finally {
@@ -184,8 +182,8 @@ class ModelProvisioningTest {
         val dir = createTempDir()
         try {
             File(dir, "llm.mnn").writeText("model_data")
-            File(dir, "checksum.sha256").writeText("   ") // blank — bypass not permitted
-            assertFalse("Blank checksum.sha256 must return false — bypass not permitted on Pad branch",
+            File(dir, "checksum.sha256").writeText("   ")
+            assertFalse("Blank checksum.sha256 must return false — bypass not permitted",
                 ModelProvisioning.verifyModelChecksum(dir))
         } finally {
             dir.deleteRecursively()
@@ -199,7 +197,7 @@ class ModelProvisioningTest {
             File(dir, "checksum.sha256").writeText(
                 "0000000000000000000000000000000000000000000000000000000000000000"
             )
-            assertFalse("Mismatched hash must return false — model rejected",
+            assertFalse("Mismatched hash must return false",
                 ModelProvisioning.verifyModelChecksum(dir))
         } finally {
             dir.deleteRecursively()
@@ -211,12 +209,89 @@ class ModelProvisioningTest {
         try {
             val content = "valid_model_bytes_for_checksum_test"
             File(dir, "llm.mnn").writeBytes(content.toByteArray())
-            val correctHash = ModelProvisioning.sha256(content.toByteArray())
-            File(dir, "checksum.sha256").writeText(correctHash)
-            assertTrue("Correct hash must return true — model accepted",
+            File(dir, "checksum.sha256").writeText(ModelProvisioning.sha256(content.toByteArray()))
+            assertTrue("Correct hash must return true",
                 ModelProvisioning.verifyModelChecksum(dir))
         } finally {
             dir.deleteRecursively()
         }
+    }
+
+    // --- validateModelDir tests (JVM-testable, no Context required) ---
+
+    @Test fun `validateModelDir returns NOT_PROVISIONED when directory does not exist`() {
+        val dir = File("/tmp/nonexistent_validate_${System.nanoTime()}")
+        assertEquals(ProvisioningStatus.NOT_PROVISIONED,
+            ModelProvisioning.validateModelDir(dir))
+    }
+
+    @Test fun `validateModelDir returns PARTIAL_MODEL with only llm_mnn present`() {
+        val dir = createTempDir()
+        try {
+            File(dir, "llm.mnn").writeText("fake")
+            assertEquals("Only llm.mnn present — must be PARTIAL_MODEL",
+                ProvisioningStatus.PARTIAL_MODEL,
+                ModelProvisioning.validateModelDir(dir))
+        } finally { dir.deleteRecursively() }
+    }
+
+    @Test fun `validateModelDir returns PARTIAL_MODEL when checksum file is absent`() {
+        val dir = createTempDir()
+        try {
+            ModelProvisioning.REQUIRED_MODEL_FILES
+                .filter { it != "checksum.sha256" }
+                .forEach { File(dir, it).writeText("fake_$it") }
+            assertEquals("checksum.sha256 is a required file — its absence is PARTIAL_MODEL",
+                ProvisioningStatus.PARTIAL_MODEL,
+                ModelProvisioning.validateModelDir(dir))
+        } finally { dir.deleteRecursively() }
+    }
+
+    @Test fun `validateModelDir returns CHECKSUM_FAILED when checksum is blank`() {
+        val dir = createTempDir()
+        try {
+            ModelProvisioning.REQUIRED_MODEL_FILES.forEach { name ->
+                if (name == "checksum.sha256") File(dir, name).writeText("   ")
+                else File(dir, name).writeText("fake_$name")
+            }
+            assertEquals("Blank checksum — must be CHECKSUM_FAILED",
+                ProvisioningStatus.CHECKSUM_FAILED,
+                ModelProvisioning.validateModelDir(dir))
+        } finally { dir.deleteRecursively() }
+    }
+
+    @Test fun `validateModelDir returns CHECKSUM_FAILED when hash is wrong`() {
+        val dir = createTempDir()
+        try {
+            ModelProvisioning.REQUIRED_MODEL_FILES.forEach { name ->
+                if (name == "checksum.sha256")
+                    File(dir, name).writeText(
+                        "0000000000000000000000000000000000000000000000000000000000000000"
+                    )
+                else File(dir, name).writeText("fake_$name")
+            }
+            assertEquals("Wrong hash — must be CHECKSUM_FAILED",
+                ProvisioningStatus.CHECKSUM_FAILED,
+                ModelProvisioning.validateModelDir(dir))
+        } finally { dir.deleteRecursively() }
+    }
+
+    @Test fun `validateModelDir returns READY when all 10 files present with matching checksum`() {
+        val dir = createTempDir()
+        try {
+            val llmContent = "valid_llm_mnn_content_for_validate_test"
+            ModelProvisioning.REQUIRED_MODEL_FILES.forEach { name ->
+                when (name) {
+                    "llm.mnn"         -> File(dir, name).writeBytes(llmContent.toByteArray())
+                    "checksum.sha256" -> File(dir, name).writeText(
+                        ModelProvisioning.sha256(llmContent.toByteArray())
+                    )
+                    else -> File(dir, name).writeText("fake_$name")
+                }
+            }
+            assertEquals("All 10 files + correct checksum — must be READY",
+                ProvisioningStatus.READY,
+                ModelProvisioning.validateModelDir(dir))
+        } finally { dir.deleteRecursively() }
     }
 }

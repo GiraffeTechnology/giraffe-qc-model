@@ -1,11 +1,14 @@
-# Giraffe QC Model
+# GiraffeQC Android Pad App
 
-> **Android Pad Branch (`android-pad-app`)** — This branch implements the
-> offline-only Android Pad build. The Pad app uses on-device
-> Qwen3-VL-4B-Instruct-MNN (MNN runtime) exclusively. There is **no cloud
-> inference path, no DashScope call, and no Qwen API call** on this branch.
-> If local MNN inference is not ready, the result is always `review_required`.
-> See [`docs/ANDROID_PAD_LOCAL_ONLY.md`](docs/ANDROID_PAD_LOCAL_ONLY.md).
+> **Branch: `android-pad-app`** — This is the Android Pad offline local-only
+> QC application branch, separated from `main`.
+>
+> - The Pad app runs **Qwen3-VL-4B-Instruct-MNN** locally through MNN.
+> - The Pad app does **not** call Qwen API, DashScope, OpenAI-compatible APIs,
+>   or any cloud inference endpoint.
+> - If the local model, local MNN runtime, native inference bridge, JSON parser,
+>   or model files are not ready, the app returns `review_required`.
+> - See [`docs/ANDROID_PAD_LOCAL_ONLY.md`](docs/ANDROID_PAD_LOCAL_ONLY.md).
 
 On-device-first visual quality-control product for Giraffe Technology's
 apparel/textile QC workflows. A QC operator captures a photo on an
@@ -23,7 +26,7 @@ never silently treated as a pass.
 ## Why on-device, not server-side
 
 Earlier designs for this project assumed local inference would run on
-a separate backend node calling an OpenAI-compatible endpoint. That
+a separate backend node against a remote inference endpoint. That
 assumption was replaced: the product requirement is a **single APK,
 installable by a normal user with no root and no separate server**,
 running on mainstream Snapdragon-driven phones/pads. That constraint
@@ -159,6 +162,11 @@ land rather than letting it drift.
 - [ ] Android app has not yet been installed and run on a physical
   device. The capture → on-device-inspect → router → result-display
   flow has been validated in a simulated environment only.
+- [ ] **Native MNN inference not yet wired.** The Pad app is local-only
+  and safely returns `review_required` when native inference is
+  unavailable. This is an acceptable intermediate state. Production-ready
+  Pad inference requires a physical Snapdragon device, the MNN AAR,
+  and JNI wiring of `nativeRunInference()`.
 
 ## Next milestone
 
@@ -205,7 +213,11 @@ uv sync --group dev
 uv run pytest tests/ -v
 ```
 
-### Qwen cloud integration tests (opt-in)
+### Python backend cloud integration tests (opt-in)
+
+> **Python backend only.** These integration tests exercise the Python
+> backend cloud provider (`src/qwen/`). They are not applicable to the
+> Android Pad app, which has no cloud inference path.
 
 The Qwen real-API integration tests are **skipped by default** unless all
 of the following environment variables are set:
@@ -251,7 +263,7 @@ A few project-wide rules worth knowing before contributing:
   documented, scripted sideload (via `adb push`) and checksum-verified
   on device — see `docs/PAD_LOCAL_MNN_DEPLOYMENT.md`.
 - **Mock everything expensive in tests.** Unit/CI tests must never call
-  the real MNN model or the real DashScope API. Use the deterministic
+  the real MNN model or the real backend API. Use the deterministic
   fake providers/inspectors (`FakeOnDeviceQwenInspector`,
   `TimeoutOnDeviceQwenInspector`, `InvalidJsonOnDeviceQwenInspector`,
   `NotProvisionedOnDeviceQwenInspector`, and their Python-side
