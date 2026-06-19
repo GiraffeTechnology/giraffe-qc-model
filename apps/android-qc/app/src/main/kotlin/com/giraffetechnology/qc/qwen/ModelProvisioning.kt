@@ -20,9 +20,9 @@ enum class ProvisioningStatus {
 
 data class ProvisioningConfig(
     val mode: ProvisioningMode = ProvisioningMode.DOWNLOAD_ON_FIRST_RUN,
-    // Default: Qwen2-VL-2B-Instruct-MNN (INT4) — suitable for 8GB RAM Snapdragon 8 Gen devices.
-    // For devices with <3GB available RAM, switch to Qwen2-VL-0.5B-Instruct-MNN.
-    val modelName: String = "Qwen2-VL-2B-Instruct-MNN",
+    // Default: Qwen3-VL-4B-Instruct-MNN (INT4) — suitable for 8GB RAM Snapdragon 8 Gen devices.
+    // For devices with <3GB available RAM, switch to a smaller model variant.
+    val modelName: String = "Qwen3-VL-4B-Instruct-MNN",
     val modelDownloadUrl: String = "",
     val expectedSha256: String = "",
 )
@@ -33,8 +33,8 @@ data class ProvisioningConfig(
  * Checksum verification is MANDATORY.
  * A corrupted or partial download is NEVER silently used for inference.
  *
- * Hardware note: Qwen2-VL-2B-Instruct-MNN (INT4) requires ~8GB device RAM.
- * Tested device: Snapdragon 8 Gen, 8 GB RAM — 2B model is viable.
+ * Hardware note: Qwen3-VL-4B-Instruct-MNN (INT4) requires ~8GB device RAM.
+ * Tested device: Snapdragon 8 Gen, 8 GB RAM — 4B model is viable.
  */
 class ModelProvisioning(
     private val context: Context,
@@ -43,7 +43,7 @@ class ModelProvisioning(
     companion object {
         private const val TAG = "ModelProvisioning"
 
-        const val DEFAULT_MODEL_NAME = "Qwen2-VL-2B-Instruct-MNN"
+        const val DEFAULT_MODEL_NAME = "Qwen3-VL-4B-Instruct-MNN"
 
         fun getModelDir(context: Context): File =
             File(context.filesDir, "models/qwen_mnn")

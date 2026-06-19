@@ -10,8 +10,8 @@ class ModelProvisioningTest {
     // ModelProvisioning.getModelDir() is tested indirectly; SHA256 and path logic
     // are unit-tested here via the companion utilities.
 
-    @Test fun `default model name is 2B variant for 8GB device`() {
-        assertEquals("Qwen2-VL-2B-Instruct-MNN", ModelProvisioning.DEFAULT_MODEL_NAME)
+    @Test fun `default model name is 4B variant for 8GB device`() {
+        assertEquals("Qwen3-VL-4B-Instruct-MNN", ModelProvisioning.DEFAULT_MODEL_NAME)
     }
 
     @Test fun `provisioning mode enum has expected values`() {

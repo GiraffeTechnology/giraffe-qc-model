@@ -11,7 +11,7 @@ import kotlin.random.Random
  * On-device QWEN inspector backed by MNN inference engine (§4.3.3).
  *
  * Hardware target: Snapdragon 8 Gen, 8 GB RAM.
- * Default model: Qwen2-VL-2B-Instruct-MNN (INT4).
+ * Default model: Qwen3-VL-4B-Instruct-MNN (INT4).
  *
  * Modes:
  *   STUB_MODE (MnnRuntimeLoader.stubMode = true): llm.mnn present but MNN AAR absent.
@@ -23,7 +23,7 @@ import kotlin.random.Random
 class MnnQwenInspector(
     private val context: Context,
     private val runtimeLoader: MnnRuntimeLoader,
-    override val modelName: String = "Qwen2-VL-2B-Instruct-MNN",
+    override val modelName: String = "Qwen3-VL-4B-Instruct-MNN",
 ) : QwenInspector {
 
     override val engineName: String = "local_qwen_mnn"
@@ -42,8 +42,8 @@ class MnnQwenInspector(
         }
 
         if (MnnRuntimeLoader.stubMode) {
-            // Simulate realistic Qwen2-VL-2B inference time on Snapdragon 8 Gen (2–4.5 s/image).
-            val simulatedMs = Random.nextLong(2_000L, 4_500L)
+            // Simulate realistic Qwen3-VL-4B inference time on Snapdragon 8 Gen (3–7 s/image).
+            val simulatedMs = Random.nextLong(3_000L, 7_000L)
             delay(simulatedMs)
             Log.i(TAG, "STUB_MODE: simulated inference ${simulatedMs} ms")
             return@withContext QwenInspectionOutput(

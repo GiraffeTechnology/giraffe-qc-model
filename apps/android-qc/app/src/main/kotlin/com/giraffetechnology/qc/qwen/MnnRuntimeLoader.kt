@@ -18,10 +18,10 @@ import java.io.File
  *   cpuOnly=true: CPU-only regardless of GPU availability.
  *
  * Device: Snapdragon 8 Gen, 8 GB RAM.
- * Model: Qwen2-VL-2B-Instruct-MNN (INT4) — ~2GB weights, ~3-4GB at runtime including
+ * Model: Qwen3-VL-4B-Instruct-MNN (INT4) — ~4GB weights, ~5-6GB at runtime including
  * vision encoder and KV cache. Within the 8GB budget.
  *
- * Model directory layout (taobao-mnn/Qwen2-VL-2B-Instruct-MNN):
+ * Model directory layout (MNN/Qwen3-VL-4B-Instruct-MNN):
  *   llm.mnn, llm.mnn.weight, visual.mnn, visual.mnn.weight,
  *   llm.mnn.json, llm_config.json, embeddings_bf16.bin, tokenizer.txt, config.json
  */
@@ -95,8 +95,8 @@ class MnnRuntimeLoader(private val context: Context) {
          * Returns null if llm.mnn cannot be found anywhere under rootDir.
          *
          * This handles the common adb-push case where files land in a subdirectory:
-         *   adb push ./Qwen2-VL-2B-Instruct-MNN  /sdcard/.../qwen_mnn/
-         * results in: /sdcard/.../qwen_mnn/Qwen2-VL-2B-Instruct-MNN/llm.mnn
+         *   adb push ./Qwen3-VL-4B-Instruct-MNN  /sdcard/.../qwen_mnn/
+         * results in: /sdcard/.../qwen_mnn/Qwen3-VL-4B-Instruct-MNN/llm.mnn
          */
         fun resolveModelDir(rootDir: File): File? {
             if (File(rootDir, "llm.mnn").exists()) {

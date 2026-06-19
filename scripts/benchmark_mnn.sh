@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # §4.3.0 On-device MNN benchmark runner.
 # Target device: Snapdragon 8 Gen, 8 GB RAM, 128 GB storage.
-# Default model: Qwen2-VL-2B-Instruct-MNN (INT4) — viable on 8 GB RAM.
+# Default model: Qwen3-VL-4B-Instruct-MNN (INT4) — viable on 8 GB RAM.
 #
 # Usage:
 #   ./scripts/benchmark_mnn.sh [OPTIONS]
@@ -9,7 +9,7 @@
 # Options:
 #   -d DEVICE      ADB device serial (default: first connected)
 #   -i ITERATIONS  Number of inference iterations (default: 10)
-#   -m MODEL_NAME  Model name label (default: Qwen2-VL-2B-Instruct-MNN)
+#   -m MODEL_NAME  Model name label (default: Qwen3-VL-4B-Instruct-MNN)
 #   -o OUTPUT      Local output file for JSON results (default: benchmark_results.json)
 #   -a APK_PATH    Local path to app-debug.apk; installs before benchmark if provided
 #   -c             CPU-only mode (disables GPU/NPU delegates, passes --ez cpu_only true)
@@ -32,7 +32,7 @@
 #   No MANAGE_EXTERNAL_STORAGE needed. Java File.exists() works on filesDir even
 #   where /sdcard/ symlinks fail under Android 16 scoped storage.
 #
-# Model directory must contain (taobao-mnn/Qwen2-VL-2B-Instruct-MNN layout):
+# Model directory must contain (MNN/Qwen3-VL-4B-Instruct-MNN layout):
 #   llm.mnn  llm.mnn.weight  visual.mnn  visual.mnn.weight
 #   llm.mnn.json  llm_config.json  embeddings_bf16.bin  tokenizer.txt  config.json
 #   checksum.sha256
@@ -50,7 +50,7 @@ EXT_FILES_DIR="/sdcard/Android/data/${PACKAGE}/files"
 
 DEVICE=""
 ITERATIONS=10
-MODEL_NAME="Qwen2-VL-2B-Instruct-MNN"
+MODEL_NAME="Qwen3-VL-4B-Instruct-MNN"
 OUTPUT="benchmark_results.json"
 APK_PATH=""
 CPU_ONLY=false
@@ -215,7 +215,7 @@ print(f"  Budget met (10s):   {r.get('budget_met_10s','?')}")
 print(f"  Timestamp:          {r.get('timestamp_utc','?')}")
 print("=" * 60)
 if stub:
-    print("WARNING: STUB MODE — latencies are simulated (2–4.5 s/iter), NOT real MNN numbers.")
+    print("WARNING: STUB MODE — latencies are simulated (3–7 s/iter), NOT real MNN numbers.")
     print("  Next step: add MNN-android.aar to build.gradle.kts and wire nativeRunInference().")
 budget_ok = r.get('budget_met_10s', False)
 if budget_ok:

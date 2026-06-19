@@ -29,7 +29,7 @@ import java.time.Instant
  * ADB launch:
  *   adb shell am start -n com.giraffetechnology.qc/.benchmark.BenchmarkActivity \
  *     --ei iterations 10 \
- *     --es model_name "Qwen2-VL-2B-Instruct-MNN" \
+ *     --es model_name "Qwen3-VL-4B-Instruct-MNN" \
  *     --ez cpu_only false
  *
  * Result JSON fields include:
@@ -47,7 +47,7 @@ class BenchmarkActivity : Activity() {
         super.onCreate(savedInstanceState)
 
         val iterations = intent.getIntExtra("iterations", 10)
-        val modelName  = intent.getStringExtra("model_name") ?: "Qwen2-VL-2B-Instruct-MNN"
+        val modelName  = intent.getStringExtra("model_name") ?: "Qwen3-VL-4B-Instruct-MNN"
         val cpuOnly    = intent.getBooleanExtra("cpu_only", false)
 
         // Results go to getExternalFilesDir() so adb pull works; logcat is always the fallback.
