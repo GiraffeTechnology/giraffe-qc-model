@@ -8,11 +8,12 @@
  *   - C++17
  *   - NDK r25c+ for arm64-v8a
  *
- * MNN LLM API used:
- *   MNN::Transformer::Llm::createLLM(configPath, modelDir) -> Llm*
+ * MNN LLM API used (MNN 3.0.0):
+ *   MNN::Transformer::Llm::createLLM(config_path) -> Llm*
+ *     config_path points to llm_config.json; model weight paths are inside that file.
  *   llm->load()
- *   llm->response_nohistory(fullPrompt)  -> std::string
- *   llm->reset()
+ *   llm->reset()                                   <- clears history_ids_ for single-turn
+ *   llm->response(prompt, nullptr) -> std::string  <- nullptr suppresses stdout streaming
  *   delete llm
  *
  * All exceptions are caught and returned as JSON with inspection_result=review_required.
@@ -135,7 +136,7 @@ Java_com_giraffetechnology_qc_qwen_NativeMnnQwenBridge_nativeLoadModel(
     try {
         std::string configPath = modelDir + "/llm_config.json";
         MNN::Transformer::Llm* llm =
-            MNN::Transformer::Llm::createLLM(configPath, modelDir);
+            MNN::Transformer::Llm::createLLM(configPath);
         if (!llm) {
             LOGE("nativeLoadModel: createLLM returned null (config=%s)", configPath.c_str());
             return 0L;
@@ -188,15 +189,15 @@ Java_com_giraffetechnology_qc_qwen_NativeMnnQwenBridge_nativeRunInference(
 
         std::string fullPrompt = build_vlm_prompt(stdPhotos, capturedPhoto, textPrompt);
 
-        h->llm->reset();
-        std::string output = h->llm->response_nohistory(fullPrompt);
+        h->llm->reset();  // clear history_ids_ — ensures single-turn, no context carry-over
+        std::string output = h->llm->response(fullPrompt, nullptr);
 
         LOGI("nativeRunInference complete: output_len=%zu", output.size());
         return str_to_jstr(env, output);
     } catch (const std::exception& e) {
         LOGE("nativeRunInference exception: %s", e.what());
         std::string err = std::string("{\"error\":\"") + e.what() +
-            "\",\"inspection_result\":\"review_required\"}");
+            "\",\"inspection_result\":\"review_required\"}";
         return str_to_jstr(env, err);
     } catch (...) {
         LOGE("nativeRunInference: unknown C++ exception");
