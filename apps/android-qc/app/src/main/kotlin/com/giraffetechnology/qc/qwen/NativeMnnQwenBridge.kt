@@ -3,10 +3,11 @@ package com.giraffetechnology.qc.qwen
 /**
  * JNI bridge to the native MNN inference runtime.
  *
- * Library load order:
+ * Library load order (must be explicit — Android linker does not auto-load transitive deps):
  *   1. libMNN.so              — core MNN inference runtime
- *   2. libMNN_Express.so      — MNN Express API (required by llm.hpp)
- *   3. libgiraffe_mnn_qwen_bridge.so — this project JNI wrapper
+ *   2. libMNN_Express.so      — MNN Express API layer
+ *   3. libllm.so              — MNN LLM engine (MNN_SEP_BUILD=ON produces a separate .so)
+ *   4. libgiraffe_mnn_qwen_bridge.so — this project JNI wrapper (links against libllm.so)
  *
  * Pre-built MNN .so files must be in:
  *   apps/android-qc/app/src/main/jniLibs/arm64-v8a/
@@ -23,6 +24,7 @@ object NativeMnnQwenBridge {
     init {
         System.loadLibrary("MNN")
         System.loadLibrary("MNN_Express")
+        System.loadLibrary("llm")
         System.loadLibrary("giraffe_mnn_qwen_bridge")
     }
 

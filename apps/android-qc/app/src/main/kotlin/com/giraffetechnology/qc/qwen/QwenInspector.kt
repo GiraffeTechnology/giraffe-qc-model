@@ -54,17 +54,7 @@ data class QwenInspectionOutput(
     val items: List<InspectionItemResult>,
     val fallback: FallbackInfo,
     val summary: String = "",
-) {
-    fun copy(
-        overallResult: String = this.overallResult,
-        engine: String = this.engine,
-        modelName: String = this.modelName,
-        confidence: Float = this.confidence,
-        items: List<InspectionItemResult> = this.items,
-        fallback: FallbackInfo = this.fallback,
-        summary: String = this.summary,
-    ) = QwenInspectionOutput(overallResult, engine, modelName, confidence, items, fallback, summary)
-}
+)
 
 // ── Inspector interface (§4.3.3) ──────────────────────────────────────────────
 
