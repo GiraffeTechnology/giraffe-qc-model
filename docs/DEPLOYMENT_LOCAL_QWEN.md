@@ -8,11 +8,9 @@
 | RAM             | 8 GB                                 |
 | Storage         | 128 GB                               |
 | OS              | Android 12+                          |
-| Default model   | Qwen2-VL-2B-Instruct-MNN (INT4)      |
+| Default model   | Qwen3-VL-2B-Instruct-MNN (INT4)      |
 
 The 2B INT4 model requires approximately 3–4 GB at runtime. On an 8 GB device this leaves sufficient headroom for the OS and camera pipeline.
-
-For devices with less than 4 GB available RAM, use Qwen2-VL-0.5B-Instruct-MNN instead.
 
 ## Model Directory Structure
 
@@ -37,7 +35,7 @@ Configure via `ProvisioningConfig`:
 ```kotlin
 ProvisioningConfig(
     mode             = ProvisioningMode.DOWNLOAD_ON_FIRST_RUN,
-    modelName        = "Qwen2-VL-2B-Instruct-MNN",
+    modelName        = "Qwen3-VL-2B-Instruct-MNN",
     modelDownloadUrl = "https://your-cdn.example.com/qwen_2b_mnn/model.mnn",
     expectedSha256   = "<sha256_hex_of_model_mnn>",
 )
@@ -52,7 +50,7 @@ For factory deployments where the model ships with the APK as an asset:
 ```kotlin
 ProvisioningConfig(
     mode      = ProvisioningMode.BUNDLED,
-    modelName = "Qwen2-VL-2B-Instruct-MNN",
+    modelName = "Qwen3-VL-2B-Instruct-MNN",
 )
 ```
 
@@ -72,7 +70,7 @@ Then launch via the BenchmarkActivity:
 adb shell am start -n com.giraffetechnology.qc/.benchmark.BenchmarkActivity \
     --es model_path /sdcard/qwen_2b_mnn \
     --ei iterations 10 \
-    --es model_name "Qwen2-VL-2B-Instruct-MNN"
+    --es model_name "Qwen3-VL-2B-Instruct-MNN"
 ```
 
 Or use the benchmark script:

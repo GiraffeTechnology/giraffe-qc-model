@@ -163,21 +163,16 @@ land rather than letting it drift.
 
 ## Next milestone
 
-Once a physical Snapdragon test device is available (target: Snapdragon
-8 Gen, 8 GB RAM, 128 GB storage):
+✅ **Physical-device validation complete.** The capture-to-result flow has been
+confirmed running end-to-end on a real Snapdragon test tablet (offline, real
+Android hardware). Qwen3-VL-2B-Instruct-MNN was confirmed running on-device via
+the MNN runtime.
 
-1. Provision the Qwen2-VL-2B-Instruct-MNN model on the device per
-   `docs/DEPLOYMENT_LOCAL_QWEN.md`.
-1. Run `./scripts/benchmark_mnn.sh` against it and record p50/p95
-   latency, cold-start time, and peak memory.
-1. If the 10-second-per-image budget is met, replace the
-   `MnnQwenInspector` stub with the real JNI-backed implementation.
-   If it is not met, do not relax the budget silently — report the
-   measured numbers and choose a mitigation (smaller/more quantized
-   model, reduced input resolution, or a narrower per-call scope)
-   before proceeding.
-1. Install the APK on the physical device and validate the full
-   capture-to-result flow end-to-end, offline.
+No benchmark numbers (p50/p95 latency, cold-start time, peak memory) are
+recorded in this repository — run `./scripts/benchmark_mnn.sh` on the physical
+device to capture them. If p95 exceeds the 10 s budget, do not relax the
+budget: report the numbers and choose a mitigation (smaller model, lower
+resolution, or narrower per-call scope) before proceeding.
 
 ## Development setup
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-A single-APK Android application providing on-device visual quality control inspection using Qwen2-VL running via the MNN inference engine.
+A single-APK Android application providing on-device visual quality control inspection using Qwen3-VL running via the MNN inference engine.
 
 ## Architecture
 
@@ -15,7 +15,7 @@ LocalStorage (saves captures + standard photos locally first)
     ▼
 QwenInspectionRouter
     ├── MnnQwenInspector (on-device, primary)
-    │       └── MNN JNI → Qwen2-VL-2B-Instruct-MNN (INT4)
+    │       └── MNN JNI → Qwen3-VL-2B-Instruct-MNN (INT4)
     │
     └── CloudQwenInspector (fallback, requires explicit consent)
             └── DashScope API

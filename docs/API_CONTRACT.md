@@ -5,7 +5,7 @@ All endpoints are prefixed with `/api/v1`. All requests require `X-Tenant-ID` he
 ## Product Standards
 
 | Method | Path                                       | Description                        |
-|--------|--------------------------------------------|------------------------------------|
+|--------|--------------------------------------------|------------------------------------||
 | POST   | `/standards/`                              | Create a product standard          |
 | GET    | `/standards/{standard_id}`                 | Get standard (tenant-scoped)       |
 | GET    | `/standards/`                              | List standards for tenant          |
@@ -15,14 +15,14 @@ All endpoints are prefixed with `/api/v1`. All requests require `X-Tenant-ID` he
 ## QC Points
 
 | Method | Path                                       | Description                        |
-|--------|--------------------------------------------|------------------------------------|
+|--------|--------------------------------------------|------------------------------------||
 | POST   | `/standards/{standard_id}/qc-points`       | Add QC point to standard           |
 | GET    | `/standards/{standard_id}/qc-points`       | List QC points                     |
 
 ## Inspections
 
 | Method | Path                                       | Description                        |
-|--------|--------------------------------------------|------------------------------------|
+|--------|--------------------------------------------|------------------------------------||
 | POST   | `/inspections/`                            | Create inspection run              |
 | GET    | `/inspections/{inspection_id}`             | Get inspection (tenant-scoped)     |
 | POST   | `/inspections/{inspection_id}/capture`     | Upload capture photo               |
@@ -32,14 +32,14 @@ All endpoints are prefixed with `/api/v1`. All requests require `X-Tenant-ID` he
 ## Captures
 
 | Method | Path                                       | Description                        |
-|--------|--------------------------------------------|------------------------------------|
+|--------|--------------------------------------------|------------------------------------||
 | POST   | `/captures/`                               | Record a capture                   |
 | GET    | `/captures/{capture_id}`                   | Get capture (tenant-scoped)        |
 
 ## Assets
 
 | Method | Path                                       | Description                        |
-|--------|--------------------------------------------|------------------------------------|
+|--------|--------------------------------------------|------------------------------------||
 | POST   | `/assets/`                                 | Register a QC asset                |
 | GET    | `/assets/{asset_id}`                       | Get asset (tenant-scoped)          |
 | GET    | `/assets/`                                 | List assets for tenant/SKU         |
@@ -47,7 +47,7 @@ All endpoints are prefixed with `/api/v1`. All requests require `X-Tenant-ID` he
 ## Sync
 
 | Method | Path                                       | Description                        |
-|--------|--------------------------------------------|------------------------------------|
+|--------|--------------------------------------------|------------------------------------||
 | POST   | `/sync/jobs`                               | Enqueue a sync job                 |
 | GET    | `/sync/jobs/{job_id}`                      | Get sync job status                |
 
@@ -68,7 +68,7 @@ All endpoints are prefixed with `/api/v1`. All requests require `X-Tenant-ID` he
 {
   "overall_result": "pass | fail | review_required",
   "engine": "local_qwen_mnn | cloud_qwen | router",
-  "model_name": "Qwen2-VL-2B-Instruct-MNN",
+  "model_name": "Qwen3-VL-2B-Instruct-MNN",
   "confidence": 0.95,
   "summary": "All QC points passed.",
   "fallback": { "used": false, "reason": null },
