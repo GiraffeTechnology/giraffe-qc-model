@@ -5,6 +5,8 @@ import android.app.ActivityManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import com.giraffetechnology.qc.BuildConfig
+import com.giraffetechnology.qc.PadRuntimeGraph
 import com.giraffetechnology.qc.qwen.*
 import kotlinx.coroutines.*
 import org.json.JSONObject
@@ -13,15 +15,17 @@ import java.time.Instant
 
 /**
  * On-device latency benchmark activity — Android Pad local-only build.
+ * Isolated benchmark entry point: not used in the production operator flow.
+ * Uses PadRuntimeGraph so MnnRuntimeLoader is instantiated in exactly one place.
  *
  * Target model: Qwen3-VL-4B-Instruct-MNN (INT4), via MNN local runtime.
  * No cloud inference path. All results are local-only.
  * Proves real native MNN was called via mnn_native_called / native_run_inference_called fields.
  *
  * Launch via ADB:
- *   adb shell am start -n com.giraffetechnology.qc/.benchmark.BenchmarkActivity \
- *     --es model_path /sdcard/qwen3_vl_4b_mnn \
- *     --ei iterations 10 \
+ *   adb shell am start -n com.giraffetechnology.qc/.benchmark.BenchmarkActivity \\
+ *     --es model_path /sdcard/qwen3_vl_4b_mnn \\
+ *     --ei iterations 10 \\
  *     --es model_name "Qwen3-VL-4B-Instruct-MNN"
  *
  * Results written to /sdcard/qc_benchmark_results.json and logcat tag QCBenchmark.
@@ -57,7 +61,9 @@ class BenchmarkActivity : Activity() {
         iterations: Int,
         modelName: String,
     ): Map<String, Any> = withContext(Dispatchers.Default) {
-        val runtimeLoader = MnnRuntimeLoader(applicationContext)
+        // PadRuntimeGraph is the single MnnRuntimeLoader instantiation site.
+        val graph         = PadRuntimeGraph(applicationContext, BuildConfig.SKU_API_BASE_URL)
+        val runtimeLoader = graph.runtimeLoader
 
         val loadStart  = System.currentTimeMillis()
         val loaded     = runtimeLoader.loadModel(File(modelPath))
@@ -92,7 +98,6 @@ class BenchmarkActivity : Activity() {
         val modelPtrNonzero = runtimeLoader.modelPtr > 0L
         Log.i(TAG, "nativeLoadModel success: modelPtr=${runtimeLoader.modelPtr}")
 
-        // Probe call: direct nativeRunInference to prove the bridge is wired and capture raw_output_length.
         var nativeRunInferenceCalled = false
         var rawOutputLength = -1
         try {

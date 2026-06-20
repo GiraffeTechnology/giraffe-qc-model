@@ -6,7 +6,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import com.giraffetechnology.qc.capture.*
-import com.giraffetechnology.qc.camera.MockCameraFrameSource
 import com.giraffetechnology.qc.qwen.*
 import com.giraffetechnology.qc.sku.*
 import com.giraffetechnology.qc.ui.*
@@ -30,9 +29,9 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun QcPadApp() {
-        // ── MNN runtime (unchanged from existing pipeline) ──
+        val graph = remember { PadRuntimeGraph(this, BuildConfig.SKU_API_BASE_URL) }
+
         var mnnRuntimeState by remember { mutableStateOf<MnnRuntimeState>(MnnRuntimeState.NotReady) }
-        val runtimeLoader = remember { MnnRuntimeLoader(this) }
 
         LaunchedEffect(Unit) {
             val modelDir = ModelProvisioning.getModelDir(this@MainActivity)
@@ -41,27 +40,20 @@ class MainActivity : ComponentActivity() {
                 return@LaunchedEffect
             }
             mnnRuntimeState = MnnRuntimeState.Loading
-            val ok = withContext(Dispatchers.Default) { runtimeLoader.loadModel(modelDir) }
+            val ok = withContext(Dispatchers.Default) { graph.runtimeLoader.loadModel(modelDir) }
             mnnRuntimeState = if (ok) MnnRuntimeState.Ready else MnnRuntimeState.NotReady
             if (ok) Log.i(TAG, "MNN runtime ready")
             else    Log.w(TAG, "MNN runtime load failed — review_required path active")
         }
 
-        // ── Navigation state ──
         var screen by remember { mutableStateOf<Screen>(Screen.Login) }
         var operatorId by remember { mutableStateOf("") }
-        var confirmedTask by remember { mutableStateOf<com.giraffetechnology.qc.sku.QcTask?>(null) }
+        var confirmedTask by remember { mutableStateOf<QcTask?>(null) }
 
-        // ── SKU / task selection ──
-        val fakeRepo = remember { FakeSkuRepository() } // placeholder; real=ApiSkuRepository(baseUrl)
-        val skuMatcher = remember { MnnSkuMatcher(runtimeLoader, fakeRepo) }
-        val taskController = remember { TaskSelectionController(fakeRepo, skuMatcher) }
+        val taskController = remember { TaskSelectionController(graph.skuRepository, graph.skuMatcher) }
         val taskState by taskController.state.collectAsState()
 
-        // ── Auto-capture ──
-        val mockCamera = remember { MockCameraFrameSource() }
-        val mockDetector = remember { MockTargetDetector.noCandidateForever() }
-        val captureController = remember { AutoCaptureController(detector = mockDetector) }
+        val captureController = remember { AutoCaptureController(detector = graph.targetDetector) }
         val captureState by captureController.state.collectAsState()
 
         when (screen) {
@@ -72,26 +64,26 @@ class MainActivity : ComponentActivity() {
                 },
             )
             Screen.TaskSelection -> TaskSelectionScreen(
-                state            = taskState,
-                runtimeState     = mnnRuntimeState,
-                onManualSearch   = { q -> scope.launch { taskController.searchByItemNumber(q) } },
-                onManualConfirm  = { sku ->
+                state             = taskState,
+                runtimeState      = mnnRuntimeState,
+                onManualSearch    = { q -> scope.launch { taskController.searchByItemNumber(q) } },
+                onManualConfirm   = { sku ->
                     taskController.confirmManual(sku, SkuResolutionMethod.MANUAL_ITEM_NUMBER)
                     confirmedTask = (taskController.state.value as? TaskSelectionState.TaskConfirmed)?.task
                     screen = Screen.QcCapture
                 },
-                onStartPhotoMatch = { taskController.startCapturingForMatch() },
+                onStartPhotoMatch  = { taskController.startCapturingForMatch() },
                 onConfirmCandidate = { candidate ->
                     taskController.confirmCandidate(candidate)
                     confirmedTask = (taskController.state.value as? TaskSelectionState.TaskConfirmed)?.task
                     screen = Screen.QcCapture
                 },
-                onSwitchToManual = { taskController.reset() },
+                onSwitchToManual  = { taskController.reset() },
             )
             Screen.QcCapture -> QcCaptureScreen(
                 captureState    = captureState,
                 mnnRuntimeState = mnnRuntimeState,
-                cameraConnected = false, // MockCameraFrameSource starts Disconnected until start() called
+                cameraConnected = false,
                 operatorId      = operatorId,
                 skuName         = confirmedTask?.sku?.name ?: "",
             )
