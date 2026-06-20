@@ -5,11 +5,12 @@ before the APK can be built or run.
 
 ## Required files
 
-| File | Source |
-|------|--------|
-| `libMNN.so` | MNN core inference runtime |
-| `libMNN_Express.so` | MNN Express API (required by LLM module) |
-| `libMNN_CL.so` | OpenCL backend (optional, improves GPU performance) |
+| File | Required | Source |
+|------|----------|--------|
+| `libMNN.so` | **Yes** | MNN core inference runtime |
+| `libMNN_Express.so` | **Yes** | MNN Express API layer |
+| `libllm.so` | **Yes** | MNN LLM engine — `MNN_SEP_BUILD=ON` (MNN default) compiles the LLM engine as a separate shared library, not merged into `libMNN.so` |
+| `libMNN_CL.so` | Optional | OpenCL backend (improves GPU performance if available) |
 
 These files are **not committed** to git (large binaries). Populate them by running:
 
