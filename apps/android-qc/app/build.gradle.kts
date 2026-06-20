@@ -24,6 +24,8 @@ android {
         buildConfigField("boolean", "PAD_LOCAL_ONLY",                 "true")
         buildConfigField("boolean", "ALLOW_SEND_IMAGES_TO_CLOUD_QWEN","false")
         buildConfigField("boolean", "ALLOW_STUB_PASS",                "false")
+        // Factory backend SKU API base URL — override per deployment network (no cloud endpoint)
+        buildConfigField("String",  "SKU_API_BASE_URL",               "\"http://192.168.1.10:8080\"")
 
         externalNativeBuild {
             cmake {
@@ -102,4 +104,55 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+}
+
+// ── Preflight: verify MNN native binaries before any build ──────────────────
+tasks.register("verifyMnnNativeDeps") {
+    group = "verification"
+    description = "Fails fast when MNN .so / header files are missing from the checkout"
+    doLast {
+        val missingFiles = listOf(
+            "src/main/jniLibs/arm64-v8a/libMNN.so",
+            "src/main/jniLibs/arm64-v8a/libMNN_Express.so",
+            "../../mnn_android/include/llm/llm.hpp",
+            "../../mnn_android/include/MNN/Interpreter.hpp",
+        ).filterNot { project.file(it).exists() }
+        if (missingFiles.isNotEmpty()) {
+            error("""
+                MNN native dependency check FAILED. Missing:
+                ${missingFiles.joinToString("\n") { "  $it" }}
+                
+                Run:  bash scripts/download_mnn_android_libs.sh
+                Then: cd apps/android-qc && ./gradlew :app:assemblePadLocalDebug
+            """.trimIndent())
+        }
+    }
+}
+
+// ── Audit guard: no mock/fake class names in src/main ─────────────────────────
+tasks.register("auditNoMocksInMainSrc") {
+    group = "verification"
+    description = "Fails if test-only mock/fake class names appear in src/main"
+    doLast {
+        val forbidden = listOf(
+            "MockTargetDetector", "MockCameraFrameSource",
+            "FakeSkuRepository", "FakeInspectors",
+        )
+        val violations = project.file("src/main").walkTopDown()
+            .filter { it.isFile && it.name.endsWith(".kt") }
+            .flatMap { file ->
+                val text = file.readText()
+                forbidden.filter { name -> name in text }
+                    .map { name -> "${file.relativeTo(project.projectDir)}: '$name'" }
+            }
+            .toList()
+        if (violations.isNotEmpty()) {
+            error("Production source-set contamination:\n${violations.joinToString("\n")}")
+        }
+    }
+}
+
+afterEvaluate {
+    tasks.matching { it.name == "preBuild" }.configureEach { dependsOn("verifyMnnNativeDeps") }
+    tasks.matching { it.name.endsWith("UnitTest") }.configureEach { dependsOn("auditNoMocksInMainSrc") }
 }
