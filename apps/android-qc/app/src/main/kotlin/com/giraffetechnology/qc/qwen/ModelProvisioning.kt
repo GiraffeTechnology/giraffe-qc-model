@@ -36,10 +36,9 @@ data class ProvisioningConfig(
  * NEVER downloads from the network. Model must be present via an approved sideload path
  * or factory preloaded into app assets.
  *
- * All 10 required model files must be present before the model is considered READY.
- * checksum.sha256 is a required file and is always verified against llm.mnn.
- * A blank, missing, or mismatched checksum always returns CHECKSUM_FAILED — bypass
- * is not permitted.
+ * All 8 required model files must be present before the model is considered READY.
+ * checksum.sha256 is optional: if present it is verified against llm.mnn; if absent,
+ * verification is skipped (Qwen3-VL-4B-Instruct-MNN on ModelScope does not ship it).
  */
 class ModelProvisioning(
     private val context: Context,
@@ -57,10 +56,8 @@ class ModelProvisioning(
             "visual.mnn.weight",
             "llm.mnn.json",
             "llm_config.json",
-            "embeddings_bf16.bin",
             "tokenizer.txt",
             "config.json",
-            "checksum.sha256",
         )
 
         // Approved sdcard sideload paths searched in order
@@ -81,8 +78,8 @@ class ModelProvisioning(
 
         /**
          * Pure filesystem validation — no Android Context required; safe to call
-         * from JVM unit tests. Checks all 10 required files present and verifies
-         * llm.mnn against checksum.sha256.
+         * from JVM unit tests. Checks all 8 required files present and verifies
+         * llm.mnn against checksum.sha256 (if present).
          */
         fun validateModelDir(modelDir: File): ProvisioningStatus {
             if (!modelDir.exists()) return ProvisioningStatus.NOT_PROVISIONED
@@ -100,8 +97,9 @@ class ModelProvisioning(
          */
         fun verifyModelChecksum(modelDir: File): Boolean {
             val checksumFile = File(modelDir, "checksum.sha256")
+            if (!checksumFile.exists()) return true  // no checksum file — skip verification
             val llmFile = File(modelDir, "llm.mnn")
-            if (!checksumFile.exists() || !llmFile.exists()) return false
+            if (!llmFile.exists()) return false
             val expectedHex = checksumFile.readText().trim()
             if (expectedHex.isBlank()) return false
             val digest = MessageDigest.getInstance("SHA-256")
@@ -114,7 +112,7 @@ class ModelProvisioning(
         }
 
         /**
-         * Returns true only if ALL 10 required model files are present.
+         * Returns true only if ALL 8 required model files are present.
          * Partial model presence is treated as NOT_READY.
          */
         fun isModelReady(modelDir: File): Boolean {

@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import com.giraffetechnology.qc.qwen.*
 import com.giraffetechnology.qc.ui.PadStatusScreen
 import kotlinx.coroutines.*
+import java.io.File
 
 class MainActivity : ComponentActivity() {
 
@@ -41,13 +42,19 @@ class MainActivity : ComponentActivity() {
     }
 
     private suspend fun initInspectionPipeline() {
-        val modelDir = ModelProvisioning.getModelDir(this)
+        // Search sdcard sideload paths first (flat layout); fall back to app-private dir.
+        val modelDir = withContext(Dispatchers.IO) {
+            ModelProvisioning.SDCARD_SIDELOAD_PATHS
+                .map { File(it) }
+                .firstOrNull { it.exists() && it.isDirectory }
+                ?: ModelProvisioning.getModelDir(this@MainActivity)
+        }
         modelReady = ModelProvisioning.isModelReady(modelDir)
 
         if (!modelReady) {
             val missing = ModelProvisioning.missingFiles(modelDir)
-            Log.w(TAG, "Local model NOT ready — missing: $missing")
-            Log.w(TAG, "  adb push ./Qwen3-VL-4B-Instruct-MNN/ /sdcard/qwen3_vl_4b_mnn/")
+            Log.w(TAG, "Local model NOT ready at ${modelDir.absolutePath} — missing: $missing")
+            Log.w(TAG, "  Deploy: adb push <model-dir>/. /sdcard/qwen3_vl_4b_mnn/")
             return
         }
 
