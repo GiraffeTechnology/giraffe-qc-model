@@ -10,7 +10,7 @@ import org.json.JSONObject
  * On-device QWEN inspector backed by MNN inference engine (§4.3.3).
  *
  * Hardware target: Snapdragon 8 Gen, 8 GB RAM.
- * Default model: Qwen2-VL-2B-Instruct-MNN (INT4).
+ * Default model: Qwen3-VL-2B-Instruct-MNN (INT4).
  *
  * When MNN AAR is NOT present (CI / unit tests):
  * - loadModel() succeeds if model.mnn exists
@@ -20,7 +20,7 @@ import org.json.JSONObject
 class MnnQwenInspector(
     private val context: Context,
     private val runtimeLoader: MnnRuntimeLoader,
-    override val modelName: String = "Qwen2-VL-2B-Instruct-MNN",
+    override val modelName: String = "Qwen3-VL-2B-Instruct-MNN",
 ) : QwenInspector {
 
     override val engineName: String = "local_qwen_mnn"

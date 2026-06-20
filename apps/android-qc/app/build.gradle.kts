@@ -33,7 +33,7 @@ android {
         }
     }
     // On-device model config
-    buildConfigField("String", "QWEN_MODEL_NAME", "\"Qwen2-VL-2B-Instruct-MNN\"")
+    buildConfigField("String", "QWEN_MODEL_NAME", "\"Qwen3-VL-2B-Instruct-MNN\"")
     buildConfigField("String", "QWEN_PROVISIONING_MODE", "\"download_on_first_run\"")
     buildConfigField("int", "QWEN_TIMEOUT_SECONDS", "10")
     buildConfigField("boolean", "QWEN_CLOUD_ENABLED", "false")

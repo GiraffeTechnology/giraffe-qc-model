@@ -5,7 +5,7 @@
 Deliver a single Android APK for apparel and textile quality control (QC) inspection that:
 
 - Installs on a standard Android device with no root and no separate server
-- Uses **Qwen2-VL-2B-Instruct-MNN** running on-device via the **MNN inference framework** as the primary inspection engine
+- Uses **Qwen3-VL-2B-Instruct-MNN** running on-device via the **MNN inference framework** as the primary inspection engine
 - Operates fully offline by default — cloud connectivity is optional and dual-gated
 - Meets the latency and memory budget of Snapdragon 8 Gen class hardware
 
@@ -16,7 +16,7 @@ The target hardware profile is:
 | SoC | Snapdragon 8 Gen |
 | RAM | 8 GB |
 | Storage | 128 GB |
-| Model | Qwen2-VL-2B-Instruct-MNN (INT4) |
+| Model | Qwen3-VL-2B-Instruct-MNN (INT4) |
 | Estimated runtime memory | ~3–4 GB |
 
 The INT4-quantized 2B model is viable on this hardware. Larger models or FP16 weights are out of scope for v3.
@@ -59,12 +59,12 @@ Capture image
 Standard photo + QC point config loaded
      │
      ▼
-On-device MNN inference (Qwen2-VL-2B-Instruct-MNN)
+On-device MNN inference (Qwen3-VL-2B-Instruct-MNN)
      │
      ▼
 Parser validates strict JSON schema
      │
-     ├─ schema valid ──────────────────────────────────────┐
+     ├─ schema valid ────────────────────────────────────────────────┐
      │                                                     │
      └─ schema invalid / uncertain                         │
               │                                            │
@@ -82,7 +82,7 @@ Steps in detail:
 
 1. **Capture** — camera captures the production garment image
 2. **QC point config** — standard reference photo and per-point inspection criteria are loaded
-3. **On-device inference** — MnnQwenInspector runs Qwen2-VL-2B-Instruct-MNN via MNN JNI
+3. **On-device inference** — MnnQwenInspector runs Qwen3-VL-2B-Instruct-MNN via MNN JNI
 4. **Parser** — output is validated against the strict JSON schema; malformed output is rejected
 5. **Result display** — one of `pass`, `fail`, or `review_required` is shown to the operator
 6. **Cloud fallback** (optional) — triggered only if the result is uncertain and both cloud guards are enabled
@@ -128,7 +128,7 @@ All inference runs on-device. No image data leaves the device unless the operato
 Sending images to the cloud Qwen API requires **both** of the following to be set:
 
 | Guard | Purpose |
-|-------|---------|
+|-------|--------|
 | `QWEN_CLOUD_ENABLED=true` | Enables cloud API connectivity at all |
 | `ALLOW_SEND_IMAGES_TO_CLOUD_QWEN=true` | Explicitly permits image data to leave the device |
 
@@ -179,11 +179,11 @@ The following components are implemented and tested in the simulated/CI environm
 The following cannot be validated without hardware:
 
 | Component | Blocker |
-|-----------|---------|
+|-----------|----------|
 | Real MnnQwenInspector JNI (`nativeRunInference()`) | Requires MNN native libs on target ABI |
 | Cold-start load time (budget: ≤30s) | Requires Snapdragon hardware |
 | p50 / p95 per-image latency (budget: ≤10s p95) | Requires Snapdragon hardware |
-| Peak memory measurement (budget: ≤6 GB) | Requires Android profiler on device |
+| Peak memory measurement (budget: ≤ 6 GB) | Requires Android profiler on device |
 | Full capture → result APK install and run | Requires physical device |
 | Offline mode validation (no network calls) | Requires device with WiFi disabled |
 
@@ -193,7 +193,7 @@ See `MNN_DEVICE_TEST_PLAN.md` for the complete test plan to be executed when the
 
 ## Key Design Decisions
 
-1. **Model choice**: Qwen2-VL-2B-Instruct-MNN (INT4) is chosen because the 2B parameter count and INT4 quantization fit within the 6 GB runtime memory budget on 8 GB RAM devices. Larger models are deferred.
+1. **Model choice**: Qwen3-VL-2B-Instruct-MNN (INT4) is chosen because the 2B parameter count and INT4 quantization fit within the 6 GB runtime memory budget on 8 GB RAM devices. Larger models are deferred.
 
 2. **MNN over other runtimes**: MNN is selected for its Android JNI support, low dependency footprint, and suitability for vision-language model deployment without requiring NNAPI or GPU delegation.
 

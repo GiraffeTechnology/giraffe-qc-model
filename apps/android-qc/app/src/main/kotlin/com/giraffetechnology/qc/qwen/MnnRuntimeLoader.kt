@@ -13,7 +13,7 @@ import java.io.File
  * CI/test: MNN native libs absent → loadNativeLibs() returns false → scaffold mode.
  *
  * Device: Snapdragon 8 Gen, 8 GB RAM.
- * Model: Qwen2-VL-2B-Instruct-MNN (INT4) — ~2GB weights, ~3-4GB at runtime including
+ * Model: Qwen3-VL-2B-Instruct-MNN (INT4) — ~2GB weights, ~3-4GB at runtime including
  * vision encoder and KV cache. Within the 8GB budget.
  */
 class MnnRuntimeLoader(private val context: Context) {

@@ -11,7 +11,7 @@ class ModelProvisioningTest {
     // are unit-tested here via the companion utilities.
 
     @Test fun `default model name is 2B variant for 8GB device`() {
-        assertEquals("Qwen2-VL-2B-Instruct-MNN", ModelProvisioning.DEFAULT_MODEL_NAME)
+        assertEquals("Qwen3-VL-2B-Instruct-MNN", ModelProvisioning.DEFAULT_MODEL_NAME)
     }
 
     @Test fun `provisioning mode enum has expected values`() {
