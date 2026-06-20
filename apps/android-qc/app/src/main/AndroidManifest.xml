@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Android Pad local-only app manifest.
-  INTERNET permission is NOT declared: Pad app is fully offline.
-  No Qwen API, no DashScope, no cloud inference path.
-  Location permissions are not declared: no QC requirement for device location.
+  Android Pad manifest.
+  INTERNET is declared for the factory-local SkuRepository backend API (intranet only).
+  No cloud QC inference path: no Qwen API, no DashScope, no remote inspection.
+  No Location permissions.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Factory intranet API for SkuRepository (local network only, not cloud) -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- READ_EXTERNAL_STORAGE / MANAGE_EXTERNAL_STORAGE for sdcard model sideload path -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
@@ -27,7 +29,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Benchmark activity — launched via adb for latency measurement -->
+        <!-- Benchmark activity launched via adb for latency measurement -->
         <activity
             android:name=".benchmark.BenchmarkActivity"
             android:exported="true">

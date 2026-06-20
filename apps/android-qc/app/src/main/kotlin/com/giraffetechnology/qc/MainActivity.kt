@@ -4,11 +4,12 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
+import com.giraffetechnology.qc.capture.*
+import com.giraffetechnology.qc.camera.MockCameraFrameSource
 import com.giraffetechnology.qc.qwen.*
-import com.giraffetechnology.qc.ui.PadStatusScreen
+import com.giraffetechnology.qc.sku.*
+import com.giraffetechnology.qc.ui.*
 import kotlinx.coroutines.*
 
 class MainActivity : ComponentActivity() {
@@ -17,22 +18,9 @@ class MainActivity : ComponentActivity() {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-    private var modelReady by mutableStateOf(false)
-    private var runtimeReady by mutableStateOf(false)
-    private var inspectionResult by mutableStateOf<String?>(null)
-    private var isRunning by mutableStateOf(false)
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            PadStatusScreen(
-                modelReady = modelReady,
-                runtimeReady = runtimeReady,
-                inspectionResult = inspectionResult,
-                isRunning = isRunning,
-            )
-        }
-        scope.launch { initInspectionPipeline() }
+        setContent { QcPadApp() }
     }
 
     override fun onDestroy() {
@@ -40,37 +28,75 @@ class MainActivity : ComponentActivity() {
         scope.cancel()
     }
 
-    private suspend fun initInspectionPipeline() {
-        val modelDir = ModelProvisioning.getModelDir(this)
-        modelReady = ModelProvisioning.isModelReady(modelDir)
+    @Composable
+    private fun QcPadApp() {
+        // ── MNN runtime (unchanged from existing pipeline) ──
+        var mnnRuntimeState by remember { mutableStateOf<MnnRuntimeState>(MnnRuntimeState.NotReady) }
+        val runtimeLoader = remember { MnnRuntimeLoader(this) }
 
-        if (!modelReady) {
-            val missing = ModelProvisioning.missingFiles(modelDir)
-            Log.w(TAG, "Local model NOT ready — missing: $missing")
-            Log.w(TAG, "  adb push ./Qwen3-VL-4B-Instruct-MNN/ /sdcard/qwen3_vl_4b_mnn/")
-            return
+        LaunchedEffect(Unit) {
+            val modelDir = ModelProvisioning.getModelDir(this@MainActivity)
+            if (!ModelProvisioning.isModelReady(modelDir)) {
+                Log.w(TAG, "Local model NOT ready — MNN pending")
+                return@LaunchedEffect
+            }
+            mnnRuntimeState = MnnRuntimeState.Loading
+            val ok = withContext(Dispatchers.Default) { runtimeLoader.loadModel(modelDir) }
+            mnnRuntimeState = if (ok) MnnRuntimeState.Ready else MnnRuntimeState.NotReady
+            if (ok) Log.i(TAG, "MNN runtime ready")
+            else    Log.w(TAG, "MNN runtime load failed — review_required path active")
         }
 
-        val runtimeLoader = MnnRuntimeLoader(this)
-        isRunning = true
-        runtimeReady = withContext(Dispatchers.Default) { runtimeLoader.loadModel(modelDir) }
-        isRunning = false
+        // ── Navigation state ──
+        var screen by remember { mutableStateOf<Screen>(Screen.Login) }
+        var operatorId by remember { mutableStateOf("") }
+        var confirmedTask by remember { mutableStateOf<com.giraffetechnology.qc.sku.QcTask?>(null) }
 
-        val config = RouterConfig(
-            mode                = "local_only",
-            onDeviceEnabled     = true,
-            onDeviceTimeoutMs   = 60_000L,
-            minConfidence       = 0.82f,
-            onDeviceFailIsFinal = true,
-            cloudEnabled        = false,
-            allowSendImages     = false,
-        )
-        val onDeviceInspector = MnnQwenInspector(
-            context       = this,
-            runtimeLoader = runtimeLoader,
-            modelName     = "Qwen3-VL-4B-Instruct-MNN",
-        )
-        val router = QwenInspectionRouter(onDeviceInspector, config = config)
-        Log.i(TAG, "Inspection pipeline ready: engine=${onDeviceInspector.engineName}")
+        // ── SKU / task selection ──
+        val fakeRepo = remember { FakeSkuRepository() } // placeholder; real=ApiSkuRepository(baseUrl)
+        val skuMatcher = remember { MnnSkuMatcher(runtimeLoader, fakeRepo) }
+        val taskController = remember { TaskSelectionController(fakeRepo, skuMatcher) }
+        val taskState by taskController.state.collectAsState()
+
+        // ── Auto-capture ──
+        val mockCamera = remember { MockCameraFrameSource() }
+        val mockDetector = remember { MockTargetDetector.noCandidateForever() }
+        val captureController = remember { AutoCaptureController(detector = mockDetector) }
+        val captureState by captureController.state.collectAsState()
+
+        when (screen) {
+            Screen.Login -> LoginScreen(
+                onLoginSuccess = { id ->
+                    operatorId = id
+                    screen = Screen.TaskSelection
+                },
+            )
+            Screen.TaskSelection -> TaskSelectionScreen(
+                state            = taskState,
+                runtimeState     = mnnRuntimeState,
+                onManualSearch   = { q -> scope.launch { taskController.searchByItemNumber(q) } },
+                onManualConfirm  = { sku ->
+                    taskController.confirmManual(sku, SkuResolutionMethod.MANUAL_ITEM_NUMBER)
+                    confirmedTask = (taskController.state.value as? TaskSelectionState.TaskConfirmed)?.task
+                    screen = Screen.QcCapture
+                },
+                onStartPhotoMatch = { taskController.startCapturingForMatch() },
+                onConfirmCandidate = { candidate ->
+                    taskController.confirmCandidate(candidate)
+                    confirmedTask = (taskController.state.value as? TaskSelectionState.TaskConfirmed)?.task
+                    screen = Screen.QcCapture
+                },
+                onSwitchToManual = { taskController.reset() },
+            )
+            Screen.QcCapture -> QcCaptureScreen(
+                captureState    = captureState,
+                mnnRuntimeState = mnnRuntimeState,
+                cameraConnected = false, // MockCameraFrameSource starts Disconnected until start() called
+                operatorId      = operatorId,
+                skuName         = confirmedTask?.sku?.name ?: "",
+            )
+        }
     }
+
+    private enum class Screen { Login, TaskSelection, QcCapture }
 }

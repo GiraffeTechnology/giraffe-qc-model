@@ -1,11 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   padLocal product flavor manifest.
-  Explicitly removes INTERNET permission even if a library tries to add it.
-  The Pad app is strictly offline: no Qwen API, no DashScope, no cloud inference.
+  INTERNET is allowed: used only for the factory-local SkuRepository backend API.
+  No cloud QC inference: no Qwen API, no DashScope, no remote inspection path.
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
-    <uses-permission android:name="android.permission.INTERNET"
-        tools:node="remove" />
-</manifest>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />
