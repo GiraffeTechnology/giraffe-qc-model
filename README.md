@@ -1,19 +1,32 @@
 # Giraffe QC Model
 
-On-device-first visual quality-control product for Giraffe Technology's
-apparel/textile QC workflows. A QC operator captures a photo on an
-Android phone or pad; the device compares it against that SKU's
-standard reference photo using a small Qwen vision-language model
-running **on the device itself**, and only escalates to a cloud model
-(DashScope/Qwen API) when the on-device result is uncertain, times out,
-fails to parse, or the device is overloaded. Uncertain results are
-never silently treated as a pass.
+AI-native quality control inference system for industrial procurement, with two coordinated deployment targets: an on-device Android Tablet app and a server-side QC model. Both share a strict no-fake-result policy and a common set of field/result conventions, so outputs from both ends remain comparable and auditable.
 
-> **Status: active development.** This README describes the target
-> architecture and the current state as of the last update. Some
-> components are implemented against simulated/mock inference; others
-> are still in progress. See [Current state](#current-state) below
-> before assuming any specific module is production-ready.
+## Overview
+
+|Target            |Model                   |Inference                                                |Network                       |
+|------------------|------------------------|---------------------------------------------------------|------------------------------|
+|Android Tablet App|Qwen3-VL-2B-Instruct-MNN|Local, via MNN runtime                                   |Fully offline                 |
+|QC Model (Server) |Qwen3-VL-8B             |Local inference, with API fallback on capability overflow|Local-first, network on demand|
+
+## Status
+
+### Android Tablet App
+
+✅ **Working end-to-end** — verified running on real Android Tablet hardware with actual MNN inference calls.
+
+- Ships with a quantized **Qwen3-VL-2B-Instruct-MNN** model bundled into the app.
+- Runs **fully offline**: no cloud dependency for SKU matching or QC inference.
+- Branch: `android-pad-app`
+- Task spec: `CLAUDE_ANDROID_PAD_ITER4A_TASK.md`
+
+### QC Model (Server)
+
+Configured with **Qwen3-VL-8B** as the primary inference model.
+
+- Runs locally by default.
+- When local model confidence/capability is insufficient ("capability overflow") for a given case, the server falls back to a cloud API call to supplement the result.
+- Cloud calls are a fallback path only — not the default inference route.
 
 ## Why on-device, not server-side
 
@@ -35,17 +48,11 @@ product are narrow, single-SKU comparisons (one captured photo vs. that
 SKU's known-good standard photo, checked against a short, predefined
 QC point checklist) — not open-domain visual reasoning.
 
-## Core safety principle
+## Core Principles
 
-The single rule every module in this repository is built around:
-
-> **Uncertainty must surface as `review_required`, never silently
-> resolve to `pass`.**
-
-This applies whether the uncertainty comes from a missing image, an
-unparseable model response, an unrecognized QC point, an on-device
-timeout, an unavailable cloud fallback, or anything else. No code path
-should convert "we don't know" into "it's fine."
+- **No fake results.** The system never fabricates a pass/fail outcome.
+- **No silent cloud fallback.** Cloud inference is only invoked on local capability overflow, and is never the default path.
+- **No silent degradation.** If the Tablet app's MNN runtime is unavailable, the result must be explicitly marked `MNN pending` / `review_required` rather than defaulting to any pass/fail value.
 
 ## Architecture
 
