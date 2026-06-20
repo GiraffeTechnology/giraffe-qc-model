@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # §4.3.0 On-device MNN benchmark runner.
 # Target device: Snapdragon 8 Gen, 8 GB RAM, 128 GB storage.
-# Default model: Qwen2-VL-2B-Instruct-MNN (INT4) — viable on 8 GB RAM.
+# Default model: Qwen3-VL-2B-Instruct-MNN (INT4) — viable on 8 GB RAM.
 #
 # Usage:
 #   ./scripts/benchmark_mnn.sh [OPTIONS]
@@ -10,7 +10,7 @@
 #   -d DEVICE    ADB device serial (default: first connected)
 #   -p MODEL_PATH  Path on device to model dir (default: /sdcard/qwen_2b_mnn)
 #   -i ITERATIONS  Number of inference iterations (default: 10)
-#   -m MODEL_NAME  Model name label (default: Qwen2-VL-2B-Instruct-MNN)
+#   -m MODEL_NAME  Model name label (default: Qwen3-VL-2B-Instruct-MNN)
 #   -o OUTPUT      Local output file for JSON results (default: benchmark_results.json)
 #   -h             Show this help
 #
@@ -29,7 +29,7 @@ set -euo pipefail
 DEVICE=""
 MODEL_PATH="/sdcard/qwen_2b_mnn"
 ITERATIONS=10
-MODEL_NAME="Qwen2-VL-2B-Instruct-MNN"
+MODEL_NAME="Qwen3-VL-2B-Instruct-MNN"
 OUTPUT="benchmark_results.json"
 PACKAGE="com.giraffetechnology.qc"
 ACTIVITY=".benchmark.BenchmarkActivity"

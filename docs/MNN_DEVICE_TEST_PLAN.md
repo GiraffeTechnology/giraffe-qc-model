@@ -10,7 +10,7 @@ Test plan to be executed when the physical Snapdragon test device arrives. No ph
 |-------------|--------|
 | Device | Snapdragon 8 Gen, 8 GB RAM, 128 GB storage, Android 12+ |
 | APK | Built from `apps/android-qc/` with `./gradlew assembleDebug` |
-| Model | Qwen2-VL-2B-Instruct-MNN (INT4), provisioned per `DEPLOYMENT_LOCAL_QWEN.md` |
+| Model | Qwen3-VL-2B-Instruct-MNN (INT4), provisioned per `DEPLOYMENT_LOCAL_QWEN.md` |
 | ADB | Connected with USB debugging enabled, `adb devices` shows device |
 | Network | WiFi available for initial provisioning; must be disableable for offline tests |
 
@@ -20,7 +20,7 @@ All phases must be run in order. A failure in an earlier phase is a blocker for 
 
 ## Phase 1: Model Provisioning
 
-**Goal**: Confirm the Qwen2-VL-2B-Instruct-MNN (INT4) model weights are correctly placed on the device and recognized by the app.
+**Goal**: Confirm the Qwen3-VL-2B-Instruct-MNN (INT4) model weights are correctly placed on the device and recognized by the app.
 
 **Steps**:
 
