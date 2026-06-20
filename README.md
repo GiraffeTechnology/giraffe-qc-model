@@ -154,15 +154,12 @@ land rather than letting it drift.
   Qwen integration tests skipped by default (require
   `RUN_QWEN_INTEGRATION=1` + real key)
   (latest run on branch `claude/new-session-0rw6k5`).
-- [ ] **Real on-device MNN benchmark not yet run.** The on-device
-  inspector (`MnnQwenInspector`) is currently a stub; the real
-  `nativeRunInference()` JNI call against an MNN-converted model
-  (default candidate: Qwen2-VL-2B-Instruct-MNN) has not been
-  exercised on physical hardware. This is the next concrete
-  milestone — see [Next milestone](#next-milestone).
-- [ ] Android app has not yet been installed and run on a physical
-  device. The capture → on-device-inspect → router → result-display
-  flow has been validated in a simulated environment only.
+- [x] **Real on-device MNN inference confirmed.** MNN model invocation
+  has been verified running end-to-end on a physical test tablet (real
+  Android device, not emulator/simulator).
+- [x] Android app installed and validated on a physical device. The
+  capture → on-device-inspect → router → result-display flow confirmed
+  end-to-end on real hardware.
 
 ## Next milestone
 
