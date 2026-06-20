@@ -164,8 +164,10 @@ log "Configuring CMake (arm64-v8a, Release, LLM enabled)..."
     2>&1 | grep -E "^--|CMake Warning|CMake Error|error:" || true
 
 log "Building (this takes ~10–20 minutes on first run)..."
+# MNN_SEP_BUILD defaults ON in MNN 3.x: LLM engine compiles into a separate libllm.so
+# (not merged into libMNN.so).  We must build all three targets and deploy all three .so files.
 "$CMAKE_BIN" --build "$BUILD_DIR" \
-    --target MNN MNN_Express \
+    --target MNN MNN_Express llm \
     --parallel "$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)" \
     2>&1 | tail -5
 
@@ -174,7 +176,8 @@ log "Building (this takes ~10–20 minutes on first run)..."
 # ─────────────────────────────────────────────────────────────────────────────
 log "Copying .so files to $JNI_LIB_DIR ..."
 COPIED_SO=0
-for so in libMNN.so libMNN_Express.so; do
+# libllm.so is required: MNN_SEP_BUILD=ON means the LLM engine is a separate shared library.
+for so in libMNN.so libMNN_Express.so libllm.so; do
     src="$(find "$BUILD_DIR" -name "$so" | head -1)"
     if [[ -f "$src" ]]; then
         cp "$src" "$JNI_LIB_DIR/$so"
@@ -243,7 +246,8 @@ ALL_OK=true
 for f in \
     "$MNN_ANDROID_DIR/include/llm/llm.hpp" \
     "$JNI_LIB_DIR/libMNN.so" \
-    "$JNI_LIB_DIR/libMNN_Express.so"; do
+    "$JNI_LIB_DIR/libMNN_Express.so" \
+    "$JNI_LIB_DIR/libllm.so"; do
     if [[ -f "$f" ]]; then
         SIZE=$(du -sh "$f" | cut -f1)
         printf "  ✅  %-60s (%s)\n" "${f##$REPO_ROOT/}" "$SIZE"

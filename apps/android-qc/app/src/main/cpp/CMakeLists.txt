@@ -16,6 +16,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #   apps/android-qc/app/src/main/jniLibs/arm64-v8a/
 #     libMNN.so
 #     libMNN_Express.so
+#     libllm.so           <- LLM engine (separate .so because MNN_SEP_BUILD defaults ON)
 #
 # Gradle automatically packages files from jniLibs/ into the APK.
 # CMakeLists.txt imports them for linking via IMPORTED libraries.
@@ -56,15 +57,20 @@ target_compile_options(giraffe_mnn_qwen_bridge PRIVATE
 
 # ---------------------------------------------------------------------------
 # Import pre-built MNN shared libraries
+# MNN_SEP_BUILD=ON (MNN default): LLM engine is a separate libllm.so.
 # ---------------------------------------------------------------------------
 add_library(MNN         SHARED IMPORTED)
 add_library(MNN_Express SHARED IMPORTED)
+add_library(MNN_LLM     SHARED IMPORTED)
 
 set_target_properties(MNN PROPERTIES
     IMPORTED_LOCATION "${MNN_LIB_DIR}/libMNN.so"
 )
 set_target_properties(MNN_Express PROPERTIES
     IMPORTED_LOCATION "${MNN_LIB_DIR}/libMNN_Express.so"
+)
+set_target_properties(MNN_LLM PROPERTIES
+    IMPORTED_LOCATION "${MNN_LIB_DIR}/libllm.so"
 )
 
 # ---------------------------------------------------------------------------
@@ -79,6 +85,7 @@ find_library(log-lib     log)
 target_link_libraries(giraffe_mnn_qwen_bridge
     MNN
     MNN_Express
+    MNN_LLM
     ${android-lib}
     ${log-lib}
 )
