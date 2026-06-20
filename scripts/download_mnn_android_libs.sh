@@ -206,6 +206,7 @@ fi
 # llm.hpp — search across known paths for different MNN versions
 LLM_HDR=""
 for candidate in \
+    "$MNN_SRC/transformers/llm/engine/include/llm/llm.hpp" \
     "$MNN_SRC/transformers/llm/export/llm.hpp" \
     "$MNN_SRC/llm/include/llm.hpp" \
     "$MNN_SRC/include/llm/llm.hpp" \
@@ -217,9 +218,14 @@ for candidate in \
     fi
 done
 
+if [[ -z "$LLM_HDR" ]]; then
+    # Last-resort: find anywhere in the source tree (handles future path changes)
+    LLM_HDR="$(find "$MNN_SRC" -name "llm.hpp" -not -path "*/pymnn/*" | head -1)"
+fi
+
 if [[ -n "$LLM_HDR" ]]; then
     cp "$LLM_HDR" "$MNN_ANDROID_DIR/include/llm/llm.hpp"
-    ok "llm.hpp → $MNN_ANDROID_DIR/include/llm/llm.hpp"
+    ok "llm.hpp (from ${LLM_HDR#$MNN_SRC/}) → $MNN_ANDROID_DIR/include/llm/llm.hpp"
 else
     warn "llm.hpp not found in MNN $MNN_VERSION source tree."
     warn "Search manually: find $MNN_SRC -name 'llm.hpp'"
