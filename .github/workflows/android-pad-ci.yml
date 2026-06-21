@@ -30,6 +30,11 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      - name: Set up Gradle 8.6
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.6'
+
       - name: Install Android SDK platform and build tools
         run: |
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
@@ -39,9 +44,9 @@ jobs:
       - name: Create MNN CI stubs (satisfies verifyMnnNativeDeps)
         run: bash scripts/download_mnn_android_libs.sh --ci-stubs
 
-      - name: Make gradlew executable
+      - name: Generate Gradle wrapper
         working-directory: apps/android-qc
-        run: chmod +x gradlew
+        run: gradle wrapper --gradle-version 8.6 --distribution-type bin
 
       - name: Run 1 of 3 — assemble padLocalDebug + unit tests
         working-directory: apps/android-qc
