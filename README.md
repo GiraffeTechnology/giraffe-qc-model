@@ -28,11 +28,14 @@ The key commercial value is buyer-led supplier-network deployment. Yiwu foreign-
 
 ### QC Model (Server)
 
+✅ **Cloud fallback integration verified** — DashScope `qwen-vl-max` cloud API confirmed working end-to-end with a real API key (6/6 integration tests passed, 2026-06-21).
+
 Configured with **Qwen3-VL-8B** as the primary inference model.
 
 - Runs locally by default.
 - When local model confidence/capability is insufficient ("capability overflow") for a given case, the server falls back to a cloud API call to supplement the result.
 - Cloud calls are a fallback path only — not the default inference route.
+- Observed cloud fallback latency: ~5.5 s (subsequent calls) to ~9.3 s (cold/first call).
 
 ## Why on-device, not server-side
 
@@ -156,16 +159,19 @@ land rather than letting it drift.
   data.
 - [x] Never-convert-failure-to-pass invariant verified across all
   failure modes via parametrized tests.
-- [x] Full Python test suite: **203 tests pass 5× consecutively**, 6
-  Qwen integration tests skipped by default (require
-  `RUN_QWEN_INTEGRATION=1` + real key)
-  (latest run on branch `claude/new-session-0rw6k5`).
+- [x] Full Python test suite: **203 unit tests pass 5× consecutively**;
+  **6 Qwen cloud integration tests passed** with real DashScope API calls
+  (2026-06-21; run `make test-qwen` with `DASHSCOPE_API_KEY` set).
 - [x] **Real on-device MNN inference confirmed.** MNN model invocation
   has been verified running end-to-end on a physical test tablet (real
   Android device, not emulator/simulator).
 - [x] Android app installed and validated on a physical device. The
   capture → on-device-inspect → router → result-display flow confirmed
   end-to-end on real hardware.
+- [x] **DashScope cloud fallback verified end-to-end** (2026-06-21):
+  6/6 integration tests passed with real API calls to `qwen-vl-max`;
+  observed latency ~5.5 s (warm) / ~9.3 s (cold); hallucinated QC point
+  IDs correctly rejected by parser; API key masking confirmed in logs.
 
 ## Next milestone
 
