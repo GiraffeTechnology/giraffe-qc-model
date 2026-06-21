@@ -7,7 +7,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Loads Qwen3-VL-4B-Instruct-MNN via NativeMnnQwenBridge.
+ * Loads Qwen3-VL-2B-Instruct-MNN via NativeMnnQwenBridge.
  *
  * [loadModel] verifies model files, verifies checksum, then calls
  * [NativeMnnQwenBridge.nativeLoadModel] and stores the returned non-zero

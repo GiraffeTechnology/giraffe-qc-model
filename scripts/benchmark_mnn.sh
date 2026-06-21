@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 # §4.3.0 On-device MNN benchmark runner.
 # Target device: Snapdragon 8 Gen, 8 GB RAM, 128 GB storage.
-# Default model: Qwen3-VL-4B-Instruct-MNN (INT4) — required for Android Pad local-only build.
+# Default model: Qwen3-VL-2B-Instruct-MNN (INT4) — required for Android Pad local-only build.
 #
 # Usage:
 #   ./scripts/benchmark_mnn.sh [OPTIONS]
 #
 # Options:
 #   -d DEVICE    ADB device serial (default: first connected)
-#   -p MODEL_PATH  Path on device to model dir (default: /sdcard/qwen3_vl_4b_mnn)
+#   -p MODEL_PATH  Path on device to model dir (default: /sdcard/qwen3_vl_2b_mnn)
 #   -i ITERATIONS  Number of inference iterations (default: 10)
-#   -m MODEL_NAME  Model name label (default: Qwen3-VL-4B-Instruct-MNN)
+#   -m MODEL_NAME  Model name label (default: Qwen3-VL-2B-Instruct-MNN)
 #   -o OUTPUT      Local output file for JSON results (default: benchmark_results.json)
 #   -h             Show this help
 #
 # Prerequisites:
 #   - ADB in PATH and device connected with USB debugging enabled
 #   - APK installed: adb install app/build/outputs/apk/padLocal/debug/app-padLocal-debug.apk
-#   - Model provisioned to device: adb push <model_dir> /sdcard/qwen3_vl_4b_mnn/
+#   - Model provisioned to device: adb push <model_dir> /sdcard/qwen3_vl_2b_mnn/
 #
 # Budget targets (§4.3.0):
 #   - Cold start load:  ≤ 30 s
@@ -29,9 +29,9 @@
 set -euo pipefail
 
 DEVICE=""
-MODEL_PATH="/sdcard/qwen3_vl_4b_mnn"
+MODEL_PATH="/sdcard/qwen3_vl_2b_mnn"
 ITERATIONS=10
-MODEL_NAME="Qwen3-VL-4B-Instruct-MNN"
+MODEL_NAME="Qwen3-VL-2B-Instruct-MNN"
 OUTPUT="benchmark_results.json"
 PACKAGE="com.giraffetechnology.qc"
 ACTIVITY=".benchmark.BenchmarkActivity"

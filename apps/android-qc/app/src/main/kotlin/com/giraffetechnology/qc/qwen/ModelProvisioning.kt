@@ -26,7 +26,7 @@ enum class ProvisioningStatus {
 
 data class ProvisioningConfig(
     val mode: ProvisioningMode = ProvisioningMode.SIDELOAD_FROM_SDCARD,
-    val modelName: String = "Qwen3-VL-4B-Instruct-MNN",
+    val modelName: String = "Qwen3-VL-2B-Instruct-MNN",
     val expectedSha256: String = "",
 )
 
@@ -48,7 +48,7 @@ class ModelProvisioning(
     companion object {
         private const val TAG = "ModelProvisioning"
 
-        const val DEFAULT_MODEL_NAME = "Qwen3-VL-4B-Instruct-MNN"
+        const val DEFAULT_MODEL_NAME = "Qwen3-VL-2B-Instruct-MNN"
 
         val REQUIRED_MODEL_FILES = listOf(
             "llm.mnn",
@@ -65,9 +65,9 @@ class ModelProvisioning(
 
         // Approved sdcard sideload paths searched in order
         val SDCARD_SIDELOAD_PATHS = listOf(
-            "/sdcard/qwen3_vl_4b_mnn",
-            "/sdcard/Download/qwen3_vl_4b_mnn",
-            "/sdcard/Android/data/com.giraffetechnology.qc/files/import/qwen3_vl_4b_mnn",
+            "/sdcard/qwen3_vl_2b_mnn",
+            "/sdcard/Download/qwen3_vl_2b_mnn",
+            "/sdcard/Android/data/com.giraffetechnology.qc/files/import/qwen3_vl_2b_mnn",
         )
 
         fun getModelDir(context: Context): File =

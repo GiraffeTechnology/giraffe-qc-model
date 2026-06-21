@@ -5,8 +5,9 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
+import com.giraffetechnology.qc.BuildConfig
 import com.giraffetechnology.qc.capture.*
-import com.giraffetechnology.qc.camera.MockCameraFrameSource
+import com.giraffetechnology.qc.camera.UvcCameraFrameSource
 import com.giraffetechnology.qc.qwen.*
 import com.giraffetechnology.qc.sku.*
 import com.giraffetechnology.qc.ui.*
@@ -19,6 +20,7 @@ class MainActivity : ComponentActivity() {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        PadRuntimeGraph.init(this)
         super.onCreate(savedInstanceState)
         setContent { QcPadApp() }
     }
@@ -30,9 +32,9 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun QcPadApp() {
-        // ── MNN runtime (unchanged from existing pipeline) ──
+        // ── MNN runtime (single production instance via PadRuntimeGraph) ──
         var mnnRuntimeState by remember { mutableStateOf<MnnRuntimeState>(MnnRuntimeState.NotReady) }
-        val runtimeLoader = remember { MnnRuntimeLoader(this) }
+        val runtimeLoader = remember { PadRuntimeGraph.runtimeLoader }
 
         LaunchedEffect(Unit) {
             val modelDir = ModelProvisioning.getModelDir(this@MainActivity)
@@ -53,15 +55,15 @@ class MainActivity : ComponentActivity() {
         var confirmedTask by remember { mutableStateOf<com.giraffetechnology.qc.sku.QcTask?>(null) }
 
         // ── SKU / task selection ──
-        val fakeRepo = remember { FakeSkuRepository() } // placeholder; real=ApiSkuRepository(baseUrl)
-        val skuMatcher = remember { MnnSkuMatcher(runtimeLoader, fakeRepo) }
-        val taskController = remember { TaskSelectionController(fakeRepo, skuMatcher) }
+        val skuRepo = remember { ApiSkuRepository(BuildConfig.SKU_API_BASE_URL) }
+        val skuMatcher = remember { MnnSkuMatcher(runtimeLoader, skuRepo) }
+        val taskController = remember { TaskSelectionController(skuRepo, skuMatcher) }
         val taskState by taskController.state.collectAsState()
 
-        // ── Auto-capture ──
-        val mockCamera = remember { MockCameraFrameSource() }
-        val mockDetector = remember { MockTargetDetector.noCandidateForever() }
-        val captureController = remember { AutoCaptureController(detector = mockDetector) }
+        // ── Camera / auto-capture ──
+        val camera = remember { UvcCameraFrameSource(this@MainActivity) }
+        val detector = remember { PendingTargetDetector() }
+        val captureController = remember { AutoCaptureController(detector = detector) }
         val captureState by captureController.state.collectAsState()
 
         when (screen) {
@@ -91,7 +93,7 @@ class MainActivity : ComponentActivity() {
             Screen.QcCapture -> QcCaptureScreen(
                 captureState    = captureState,
                 mnnRuntimeState = mnnRuntimeState,
-                cameraConnected = false, // MockCameraFrameSource starts Disconnected until start() called
+                cameraConnected = false,
                 operatorId      = operatorId,
                 skuName         = confirmedTask?.sku?.name ?: "",
             )
