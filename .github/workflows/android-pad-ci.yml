@@ -1,0 +1,81 @@
+name: Android Pad CI — Qwen3-VL-2B-MNN
+
+on:
+  push:
+    branches:
+      - fix/android-pad-qwen3-vl-2b-mnn-final
+    paths:
+      - 'apps/android-qc/**'
+      - 'scripts/download_mnn_android_libs.sh'
+      - '.github/workflows/android-pad-ci.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'apps/android-qc/**'
+
+jobs:
+  android-build-test:
+    name: Build & Test (3x consecutive)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Install Android SDK platform and build tools
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
+
+      - name: Create MNN CI stubs (satisfies verifyMnnNativeDeps)
+        run: bash scripts/download_mnn_android_libs.sh --ci-stubs
+
+      - name: Make gradlew executable
+        working-directory: apps/android-qc
+        run: chmod +x gradlew
+
+      - name: Run 1 of 3 — assemble padLocalDebug + unit tests
+        working-directory: apps/android-qc
+        run: |
+          ./gradlew clean \
+            :app:assemblePadLocalDebug --stacktrace \
+            :app:testPadLocalDebugUnitTest --stacktrace
+
+      - name: Run 2 of 3 — assemble padLocalDebug + unit tests
+        working-directory: apps/android-qc
+        run: |
+          ./gradlew clean \
+            :app:assemblePadLocalDebug --stacktrace \
+            :app:testPadLocalDebugUnitTest --stacktrace
+
+      - name: Run 3 of 3 — assemble padLocalDebug + unit tests
+        working-directory: apps/android-qc
+        run: |
+          ./gradlew clean \
+            :app:assemblePadLocalDebug --stacktrace \
+            :app:testPadLocalDebugUnitTest --stacktrace
+
+      - name: Upload APK artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pad-local-debug-apk
+          path: apps/android-qc/app/build/outputs/apk/padLocal/debug/*.apk
+          retention-days: 14
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: apps/android-qc/app/build/test-results/**/*.xml
+          retention-days: 14
