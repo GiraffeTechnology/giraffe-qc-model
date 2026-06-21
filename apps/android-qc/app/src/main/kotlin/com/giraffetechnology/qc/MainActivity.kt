@@ -1,40 +1,42 @@
 package com.giraffetechnology.qc
 
-import android.app.Activity
 import android.os.Bundle
-import android.util.Log
-import com.giraffetechnology.qc.qwen.*
-import kotlinx.coroutines.*
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import com.giraffetechnology.qc.sku.MnnRuntimeState
 
-class MainActivity : Activity() {
-
-    companion object { private const val TAG = "QCMain" }
-
-    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-
+class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.i(TAG, "QC app started")
-        scope.launch { initInspectionPipeline() }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        scope.cancel()
-    }
-
-    private suspend fun initInspectionPipeline() {
-        val runtimeLoader = MnnRuntimeLoader(this)
-        val config = RouterConfig(
-            onDeviceEnabled    = true,
-            onDeviceTimeoutMs  = 10_000L,
-            cloudEnabled       = false,
-            minConfidence      = 0.82f,
-            onDeviceFailIsFinal = true,
-        )
-        val onDeviceInspector = MnnQwenInspector(this, runtimeLoader)
-        val router = QwenInspectionRouter(onDeviceInspector, config = config)
-        Log.i(TAG, "Inspection pipeline ready: engine=${onDeviceInspector.engineName} router=$router")
-        // UI wiring happens here once views are added
+        PadRuntimeGraph.init(this)
+        setContent {
+            val runtimeState by PadRuntimeGraph.runtimeLoader.runtimeState.collectAsState()
+            MaterialTheme {
+                Scaffold { padding ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        when (runtimeState) {
+                            is MnnRuntimeState.Ready    -> Text("Giraffe QC — Ready")
+                            is MnnRuntimeState.Loading  -> Text("MNN loading…")
+                            is MnnRuntimeState.NotReady -> Text("Local runtime not ready")
+                        }
+                    }
+                }
+            }
+        }
     }
 }

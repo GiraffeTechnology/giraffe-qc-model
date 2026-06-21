@@ -2,39 +2,36 @@ package com.giraffetechnology.qc.qwen
 
 import android.content.Context
 import android.util.Log
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.io.File
-import java.net.URL
 import java.security.MessageDigest
 
-enum class ProvisioningMode { BUNDLED, DOWNLOAD_ON_FIRST_RUN }
+// Only sideload_or_factory_preload is permitted on the Pad QC device.
+// Network model download is not allowed — the model must be pre-installed
+// via factory sideload or OTA mechanism before the app is started.
+enum class ProvisioningMode { BUNDLED, SIDELOAD_OR_FACTORY_PRELOAD }
 
 enum class ProvisioningStatus {
     READY,
-    DOWNLOADING,
     NOT_PROVISIONED,
     CHECKSUM_FAILED,
-    DOWNLOAD_FAILED,
 }
 
 data class ProvisioningConfig(
-    val mode: ProvisioningMode = ProvisioningMode.DOWNLOAD_ON_FIRST_RUN,
-    // Default: Qwen2-VL-2B-Instruct-MNN (INT4) — suitable for 8GB RAM Snapdragon 8 Gen devices.
-    // For devices with <3GB available RAM, switch to Qwen2-VL-0.5B-Instruct-MNN.
-    val modelName: String = "Qwen2-VL-2B-Instruct-MNN",
-    val modelDownloadUrl: String = "",
+    val mode: ProvisioningMode = ProvisioningMode.SIDELOAD_OR_FACTORY_PRELOAD,
+    // Qwen3-VL-2B-Instruct-MNN (INT4) — suitable for 8 GB RAM Snapdragon 8 Gen devices.
+    val modelName: String = "Qwen3-VL-2B-Instruct-MNN",
     val expectedSha256: String = "",
 )
 
 /**
- * Handles on-device model provisioning (§4.3.2).
+ * Handles on-device model provisioning.
  *
- * Checksum verification is MANDATORY.
- * A corrupted or partial download is NEVER silently used for inference.
+ * Checksum verification is MANDATORY when an expectedSha256 is provided.
+ * A corrupted or partial model is NEVER silently used for inference.
  *
- * Hardware note: Qwen2-VL-2B-Instruct-MNN (INT4) requires ~8GB device RAM.
- * Tested device: Snapdragon 8 Gen, 8 GB RAM — 2B model is viable.
+ * Network download has been intentionally removed. The model must arrive
+ * via factory sideload, OTA push, or asset bundling — never via a runtime
+ * HTTP fetch from the pad app.
  */
 class ModelProvisioning(
     private val context: Context,
@@ -43,16 +40,10 @@ class ModelProvisioning(
     companion object {
         private const val TAG = "ModelProvisioning"
 
-        const val DEFAULT_MODEL_NAME = "Qwen2-VL-2B-Instruct-MNN"
+        const val DEFAULT_MODEL_NAME = "Qwen3-VL-2B-Instruct-MNN"
 
         fun getModelDir(context: Context): File =
             File(context.filesDir, "models/qwen_mnn")
-
-        fun sha256(bytes: ByteArray): String {
-            val digest = MessageDigest.getInstance("SHA-256")
-            digest.update(bytes)
-            return digest.digest().joinToString("") { "%02x".format(it) }
-        }
 
         fun isModelReady(modelDir: File): Boolean =
             modelDir.exists() && modelDir.isDirectory && File(modelDir, "model.mnn").exists()
@@ -61,23 +52,24 @@ class ModelProvisioning(
     fun getStatus(): ProvisioningStatus {
         val modelDir = getModelDir(context)
         if (!modelDir.exists()) return ProvisioningStatus.NOT_PROVISIONED
-        val checksumFile = File(modelDir, "checksum.sha256")
-        if (!checksumFile.exists()) return ProvisioningStatus.NOT_PROVISIONED
         val modelFile = File(modelDir, "model.mnn")
         if (!modelFile.exists()) return ProvisioningStatus.NOT_PROVISIONED
-        return if (verifySha256(modelFile, checksumFile.readText().trim()))
-            ProvisioningStatus.READY
-        else
-            ProvisioningStatus.CHECKSUM_FAILED
-    }
-
-    suspend fun provision(onProgress: (Float) -> Unit = {}): ProvisioningStatus =
-        withContext(Dispatchers.IO) {
-            when (config.mode) {
-                ProvisioningMode.BUNDLED              -> provisionFromAssets(onProgress)
-                ProvisioningMode.DOWNLOAD_ON_FIRST_RUN -> downloadAndVerify(onProgress)
+        if (config.expectedSha256.isNotBlank()) {
+            val checksumFile = File(modelDir, "checksum.sha256")
+            if (!checksumFile.exists()) return ProvisioningStatus.NOT_PROVISIONED
+            if (!verifySha256(modelFile, checksumFile.readText().trim())) {
+                return ProvisioningStatus.CHECKSUM_FAILED
             }
         }
+        return ProvisioningStatus.READY
+    }
+
+    fun provision(onProgress: (Float) -> Unit = {}): ProvisioningStatus {
+        return when (config.mode) {
+            ProvisioningMode.BUNDLED -> provisionFromAssets(onProgress)
+            ProvisioningMode.SIDELOAD_OR_FACTORY_PRELOAD -> getStatus()
+        }
+    }
 
     private fun provisionFromAssets(onProgress: (Float) -> Unit): ProvisioningStatus {
         val modelDir = getModelDir(context)
@@ -90,55 +82,18 @@ class ModelProvisioning(
                 }
                 onProgress((i + 1).toFloat() / files.size)
             }
-            val checksumFile = File(modelDir, "checksum.sha256")
-            if (!checksumFile.exists()) {
-                Log.e(TAG, "No checksum file in bundled assets — refusing to use model")
-                return ProvisioningStatus.CHECKSUM_FAILED
+            if (config.expectedSha256.isNotBlank()) {
+                val modelFile = File(modelDir, "model.mnn")
+                if (!verifySha256(modelFile, config.expectedSha256)) {
+                    Log.e(TAG, "Bundled model checksum mismatch — refusing to use")
+                    return ProvisioningStatus.CHECKSUM_FAILED
+                }
             }
-            val modelFile = File(modelDir, "model.mnn")
-            if (!verifySha256(modelFile, checksumFile.readText().trim())) {
-                Log.e(TAG, "Bundled model checksum mismatch — refusing to use model")
-                return ProvisioningStatus.CHECKSUM_FAILED
-            }
-            Log.i(TAG, "Bundled model provisioned and verified: ${config.modelName}")
+            Log.i(TAG, "Bundled model provisioned: ${config.modelName}")
             ProvisioningStatus.READY
         } catch (e: Exception) {
             Log.e(TAG, "Failed to provision from assets: ${e.message}")
             ProvisioningStatus.NOT_PROVISIONED
-        }
-    }
-
-    private fun downloadAndVerify(onProgress: (Float) -> Unit): ProvisioningStatus {
-        if (config.modelDownloadUrl.isBlank()) {
-            Log.e(TAG, "No download URL configured")
-            return ProvisioningStatus.NOT_PROVISIONED
-        }
-        val modelDir = getModelDir(context)
-        modelDir.mkdirs()
-        val tmpFile = File(modelDir.parentFile, "model_download.tmp")
-        return try {
-            Log.i(TAG, "Downloading model from ${config.modelDownloadUrl}")
-            URL(config.modelDownloadUrl).openStream().use { input ->
-                tmpFile.outputStream().use { out ->
-                    val buf  = ByteArray(65536)
-                    var read: Int
-                    while (input.read(buf).also { read = it } != -1) out.write(buf, 0, read)
-                }
-            }
-            if (config.expectedSha256.isNotBlank() && !verifySha256(tmpFile, config.expectedSha256)) {
-                tmpFile.delete()
-                Log.e(TAG, "Downloaded model checksum mismatch — refusing to use")
-                return ProvisioningStatus.CHECKSUM_FAILED
-            }
-            val modelFile = File(modelDir, "model.mnn")
-            tmpFile.renameTo(modelFile)
-            File(modelDir, "checksum.sha256").writeText(config.expectedSha256)
-            Log.i(TAG, "Model downloaded and verified: ${config.modelName}")
-            ProvisioningStatus.READY
-        } catch (e: Exception) {
-            tmpFile.delete()
-            Log.e(TAG, "Download failed: ${e.message}")
-            ProvisioningStatus.DOWNLOAD_FAILED
         }
     }
 

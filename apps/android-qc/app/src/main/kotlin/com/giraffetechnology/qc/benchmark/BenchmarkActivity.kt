@@ -1,12 +1,21 @@
 package com.giraffetechnology.qc.benchmark
 
-import android.app.Activity
 import android.app.ActivityManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import com.giraffetechnology.qc.qwen.*
-import kotlinx.coroutines.*
+import androidx.activity.ComponentActivity
+import com.giraffetechnology.qc.PadRuntimeGraph
+import com.giraffetechnology.qc.qwen.ModelProvisioning
+import com.giraffetechnology.qc.qwen.MnnQwenInspector
+import com.giraffetechnology.qc.qwen.CapturePhotoInput
+import com.giraffetechnology.qc.qwen.InspectionContext
+import com.giraffetechnology.qc.qwen.QcPointInput
+import com.giraffetechnology.qc.qwen.StandardPhotoInput
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 import java.time.Instant
@@ -14,23 +23,22 @@ import java.time.Instant
 /**
  * §4.3.0 On-device latency benchmark activity.
  *
- * Target device: Snapdragon 8 Gen, 8 GB RAM.
- * Default model: Qwen2-VL-2B-Instruct-MNN (INT4).
- * Measures cold-start load time, per-image p50/p95, peak memory, thermal behavior.
+ * Model: Qwen3-VL-2B-Instruct-MNN (INT4).
+ * Device target: Snapdragon 8 Gen, 8 GB RAM.
  *
  * Launch via ADB:
  *   adb shell am start -n com.giraffetechnology.qc/.benchmark.BenchmarkActivity \
- *     --es model_path /sdcard/qwen_2b_mnn \
- *     --ei iterations 10 \
- *     --es model_name "Qwen2-VL-2B-Instruct-MNN"
+ *     --es model_path /sdcard/qwen_3b_mnn \
+ *     --ei iterations 10
  *
  * Results written to /sdcard/qc_benchmark_results.json and logcat tag QCBenchmark.
  */
-class BenchmarkActivity : Activity() {
+class BenchmarkActivity : ComponentActivity() {
 
     companion object {
         private const val TAG = "QCBenchmark"
         private const val OUTPUT_FILE = "/sdcard/qc_benchmark_results.json"
+        private const val DEFAULT_MODEL_NAME = "Qwen3-VL-2B-Instruct-MNN"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,9 +46,11 @@ class BenchmarkActivity : Activity() {
         val modelPath  = intent.getStringExtra("model_path")
             ?: ModelProvisioning.getModelDir(applicationContext).absolutePath
         val iterations = intent.getIntExtra("iterations", 10)
-        val modelName  = intent.getStringExtra("model_name") ?: "Qwen2-VL-2B-Instruct-MNN"
+        val modelName  = intent.getStringExtra("model_name") ?: DEFAULT_MODEL_NAME
 
         Log.i(TAG, "Benchmark start: model=$modelPath, iterations=$iterations, modelName=$modelName")
+
+        PadRuntimeGraph.init(applicationContext)
 
         CoroutineScope(Dispatchers.Main).launch {
             val results = runBenchmark(modelPath, iterations, modelName)
@@ -55,9 +65,8 @@ class BenchmarkActivity : Activity() {
         iterations: Int,
         modelName: String,
     ): Map<String, Any> = withContext(Dispatchers.Default) {
-        val runtimeLoader = MnnRuntimeLoader(applicationContext)
+        val runtimeLoader = PadRuntimeGraph.runtimeLoader
 
-        // Cold start
         val loadStart  = System.currentTimeMillis()
         val loaded     = runtimeLoader.loadModel(File(modelPath))
         val loadTimeMs = System.currentTimeMillis() - loadStart
