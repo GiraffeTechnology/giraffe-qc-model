@@ -5,6 +5,7 @@ import android.app.ActivityManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import com.giraffetechnology.qc.PadRuntimeGraph
 import com.giraffetechnology.qc.qwen.*
 import kotlinx.coroutines.*
 import org.json.JSONObject
@@ -14,15 +15,15 @@ import java.time.Instant
 /**
  * On-device latency benchmark activity — Android Pad local-only build.
  *
- * Target model: Qwen3-VL-4B-Instruct-MNN (INT4), via MNN local runtime.
+ * Target model: Qwen3-VL-2B-Instruct-MNN (INT4), via MNN local runtime.
  * No cloud inference path. All results are local-only.
  * Proves real native MNN was called via mnn_native_called / native_run_inference_called fields.
  *
  * Launch via ADB:
- *   adb shell am start -n com.giraffetechnology.qc/.benchmark.BenchmarkActivity \
- *     --es model_path /sdcard/qwen3_vl_4b_mnn \
- *     --ei iterations 10 \
- *     --es model_name "Qwen3-VL-4B-Instruct-MNN"
+ *   adb shell am start -n com.giraffetechnology.qc/.benchmark.BenchmarkActivity \\
+ *     --es model_path /sdcard/qwen3_vl_2b_mnn \\
+ *     --ei iterations 10 \\
+ *     --es model_name "Qwen3-VL-2B-Instruct-MNN"
  *
  * Results written to /sdcard/qc_benchmark_results.json and logcat tag QCBenchmark.
  * See docs/PAD_LOCAL_MNN_DEPLOYMENT.md for model provisioning instructions.
@@ -36,10 +37,11 @@ class BenchmarkActivity : Activity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        PadRuntimeGraph.init(this)
         super.onCreate(savedInstanceState)
-        val modelPath  = intent.getStringExtra("model_path") ?: "/sdcard/qwen3_vl_4b_mnn"
+        val modelPath  = intent.getStringExtra("model_path") ?: "/sdcard/qwen3_vl_2b_mnn"
         val iterations = intent.getIntExtra("iterations", 10)
-        val modelName  = intent.getStringExtra("model_name") ?: "Qwen3-VL-4B-Instruct-MNN"
+        val modelName  = intent.getStringExtra("model_name") ?: "Qwen3-VL-2B-Instruct-MNN"
 
         Log.i(TAG, "Benchmark start: model=$modelPath iterations=$iterations")
         Log.i(TAG, "Mode: $MODE — local inference only, no external services")
@@ -57,7 +59,7 @@ class BenchmarkActivity : Activity() {
         iterations: Int,
         modelName: String,
     ): Map<String, Any> = withContext(Dispatchers.Default) {
-        val runtimeLoader = MnnRuntimeLoader(applicationContext)
+        val runtimeLoader = PadRuntimeGraph.runtimeLoader
 
         val loadStart  = System.currentTimeMillis()
         val loaded     = runtimeLoader.loadModel(File(modelPath))
