@@ -1,6 +1,12 @@
 # Giraffe QC Model
 
-AI-native quality control inference system for industrial procurement, with two coordinated deployment targets: an on-device Android Tablet app and a server-side QC model. Both share a strict no-fake-result policy and a common set of field/result conventions, so outputs from both ends remain comparable and auditable.
+Giraffe QC Pad has completed a key on-device technical milestone: MNN inference has been successfully run with Qwen3-VL-2B.
+
+This materially reduces the technical risk of the edge QC device. The product is no longer only an Android architecture or simulated inspection workflow. It has entered the hardware delivery testing stage, where the focus shifts to latency benchmarking, APK stability, model provisioning, SKU-level standard-sample setup, QC checklist configuration, supplier-side usability, and field deployment.
+
+Giraffe QC Pad is designed as an on-device AI quality-control terminal for apparel, textile, artificial flowers, artificial accessories, hair clips, bracelets, and other small handicraft-based production environments. It allows upstream suppliers to capture production images, compare them against buyer-defined standard samples, and generate structured QC evidence before shipment.
+
+The key commercial value is buyer-led supplier-network deployment. Yiwu foreign-trade companies can promote QC Pad to their upstream suppliers in order to reduce defect rates, standardize pre-shipment inspection, and accumulate supplier-level quality records. When connected to abcdYi, QC results can feed Supplier Memory, Industrial Execution Graph.
 
 ## Overview
 
