@@ -18,8 +18,8 @@ class ApiSkuRepository(private val baseUrl: String) : SkuRepository {
             try {
                 if (conn.responseCode == 200) {
                     // TODO: parse JSON response body into List<Sku>
-                    emptyList()
-                } else emptyList()
+                    emptyList<Sku>()
+                } else emptyList<Sku>()
             } finally {
                 conn.disconnect()
             }
