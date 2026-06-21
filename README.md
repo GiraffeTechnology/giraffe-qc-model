@@ -169,16 +169,7 @@ land rather than letting it drift.
 
 ## Next milestone
 
-✅ **Physical-device validation complete.** The capture-to-result flow has been
-confirmed running end-to-end on a real Snapdragon test tablet (offline, real
-Android hardware). Qwen3-VL-2B-Instruct-MNN was confirmed running on-device via
-the MNN runtime.
-
-No benchmark numbers (p50/p95 latency, cold-start time, peak memory) are
-recorded in this repository — run `./scripts/benchmark_mnn.sh` on the physical
-device to capture them. If p95 exceeds the 10 s budget, do not relax the
-budget: report the numbers and choose a mitigation (smaller model, lower
-resolution, or narrower per-call scope) before proceeding.
+Finalize hardware delivery package: benchmark Qwen3-VL-2B-Instruct-MNN on target Pad devices, record p50/p95 latency, cold-start time, memory usage, offline stability, APK installation flow, SKU standard-sample setup, and field inspection workflow.
 
 ## Development setup
 
