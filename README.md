@@ -175,7 +175,24 @@ land rather than letting it drift.
 
 ## Next milestone
 
-Finalize hardware delivery package: benchmark Qwen3-VL-2B-Instruct-MNN on target Pad devices, record p50/p95 latency, cold-start time, memory usage, offline stability, APK installation flow, SKU standard-sample setup, and field inspection workflow.
+The next milestone is hardware delivery hardening for field deployment.
+
+1. Run repeated benchmark cycles on target Android Pad hardware with
+   Qwen3-VL-2B-Instruct-MNN and record p50 / p95 latency, cold-start
+   time, peak memory, offline stability, and battery impact.
+2. Package the Android QC App into a field-installable APK with
+   documented model provisioning and checksum verification.
+3. Build SKU-level standard-sample libraries and QC-point checklists
+   for the first field scenarios, including artificial flowers, hair
+   clips, bracelets, and small handicraft-based export products.
+4. Validate supplier-side usability: capture quality, inspection flow,
+   result display, `review_required` handling, and operator training.
+5. Connect QC outputs to abcdYi-compatible asset registry APIs so
+   inspection records can feed Supplier Memory and Industrial Execution
+   Graph.
+6. Produce a field deployment report covering device configuration,
+   model version, latency, failure modes, `review_required` rate, and
+   inspection-data export.
 
 ## Development setup
 
