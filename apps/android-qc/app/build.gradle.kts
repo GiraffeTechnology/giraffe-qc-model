@@ -136,4 +136,6 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    // Real org.json for JVM unit tests — android.jar stubs don't function for JSON ops
+    testImplementation("org.json:json:20231013")
 }
