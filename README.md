@@ -1,199 +1,320 @@
 # Giraffe QC Model
 
-AI-native quality control inference system for industrial procurement, with two coordinated deployment targets: an on-device Android Tablet app and a server-side QC model. Both share a strict no-fake-result policy and a common set of field/result conventions, so outputs from both ends remain comparable and auditable.
+Provider-neutral, local-first multimodal quality-control inference system for industrial procurement.
+
+Giraffe QC Model uses **Qwen as the default multimodal provider** because it currently offers a strong local/cloud deployment path for visual QC, including Android MNN and DashScope fallback. However, this project is **not a Qwen ecosystem product**. The product logic, API contracts, schemas, routing policy, evidence model, and database layer must remain independent of any single LLM provider.
+
+The long-term target is a multimodal QC engine that can switch between Qwen, local MNN, OpenAI, Anthropic, classical CV, mock providers, or future vision-language models without changing the QC product workflow.
+
+---
 
 ## Overview
 
-|Target            |Model                   |Inference                                                |Network                       |
-|------------------|------------------------|---------------------------------------------------------|------------------------------|
-|Android Tablet App|Qwen3-VL-2B-Instruct-MNN|Local, via MNN runtime                                   |Fully offline                 |
-|QC Model (Server) |Qwen3-VL-8B             |Local inference, with API fallback on capability overflow|Local-first, network on demand|
+| Layer | Default implementation | Role | Provider lock-in |
+|---|---|---|---|
+| Android Tablet App | Qwen3-VL-2B-Instruct-MNN via MNN runtime | Offline, on-device visual QC | No — exposed through a local inspector interface |
+| Backend QC Service | Provider-neutral multimodal QC service | Fleet aggregation, audit, fallback, reporting, abcdYi integration | No — provider selected by config |
+| Default Cloud Adapter | Qwen / DashScope | Cloud fallback for capability overflow and development validation | Replaceable |
+| Future Adapters | OpenAI, Anthropic, local server models, custom VLMs | Alternative multimodal reasoning providers | Replaceable |
 
-## Status
+The operative product concept is **provider-neutral multimodal QC**, not Qwen integration. Qwen is simply the current default adapter.
 
-### Android Tablet App
+---
 
-🔧 **In development** — MNN native inference scaffold in place; JNI wiring to MNN-android.aar is pending.
+## Product Direction
 
-- Target model: **Qwen3-VL-2B-Instruct-MNN** (local MNN runtime, fully offline).
-- JNI calls are scaffolded in Kotlin; `nativeRunInference()` is commented out pending AAR integration.
-- Branch: `fix/android-pad-qwen3-vl-2b-mnn-final`
-- Task spec: `CLAUDE_ANDROID_PAD_ITER4A_TASK.md`
+Giraffe QC Model is designed to inspect production photos against known-good SKU standards and structured QC points. It must produce auditable, evidence-based results:
 
-### QC Model (Server)
+- `pass`
+- `fail`
+- `review_required`
 
-Configured with **Qwen3-VL-8B** as the primary inference model.
+The system should not merely ask a model to "compare two images." It should call multimodal capabilities in a structured way:
 
-- Runs locally by default.
-- When local model confidence/capability is insufficient ("capability overflow") for a given case, the server falls back to a cloud API call to supplement the result.
-- Cloud calls are a fallback path only — not the default inference route.
+1. **Image quality assessment** — determine whether the captured photo is usable.
+2. **SKU / standard matching** — verify that the captured product matches the selected SKU or standard.
+3. **QC inspection** — evaluate each QC point against standard photos and production photos.
+4. **Defect grounding** — localize visual evidence using normalized regions / bounding boxes where possible.
+5. **OCR / label extraction** — read labels, tags, packaging text, serial numbers, or compliance marks when required by a QC point.
+6. **QC report generation** — generate bilingual human-readable reports strictly from structured results.
 
-## Why on-device, not server-side
+These capabilities should be exposed through provider-neutral interfaces. Qwen-specific payloads, DashScope endpoints, or model names must remain inside provider adapters.
 
-Earlier designs for this project assumed local inference would run on
-a separate backend node calling an OpenAI-compatible endpoint. That
-assumption was replaced: the product requirement is a **single APK,
-installable by a normal user with no root and no separate server**,
-running on mainstream Snapdragon-driven phones/pads. That constraint
-rules out larger models (3B+ multimodal models take tens of seconds to
-minutes even on flagship Snapdragon hardware with a dedicated mobile
-inference engine) and points to a small (≤2B parameter), heavily
-quantized model run through **MNN** (Alibaba’s open-source mobile
-inference engine), accepting that a model this size needs more
-frequent escalation to human review or cloud fallback than a
-server-grade model would.
-
-This tradeoff is acceptable here because real QC inspections in this
-product are narrow, single-SKU comparisons (one captured photo vs. that
-SKU’s known-good standard photo, checked against a short, predefined
-QC point checklist) — not open-domain visual reasoning.
+---
 
 ## Core Principles
 
-- **No fake results.** The system never fabricates a pass/fail outcome.
-- **No silent cloud fallback.** Cloud inference is only invoked on local capability overflow, and is never the default path.
-- **No silent degradation.** If the Tablet app’s MNN runtime is unavailable, the result must be explicitly marked `MNN pending` / `review_required` rather than defaulting to any pass/fail value.
+- **Provider-neutral by design.** Qwen is the default provider, not a product dependency.
+- **Local-first inspection.** On-device or local inference is preferred whenever available.
+- **No fake results.** The system must never fabricate pass/fail outcomes.
+- **No silent cloud fallback.** Cloud calls require explicit configuration and must be recorded as fallback.
+- **No silent degradation.** If a local runtime is unavailable, the result must be explicitly marked `review_required`, `MNN pending`, or equivalent.
+- **Evidence-first output.** QC decisions must include structured evidence, not just natural-language explanations.
+- **Fail-closed behavior.** Invalid model output, missing images, low confidence, hallucinated QC point IDs, or parser failures must become `review_required`, not `pass`.
+- **No provider branding in product logic.** Public APIs and core schemas should not be tied to Qwen, DashScope, or any other provider.
+- **Tenant isolation is mandatory.** No endpoint, query, inspection result, asset, or sync job may leak cross-tenant data.
 
-## Architecture
+---
+
+## Current Implementation Status
+
+This repository already contains a working foundation for local-first QC and Qwen/DashScope validation, but the provider-neutral capability layer is the next major refactor.
+
+### Implemented foundation
+
+- FastAPI QC API for standards, standard photos, QC points, captures, inspections, assets, sync targets, and inspection result retrieval.
+- SQLAlchemy-based QC data model and migrations.
+- Shared inspection result conventions: `pass`, `fail`, `review_required`.
+- Qwen-specific schema, prompt builder, parser, router, fake providers, and DashScope cloud provider.
+- Explicit cloud guards for Qwen/DashScope calls.
+- Opt-in real Qwen/DashScope integration tests.
+- Classical CV comparator layer from earlier iterations.
+- Android Tablet app module scaffold with CameraX, SKU/capture flow, result display, local MNN runtime loader, and router logic.
+- Android fake/mock test doubles kept in test sources, not production sources.
+- Multi-tenant isolation tests.
+- Never-convert-failure-to-pass invariant tests.
+
+### Not yet complete
+
+- Real on-device MNN inference has **not** been fully confirmed. JNI/native inference is scaffolded, but `nativeRunInference()` is not yet wired to the real MNN AAR path on a physical Snapdragon device.
+- The current Qwen/DashScope providers are still partly Qwen-specific and need to be refactored into a provider-neutral multimodal provider interface.
+- Structured visual evidence, defect grounding, image quality assessment, OCR extraction, and provider-neutral report generation are not yet fully separated into capability modules.
+
+---
+
+## Target Architecture
 
 ```text
-Android QC App (single APK, no root, no separate server required)
-  ├── CameraX live camera, auto-capture with quality/stability gating
-  ├── Local-first photo + metadata storage (Room)
-  ├── On-device MNN runtime running Qwen3-VL-2B-Instruct-MNN
-  ├── SKU matching: on-device MNN visual similarity (when ready), with manual fallback
-  └── Result display, labeling which engine produced each result
-
-giraffe-qc-model backend (this repo’s Python service — optional for
-an individual device’s inspection to work; required for fleet-level
-aggregation, reporting, and abcdYi integration)
-  ├── FastAPI
-  ├── SKU / standard photo / QC point / inspection data model
-  ├── DashScope/Qwen cloud fallback provider
-  └── abcdYi-compatible asset registry APIs + events
+QC API / Android App / Batch Jobs
+        |
+        v
+MultimodalQCService
+        |
+        v
+CapabilityRouter
+        |
+        +--> Deterministic checks / classical CV
+        |
+        +--> Provider-neutral multimodal capabilities
+                |
+                +--> Qwen / DashScope adapter        default
+                +--> Local MNN adapter               edge / Android
+                +--> OpenAI adapter                  future / optional
+                +--> Anthropic adapter               future / optional
+                +--> Mock provider                   CI / unit tests
+                +--> Other VLM adapters              future
 ```
 
-Inference is the operative word for “on-device first”: a device with
-the model already provisioned can complete a full inspection with zero
-network connectivity. The backend’s role is aggregation and the cloud
-fallback leg, not running the primary inspection.
-
-## Repository structure
+The backend should eventually expose a neutral internal structure such as:
 
 ```text
 giraffe-qc-model/
-├── alembic/               # DB migrations
-├── apps/
-│   └── android-qc/        # Android app (Kotlin, Gradle)
-│       └── app/src/
-│           ├── main/kotlin/com/giraffetechnology/qc/
-│           │   ├── qwen/        # inspector interface, prompt builder,
-│           │   │                # result parser, router, MNN scaffold,
-│           │   │                # model provisioning
-│           │   ├── camera/      # CameraFrame, CameraFrameSource
-│           │   ├── capture/     # AutoCaptureController, TargetDetector,
-│           │   │                # PendingTargetDetector, AutoCaptureConfig
-│           │   ├── sku/         # TaskSelectionController, SkuMatcher,
-│           │   │                # MnnRuntimeState, QcTask, SkuMatchResult
-│           │   ├── benchmark/   # §4.3.0 ADB latency benchmark activity
-│           │   └── MainActivity.kt, PadRuntimeGraph.kt
-│           └── test/kotlin/...  # JVM unit tests (no device required)
-│                                # Fake/mock test doubles live here, not in src/main
-├── scripts/
-│   ├── benchmark_mnn.sh             # ADB benchmark for Snapdragon / 2B model
-│   └── download_mnn_android_libs.sh # Download or stub MNN native libs
-├── .github/workflows/
-│   ├── tests.yml              # Python CI
-│   └── android-pad-ci.yml     # Android Pad CI (3x build+test)
 ├── src/
-│   ├── cv/                # classical CV comparator (pre-dates this effort)
-│   ├── db/                # SQLAlchemy models, session, config
-│   ├── api/               # FastAPI routers
-│   └── qwen/              # QWEN provider abstraction, schema, parser,
-│                          # router, DashScope cloud provider, fake providers
-├── tests/                 # 203 Python unit tests + 6 opt-in integration tests
+│   ├── api/                 # FastAPI routers
+│   ├── cv/                  # deterministic local vision / classical CV
+│   ├── db/                  # SQLAlchemy models, sessions, migrations
+│   ├── multimodal/          # provider-neutral multimodal layer
+│   │   ├── providers/       # qwen, openai, anthropic, local_mnn, mock
+│   │   ├── capabilities/    # image_quality, sku_match, qc_inspection, grounding, OCR, report
+│   │   ├── prompts/         # versioned prompt packs
+│   │   ├── parsers/         # JSON extraction and schema validation
+│   │   ├── router.py        # local-first / fallback policy
+│   │   └── service.py       # product-facing multimodal QC service
+│   └── qwen/                # legacy Qwen-specific wrappers during transition
+├── apps/
+│   └── android-qc/          # Android local-first inspection app
+├── tests/
 └── docs/
-    ├── LOCAL_FIRST_QWEN_QC.md
-    ├── DEPLOYMENT_LOCAL_QWEN.md
-    ├── ANDROID_QC_APP.md
-    └── API_CONTRACT.md
 ```
 
-The Android app module and its MNN integration live alongside this
-backend (see `docs/ANDROID_QC_APP.md` for the current module layout);
-check that doc for the authoritative path, since the Android side is
-being developed in parallel and its structure may be ahead of what’s
-summarized here.
+During the transition, existing `src/qwen/*` and `src/llm/*` modules may remain for backward compatibility, but new product logic should depend on the provider-neutral layer.
 
-## Current state
+---
 
-This section is kept honest and current — updated as phases land rather
-than letting it drift.
+## Deployment Targets
 
-- [x] Phase 0 — repository audit complete; known prior issues (missing
-  image paths defaulting to pass, standard photo overwrite, frozen
-  settings at import time, silent failure-to-done transitions) were
-  verified fixed in existing code.
-- [x] QWEN inference schema, prompt builder, and parser (shared
-  contract between on-device and cloud paths) implemented against
-  simulated/mock providers.
-- [x] Inspection router implemented with the on-device-first / fail-closed
-  policy, including the `on_device_fail_is_final` guard (§4.5.4),
-  exercised against mock on-device and cloud providers.
-- [x] Cloud fallback (DashScope) integration implemented and
-  end-to-end tested against a real DashScope API key.
-- [x] `scripts/benchmark_mnn.sh` written: ADB-based on-device latency
-  benchmark targeting Snapdragon 8 Gen / 8 GB RAM device, reporting
-  p50/p95 against the 10-second-per-image budget.
-- [x] Android app module Kotlin sources complete: `QwenInspector`,
-  `QcPromptBuilder`, `QcResultParser`, `QwenInspectionRouter`,
-  `MnnQwenInspector` scaffold (JNI stub), `MnnRuntimeLoader`,
-  `ModelProvisioning`, `BenchmarkActivity`, `MainActivity`,
-  `PadRuntimeGraph`, `PendingTargetDetector`, `AutoCaptureController`,
-  `TaskSelectionController`, and SKU/camera subsystems.
-- [x] Fake/mock test doubles (`FakeInspectors`, `MockTargetDetector`,
-  `FakeSkuRepository`) live exclusively in `src/test` — no mock
-  contamination in `src/main`.
-- [x] §4.5.1–4.5.4 exhaustive branch coverage: every router decision
-  path exercised with deterministic fakes.
-- [x] Multi-tenant isolation (12 tests) verified: cross-tenant reads
-  return 404 (not 403), listing endpoints never leak other tenants’
-  data.
-- [x] Never-convert-failure-to-pass invariant verified across all
-  failure modes via parametrized tests.
-- [x] Full Python test suite: **203 tests pass 5× consecutively**, 6
-  Qwen integration tests skipped by default (require
-  `RUN_QWEN_INTEGRATION=1` + real key).
-- [x] Android unit tests: `AutoCaptureControllerTest` (10 tests),
-  `TaskSelectionControllerTest` (6 tests), `PreviewBoxCalculationsTest`
-  (5 tests) — all pass with `./gradlew :app:testPadLocalDebugUnitTest`.
-- [ ] Real on-device MNN inference not yet confirmed — JNI native
-  integration is scaffolded but `nativeRunInference()` is not yet
-  wired to the MNN AAR. Status will be updated once a physical
-  Snapdragon test device validates the JNI path.
-- [ ] Android app physical device validation pending.
+### Android Tablet App
 
-## Next milestone
+Target behavior:
 
-Once a physical Snapdragon test device is available (target: Snapdragon
-8 Gen, 8 GB RAM, 128 GB storage):
+- Single APK.
+- No root requirement.
+- No separate server requirement for individual inspection.
+- Offline local inference when the model is provisioned.
+- Local MNN runtime using a small quantized multimodal model.
+- Explicit `review_required` when local inference is unavailable or uncertain.
 
-1. Provision the **Qwen3-VL-2B-Instruct-MNN** model on the device per
-   `docs/DEPLOYMENT_LOCAL_QWEN.md`.
-1. Run `./scripts/benchmark_mnn.sh` against it and record p50/p95
-   latency, cold-start time, and peak memory.
-1. If the 10-second-per-image budget is met, replace the
-   `MnnQwenInspector` stub with the real JNI-backed implementation.
-   If it is not met, do not relax the budget silently — report the
-   measured numbers and choose a mitigation (smaller/more quantized
-   model, reduced input resolution, or a narrower per-call scope)
-   before proceeding.
-1. Install the APK on the physical device and validate the full
-   capture-to-result flow end-to-end, offline.
+Current state:
 
-## Development setup
+- Android module is present.
+- MNN runtime loader and inspector scaffold are present.
+- Native JNI inference remains pending.
+- Physical Snapdragon device validation remains pending.
 
-### Quick start
+### Backend QC Model
+
+Target behavior:
+
+- Provider-neutral service.
+- Local-first routing.
+- Optional cloud fallback on capability overflow.
+- Fleet-level aggregation and audit.
+- abcdYi-compatible asset registry APIs and events.
+- Structured evidence and raw provider metadata for audit.
+
+Current state:
+
+- FastAPI QC service exists.
+- Qwen/DashScope fallback exists.
+- Provider-neutral capability layer is the next milestone.
+
+---
+
+## Capability Model
+
+The final inspection flow should be:
+
+```text
+1. Validate tenant, SKU, standard, capture, photos, and QC points.
+2. Check file existence and image metadata.
+3. Run image quality assessment.
+4. If image unusable, return review_required / retake.
+5. Run SKU / standard matching when candidate standards exist.
+6. If wrong SKU is likely, return review_required.
+7. Run deterministic CV prefilter where applicable.
+8. Run provider-neutral multimodal QC inspection.
+9. Run defect grounding for fail or review_required items.
+10. Run OCR extraction where QC points require text recognition.
+11. Merge evidence.
+12. Apply final routing policy.
+13. Persist inspection run, result, item results, evidence, fallback metadata, and assets.
+14. Emit inspection completed event.
+```
+
+---
+
+## Provider Selection
+
+Provider selection must be controlled by environment variables, not hardcoded product logic.
+
+Recommended future configuration:
+
+```env
+MULTIMODAL_PROVIDER=qwen
+MULTIMODAL_ENABLE_REAL_CALLS=false
+MULTIMODAL_TIMEOUT_SECONDS=60
+MULTIMODAL_MAX_RETRIES=2
+MULTIMODAL_DEFAULT_MODEL=
+
+# qwen | openai | anthropic | local_mnn | mock | cv
+
+QWEN_BASE_URL=https://dashscope.aliyuncs.com/api/v1
+QWEN_MULTIMODAL_MODEL=
+QWEN_API_KEY=
+DASHSCOPE_API_KEY=
+
+OPENAI_MULTIMODAL_MODEL=
+OPENAI_API_KEY=
+
+ANTHROPIC_MULTIMODAL_MODEL=
+ANTHROPIC_API_KEY=
+
+QC_ROUTING_MODE=local_first
+QC_ALLOW_CLOUD_FALLBACK=false
+QC_REQUIRE_USER_CONSENT_FOR_CLOUD=true
+QC_ALLOW_SEND_IMAGES_TO_CLOUD=false
+QC_CLOUD_CAN_OVERRIDE_LOCAL_FAIL=false
+QC_MIN_PASS_CONFIDENCE=0.82
+```
+
+Rules:
+
+- Default provider may be Qwen.
+- Missing real provider credentials in real-call mode must raise a clear configuration error.
+- Unit tests and CI must never call real cloud providers by default.
+- Mock provider is allowed in CI only.
+- Production mode must never silently fall back to fake results.
+
+---
+
+## Inspection Output Contract
+
+Existing API responses must continue to expose:
+
+```text
+overall_result
+confidence
+engine
+model_name
+summary
+fallback_used
+fallback_reason
+items
+```
+
+The next schema should add structured evidence:
+
+```json
+{
+  "overall_result": "pass | fail | review_required",
+  "provider": "qwen | openai | anthropic | local_mnn | mock | cv",
+  "model_name": "...",
+  "confidence": 0.0,
+  "items": [
+    {
+      "qc_point_id": "...",
+      "qc_point_code": "...",
+      "name": "...",
+      "result": "pass | fail | review_required",
+      "confidence": 0.0,
+      "reason": "...",
+      "evidence": {
+        "image_quality": {},
+        "visual_regions": [],
+        "defect_grounding": [],
+        "ocr": {},
+        "standard_reference": "...",
+        "production_observation": "...",
+        "model_reasoning_summary": "...",
+        "review_required_reason": "..."
+      }
+    }
+  ],
+  "fallback": {
+    "used": false,
+    "reason": null
+  },
+  "summary": "..."
+}
+```
+
+Result policy:
+
+- `pass` only if every active QC point passes with sufficient confidence.
+- `fail` if any QC point fails.
+- `review_required` if any QC point is uncertain and no hard failure exists.
+- Hallucinated QC point IDs must be rejected.
+- Missing QC point results must be filled as `review_required`.
+- Invalid model JSON must become `review_required`.
+
+---
+
+## Safety and Audit Policy
+
+- Never log full API keys.
+- Never store raw image base64 in database.
+- Store image paths, hashes, inspection metadata, structured model output, and fallback metadata.
+- Cloud fallback must record provider, model, latency, fallback reason, and policy config.
+- If local result is `fail`, cloud cannot turn it into `pass` unless explicitly configured.
+- Even when override is enabled, both local and cloud outputs must be preserved for audit.
+- If image quality is insufficient, do not allow a pass result.
+- If SKU mismatch is suspected, do not allow a pass result.
+
+---
+
+## Development Setup
+
+### Python
 
 ```bash
 # Install runtime + dev tooling
@@ -202,70 +323,141 @@ make sync-dev          # or: uv sync --group dev
 # Run the full test suite once
 make test              # or: uv run pytest tests/ -v
 
-# Run 5× consecutively (required before declaring a change done)
+# Run 5x consecutively before declaring a change done
 make test5
 ```
 
-> **Do not use bare `uv sync` before running tests.** Plain `uv sync`
-> installs only runtime dependencies and will silently remove pytest
-> from the virtual environment. Always use `uv sync --group dev`
-> (or `make sync-dev`) when you need to run the test suite.
+Do not use bare `uv sync` before running tests. Plain `uv sync` installs only runtime dependencies and may remove pytest from the virtual environment. Use `uv sync --group dev` or `make sync-dev` when running tests.
 
 ### Android
 
 ```bash
-# Create MNN stubs for CI (no real AAR needed)
+# Create MNN stubs for CI when real AAR/native libs are not available
 bash scripts/download_mnn_android_libs.sh --ci-stubs
 
 # Build padLocal debug APK + run unit tests
-cd apps/android-qc && ./gradlew :app:assemblePadLocalDebug :app:testPadLocalDebugUnitTest
+cd apps/android-qc
+./gradlew :app:assemblePadLocalDebug :app:testPadLocalDebugUnitTest
 ```
 
-### Qwen cloud integration tests (opt-in)
+---
 
-The Qwen real-API integration tests are **skipped by default** unless all
-of the following environment variables are set:
+## Real Provider Integration Tests
 
-| Variable | Required value |
-|----------|---------------|
-| `RUN_QWEN_INTEGRATION` | `1` |
-| `QC_ENGINE_MODE` | `cloud_qwen_dev` |
-| `LLM_ENABLE_REAL_CALLS` | `true` |
-| `QWEN_CLOUD_ENABLED` | `true` |
-| `ALLOW_SEND_IMAGES_TO_CLOUD_QWEN` | `true` |
-| `DASHSCOPE_API_KEY` or `QWEN_API_KEY` | real key |
+Real Qwen/DashScope integration tests must remain opt-in.
 
-## Development principles
+Example future configuration:
 
-A few project-wide rules worth knowing before contributing:
+```env
+RUN_MULTIMODAL_INTEGRATION=1
+MULTIMODAL_PROVIDER=qwen
+MULTIMODAL_ENABLE_REAL_CALLS=true
+QC_ALLOW_CLOUD_FALLBACK=true
+QC_ALLOW_SEND_IMAGES_TO_CLOUD=true
+QWEN_API_KEY=...
+# or DASHSCOPE_API_KEY=...
+```
 
-- **Never commit model weights or other large binary model artifacts**
-  into this repository’s normal git history. Model provisioning is a
-  documented, scripted fetch (bundled at build time or sideloaded) —
-  see `docs/DEPLOYMENT_LOCAL_QWEN.md`.
-- **Mock everything expensive in tests.** Unit/CI tests must never call
-  the real MNN model or the real DashScope API. Use the deterministic
-  fake providers/inspectors (`FakeOnDeviceQwenInspector`,
-  `TimeoutOnDeviceQwenInspector`, `InvalidJsonOnDeviceQwenInspector`,
-  `NotProvisionedOnDeviceQwenInspector`, and their Python-side
-  equivalents for the cloud provider). All fakes live in `src/test`.
-- **A failing test is a defect, not something to retry past.** The test
-  suite is run 5 consecutive times before a change is considered done;
-  a failure on any run stops the loop and gets reported, not silently
-  re-run until it happens to pass.
-- **Multi-tenant isolation is a hard requirement,** not an
-  afterthought — any new endpoint or query touching `ProductStandard`,
-  `StandardPhoto`, `QCPoint`, `CapturePhoto`, `InspectionRun`, or
-  `QCAsset` must be covered by a cross-tenant-access-denied test.
-- **Do not call Qwen API or DashScope from the Pad QC inference path.**
-  Cloud inference is not permitted on the Pad app — all pad-side QC
-  inference must use the local MNN runtime.
+Existing Qwen-specific integration tests may continue to use:
 
-## Related documentation
+```env
+RUN_QWEN_INTEGRATION=1
+QC_ENGINE_MODE=cloud_qwen_dev
+LLM_ENABLE_REAL_CALLS=true
+QWEN_CLOUD_ENABLED=true
+ALLOW_SEND_IMAGES_TO_CLOUD_QWEN=true
+DASHSCOPE_API_KEY=...
+```
 
-- `docs/LOCAL_FIRST_QWEN_QC.md` — full product/architecture spec
-- `docs/DEPLOYMENT_LOCAL_QWEN.md` — on-device model provisioning and
-  backend cloud-fallback configuration
-- `docs/ANDROID_QC_APP.md` — Android app module layout and capture flow
-- `docs/API_CONTRACT.md` — backend API contract for the Android app
-  and any fleet-aggregation consumers
+Do not claim real provider integration succeeded unless the opt-in integration test was actually run with a real key.
+
+---
+
+## Test Requirements
+
+Before any PR is considered complete:
+
+- Run the Python test suite.
+- Run the Python test suite 5x consecutively.
+- Run Android unit tests if Android code changed.
+- Report exact commands.
+- Report skipped integration tests clearly.
+
+Required invariants:
+
+- No real API call by default.
+- Missing image path never produces pass.
+- Invalid model JSON returns `review_required`.
+- Hallucinated QC point IDs are rejected.
+- Missing QC point IDs are filled as `review_required`.
+- Invalid visual region coordinates are rejected.
+- Cloud fallback requires explicit enablement.
+- Cloud cannot override local fail by default.
+- Provider can switch from Qwen to mock without changing product service code.
+- Report generation cannot change inspection result.
+- API keys never appear in logs or outputs.
+- Tenant isolation is preserved.
+
+---
+
+## Roadmap
+
+### Milestone 1 — Provider-neutral multimodal core
+
+- Add `src/multimodal/`.
+- Add provider-neutral request/response interfaces.
+- Add provider registry.
+- Add Qwen/DashScope adapter.
+- Add mock provider.
+- Keep legacy wrappers working.
+
+### Milestone 2 — Capability modules
+
+- Add image quality assessment.
+- Add QC inspection capability.
+- Add defect grounding.
+- Scaffold SKU match, OCR extraction, and report generation.
+- Add versioned prompt packs.
+- Add strict parsers and validators.
+
+### Milestone 3 — Router integration
+
+- Integrate capability router into `/api/v1/qc/inspect`.
+- Preserve existing API response fields.
+- Add structured evidence output.
+- Persist provider metadata and fallback metadata.
+
+### Milestone 4 — Android MNN validation
+
+- Wire real JNI/native MNN inference.
+- Run physical Snapdragon device validation.
+- Record p50/p95 latency, cold-start time, and peak memory.
+- Only mark local MNN inference as complete after real device validation.
+
+---
+
+## Development Principles
+
+- Do not commit model weights or large binary artifacts into normal git history.
+- Mock expensive or external dependencies in unit tests.
+- Keep deterministic fake providers in test code or clearly marked mock modules.
+- Do not place fake pass/fail logic in production runtime paths.
+- A failing test is a defect. Do not retry until it happens to pass.
+- Keep README status honest and current.
+- Keep provider-specific naming out of product-facing APIs.
+- Prefer structured evidence over natural-language-only explanations.
+
+---
+
+## Related Documentation
+
+- `docs/LOCAL_FIRST_QWEN_QC.md` — local-first QC architecture and current Qwen/MNN assumptions.
+- `docs/DEPLOYMENT_LOCAL_QWEN.md` — on-device model provisioning and backend cloud fallback configuration.
+- `docs/ANDROID_QC_APP.md` — Android app module layout and capture flow.
+- `docs/API_CONTRACT.md` — backend API contract for Android and fleet aggregation consumers.
+
+---
+
+## One-line Positioning
+
+Giraffe QC Model is a provider-neutral multimodal QC engine for industrial procurement, using Qwen as the default adapter while preserving local-first, auditable, fail-closed quality-control behavior.
