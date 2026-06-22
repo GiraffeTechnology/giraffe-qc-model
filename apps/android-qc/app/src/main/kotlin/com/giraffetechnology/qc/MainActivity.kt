@@ -38,6 +38,7 @@ private fun PadApp() {
             task                  = s.task,
             autoCaptureController = PadRuntimeGraph.autoCaptureController,
             runtimeLoader         = PadRuntimeGraph.runtimeLoader,
+            cameraXController     = PadRuntimeGraph.cameraXCaptureController,
             inspectionCoordinator = PadRuntimeGraph.inspectionCoordinator,
             onInspectionResult    = { result -> screen = PadScreen.Result(s.task, result) },
             onBack                = { screen = PadScreen.TaskSelection },

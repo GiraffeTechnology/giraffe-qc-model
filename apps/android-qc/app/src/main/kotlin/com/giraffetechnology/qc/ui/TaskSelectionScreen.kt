@@ -18,6 +18,15 @@ import com.giraffetechnology.qc.qwen.MnnRuntimeLoader
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
+/** Tracks which list entry is selected, preserving the full source for correct confirmation. */
+private sealed class SelectedSkuSource {
+    abstract val sku: Sku
+    data class Manual(override val sku: Sku) : SelectedSkuSource()
+    data class MnnCandidate(val candidate: SkuCandidate) : SelectedSkuSource() {
+        override val sku: Sku get() = candidate.sku
+    }
+}
+
 @Composable
 fun TaskSelectionScreen(
     taskSelectionController: TaskSelectionController,
@@ -37,7 +46,7 @@ fun TaskSelectionScreen(
     val backendState by backendStateFlow.collectAsState()
 
     var query by remember { mutableStateOf("") }
-    var selectedSku by remember { mutableStateOf<Sku?>(null) }
+    var selectedSource by remember { mutableStateOf<SelectedSkuSource?>(null) }
 
     // Navigate when task is confirmed.
     LaunchedEffect(selectionState) {
@@ -113,22 +122,24 @@ fun TaskSelectionScreen(
         }
         Spacer(Modifier.height(8.dp))
 
-        // SKU result list
-        val skuList: List<Sku> = when (val st = selectionState) {
-            is TaskSelectionState.ManualResults   -> st.results
-            is TaskSelectionState.MatchCandidates -> st.result.candidates.map { it.sku }
+        // SKU source list — preserves candidate reference for MNN confirmation.
+        val sourceList: List<SelectedSkuSource> = when (val st = selectionState) {
+            is TaskSelectionState.ManualResults   ->
+                st.results.map { SelectedSkuSource.Manual(it) }
+            is TaskSelectionState.MatchCandidates ->
+                st.result.candidates.map { SelectedSkuSource.MnnCandidate(it) }
             else -> emptyList()
         }
         LazyColumn(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            items(skuList) { sku ->
-                val isSelected = selectedSku?.id == sku.id
+            items(sourceList) { source ->
+                val isSelected = selectedSource == source
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { selectedSku = sku }
+                        .clickable { selectedSource = source }
                         .border(
                             width = if (isSelected) 2.dp else 0.dp,
                             color = if (isSelected)
@@ -138,8 +149,15 @@ fun TaskSelectionScreen(
                     tonalElevation = if (isSelected) 4.dp else 1.dp,
                 ) {
                     Column(Modifier.padding(12.dp)) {
-                        Text(sku.itemNumber, fontWeight = FontWeight.Bold)
-                        Text(sku.name, fontSize = 13.sp)
+                        Text(source.sku.itemNumber, fontWeight = FontWeight.Bold)
+                        Text(source.sku.name, fontSize = 13.sp)
+                        if (source is SelectedSkuSource.MnnCandidate) {
+                            Text(
+                                "Match: ${(source.candidate.similarity * 100).toInt()}%",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
@@ -156,14 +174,18 @@ fun TaskSelectionScreen(
 
             Button(
                 onClick = {
-                    selectedSku?.let { sku ->
-                        taskSelectionController.confirmManual(
-                            sku,
-                            SkuResolutionMethod.MANUAL_ITEM_NUMBER,
-                        )
+                    when (val src = selectedSource) {
+                        is SelectedSkuSource.MnnCandidate ->
+                            taskSelectionController.confirmCandidate(src.candidate)
+                        is SelectedSkuSource.Manual ->
+                            taskSelectionController.confirmManual(
+                                src.sku,
+                                SkuResolutionMethod.MANUAL_ITEM_NUMBER,
+                            )
+                        null -> Unit
                     }
                 },
-                enabled = selectedSku != null,
+                enabled = selectedSource != null,
             ) { Text("Confirm SKU") }
         }
     }

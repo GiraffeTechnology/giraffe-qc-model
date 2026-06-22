@@ -11,31 +11,38 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.giraffetechnology.qc.camera.CameraXCaptureController
 import com.giraffetechnology.qc.capture.*
 import com.giraffetechnology.qc.qwen.MnnRuntimeLoader
 import com.giraffetechnology.qc.sku.*
+import kotlinx.coroutines.launch
 
 /**
  * QC Capture screen — landscape Pad layout.
  *
- * Left 3/4  = camera / capture region (strict 4:3 preview container, centred, no stretch).
- * Right 1/4 = SKU info + auto-capture state + action buttons.
+ * Left 3/4  = CameraX live preview in strict 4:3 container.
+ * Right 1/4 = SKU info + capture state + action buttons.
  *
- * Qwen3-VL must NOT run on live frames. Only a captured still image is passed to inspection.
+ * Manual Capture is enabled once cameraXController.isReady is true.
+ * captureStill() -> PadInspectionCoordinator.inspect() -> onInspectionResult.
+ * Qwen3-VL runs only on the captured still image, never on live frames.
  */
 @Composable
 fun QcCaptureScreen(
     task: QcTask,
     autoCaptureController: AutoCaptureController,
     runtimeLoader: MnnRuntimeLoader,
+    cameraXController: CameraXCaptureController,
     inspectionCoordinator: PadInspectionCoordinator? = null,
     onInspectionResult: (PadInspectionResult) -> Unit,
     onBack: () -> Unit,
 ) {
+    val scope = rememberCoroutineScope()
     val captureState by autoCaptureController.state.collectAsState()
     val runtimeState by runtimeLoader.runtimeState.collectAsState()
+    val isCameraReady by cameraXController.isReady.collectAsState()
 
-    // When AutoCapture produces a photo, run local inspection (still image only, not live frames).
+    // Auto-capture path: when AutoCapture produces a photo, run local inspection.
     LaunchedEffect(captureState) {
         if (captureState is AutoCaptureState.Captured) {
             val photo = (captureState as AutoCaptureState.Captured).capture
@@ -53,7 +60,7 @@ fun QcCaptureScreen(
     }
 
     Row(modifier = Modifier.fillMaxSize()) {
-        // ── Left 3/4: camera / capture region ───────────────────────────────
+        // ── Left 3/4: CameraX preview in 4:3 container ────────────────────────────────────
         Box(
             modifier = Modifier
                 .weight(3f)
@@ -61,19 +68,19 @@ fun QcCaptureScreen(
                 .background(Color.Black),
             contentAlignment = Alignment.Center,
         ) {
-            // Strict 4:3 preview container centred in the left region, no stretch.
-            // maxWidth/maxHeight from BoxWithConstraintsScope are already in Dp.
+            // maxWidth/maxHeight from BoxWithConstraintsScope are in Dp.
             BoxWithConstraints(contentAlignment = Alignment.Center) {
                 val (previewW, previewH) = fitAspect43(maxWidth.value, maxHeight.value)
                 Box(
                     modifier = Modifier
                         .size(width = previewW.dp, height = previewH.dp)
-                        .border(2.dp, Color.DarkGray)
-                        .background(Color(0xFF1A1A1A)),
+                        .border(2.dp, Color.DarkGray),
                     contentAlignment = Alignment.Center,
                 ) {
-                    // Camera source is CameraUnavailableFrameSource in this scaffold.
-                    Text("Camera unavailable", color = Color.Gray, fontSize = 14.sp)
+                    CameraPreviewPane(
+                        controller = cameraXController,
+                        modifier   = Modifier.fillMaxSize(),
+                    )
                 }
             }
 
@@ -83,7 +90,7 @@ fun QcCaptureScreen(
             }
         }
 
-        // ── Right 1/4: task info + state + buttons ───────────────────────────
+        // ── Right 1/4: task info + state + buttons ───────────────────────────────────────────
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -125,10 +132,26 @@ fun QcCaptureScreen(
 
             Spacer(Modifier.weight(1f))
 
-            // Manual capture: disabled until CameraX is wired and a real frame is available.
+            // Manual capture: enabled once CameraX signals isReady.
             Button(
-                onClick  = { },
-                enabled  = false,
+                onClick = {
+                    scope.launch {
+                        runCatching { cameraXController.captureStill() }
+                            .onSuccess { photo ->
+                                val result = inspectionCoordinator?.inspect(task, photo)
+                                    ?: PadInspectionResult(
+                                        overallResult      = "MNN_PENDING",
+                                        reason             = "Inspection coordinator not available",
+                                        modelName          = "Qwen3-VL-2B-Instruct-MNN",
+                                        localOnly          = true,
+                                        cloudInferenceUsed = false,
+                                        capturedImagePath  = photo.rawImagePath,
+                                    )
+                                onInspectionResult(result)
+                            }
+                    }
+                },
+                enabled  = isCameraReady,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Manual Capture") }
 

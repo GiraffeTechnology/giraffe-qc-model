@@ -3,6 +3,7 @@ package com.giraffetechnology.qc
 import android.content.Context
 import com.giraffetechnology.qc.camera.CameraUnavailableFrameSource
 import com.giraffetechnology.qc.camera.CameraFrameSource
+import com.giraffetechnology.qc.camera.CameraXCaptureController
 import com.giraffetechnology.qc.capture.AutoCaptureController
 import com.giraffetechnology.qc.capture.PendingTargetDetector
 import com.giraffetechnology.qc.capture.TargetDetector
@@ -38,6 +39,7 @@ object PadRuntimeGraph {
     @Volatile private var _autoCaptureController: AutoCaptureController? = null
     @Volatile private var _qwenInspector: QwenInspector? = null
     @Volatile private var _inspectionCoordinator: PadInspectionCoordinator? = null
+    @Volatile private var _cameraXCaptureController: CameraXCaptureController? = null
 
     fun init(context: Context) {
         if (_initialized) return
@@ -55,7 +57,7 @@ object PadRuntimeGraph {
 
             _taskSelectionController = TaskSelectionController(skuRepo, matcher)
 
-            // Camera: use CameraUnavailableFrameSource until CameraX integration is complete.
+            // Camera: use CameraUnavailableFrameSource for frame-stream consumers.
             _cameraFrameSource = CameraUnavailableFrameSource()
 
             // Target detector: use PendingTargetDetector until MNN visual model is provisioned.
@@ -68,6 +70,9 @@ object PadRuntimeGraph {
             _qwenInspector = inspector
 
             _inspectionCoordinator = PadInspectionCoordinator(inspector, loader)
+
+            // CameraX still-image capture — bind() is called from the capture screen composable.
+            _cameraXCaptureController = CameraXCaptureController(context.applicationContext)
 
             _initialized = true
         }
@@ -99,6 +104,9 @@ object PadRuntimeGraph {
 
     val inspectionCoordinator: PadInspectionCoordinator
         get() = checkNotNull(_inspectionCoordinator) { notInitMsg() }
+
+    val cameraXCaptureController: CameraXCaptureController
+        get() = checkNotNull(_cameraXCaptureController) { notInitMsg() }
 
     private fun notInitMsg() = "PadRuntimeGraph.init(context) must be called before accessing this"
 }

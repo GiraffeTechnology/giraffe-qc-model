@@ -5,6 +5,7 @@ on:
     branches:
       - fix/android-pad-qwen3-vl-2b-mnn-final
       - fix/android-pad-ui-backend-integration
+      - fix/android-pad-ui-backend-e2e-completion
     paths:
       - 'apps/android-qc/**'
       - 'scripts/download_mnn_android_libs.sh'
