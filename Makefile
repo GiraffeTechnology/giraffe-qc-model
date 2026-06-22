@@ -1,4 +1,4 @@
-.PHONY: sync sync-dev test test5 test-qwen clean-test
+.PHONY: sync sync-dev test test5 test-qwen test-multimodal clean-test
 
 sync:
 	uv sync
@@ -21,6 +21,14 @@ test-qwen:
 	LLM_ENABLE_REAL_CALLS=true \
 	QWEN_CLOUD_ENABLED=true \
 	ALLOW_SEND_IMAGES_TO_CLOUD_QWEN=true \
+	uv run pytest tests/integration/ -v
+
+test-multimodal:
+	RUN_MULTIMODAL_INTEGRATION=1 \
+	MULTIMODAL_ENABLE_REAL_CALLS=true \
+	MULTIMODAL_PROVIDER=qwen \
+	QC_ALLOW_CLOUD_FALLBACK=true \
+	QC_ALLOW_SEND_IMAGES_TO_CLOUD=true \
 	uv run pytest tests/integration/ -v
 
 clean-test:

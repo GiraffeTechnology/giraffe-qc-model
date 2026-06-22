@@ -8,6 +8,65 @@ The long-term target is a multimodal QC engine that can switch between Qwen, loc
 
 ---
 
+## Provider-Neutral Multimodal Layer
+
+**Status: implemented on branch `claude/multimodal-qc-provider-neutral-51e42r`**
+
+The `src/multimodal/` package implements the full provider-neutral capability layer described in the target architecture below. It is available alongside the existing `src/qwen/` layer, which remains unchanged for backward compatibility.
+
+### What is implemented
+
+| Module | Path | Description |
+|---|---|---|
+| Types / schemas | `src/multimodal/types.py` | Canonical QC request, response, evidence, item, and report types (pydantic v2) |
+| Errors | `src/multimodal/errors.py` | `MultimodalConfigError`, `MultimodalProviderError`, `MultimodalParseError`, `MultimodalCapabilityError` |
+| Config helpers | `src/multimodal/config.py` | All env vars read at call time; monkeypatch-safe |
+| Provider base | `src/multimodal/providers/base.py` | `MultimodalProvider` ABC: `provider_name`, `model_name`, `generate()` |
+| Mock provider | `src/multimodal/providers/mock_provider.py` | Deterministic CI provider; never calls any API |
+| Qwen/DashScope adapter | `src/multimodal/providers/qwen_dashscope.py` | Transport-only DashScope adapter; no QC logic |
+| OpenAI adapter | `src/multimodal/providers/openai_adapter.py` | Placeholder; raises `NotImplementedError` |
+| Anthropic adapter | `src/multimodal/providers/anthropic_adapter.py` | Placeholder; raises `NotImplementedError` |
+| Local MNN stub | `src/multimodal/providers/local_mnn_stub.py` | Returns `review_required` when MNN not provisioned |
+| Provider registry | `src/multimodal/providers/registry.py` | Env-driven selection; `MULTIMODAL_ENABLE_REAL_CALLS=false` always returns mock |
+| JSON parser | `src/multimodal/parsers/json_parser.py` | Extracts JSON from model output including markdown-fenced blocks |
+| Validators | `src/multimodal/parsers/validators.py` | `clamp_confidence`, `validate_bbox`, `reject_hallucinated_ids`, `fill_missing_ids` |
+| Image quality v1 | `src/multimodal/prompts/image_quality_v1.py` + `src/multimodal/capabilities/image_quality.py` | Image quality assessment prompt + capability |
+| SKU match v1 | `src/multimodal/prompts/sku_match_v1.py` + `src/multimodal/capabilities/sku_match.py` | SKU matching prompt + capability |
+| QC inspection v2 | `src/multimodal/prompts/qc_inspection_v2.py` + `src/multimodal/capabilities/qc_inspection.py` | QC inspection prompt + capability |
+| Defect grounding v1 | `src/multimodal/prompts/defect_grounding_v1.py` + `src/multimodal/capabilities/defect_grounding.py` | Defect localization prompt + capability |
+| OCR extraction v1 | `src/multimodal/prompts/ocr_extraction_v1.py` + `src/multimodal/capabilities/ocr_extraction.py` | OCR extraction prompt + capability |
+| Report generation v1 | `src/multimodal/prompts/report_generation_v1.py` + `src/multimodal/capabilities/report_generation.py` | Bilingual report generation prompt + capability |
+| CapabilityRouter | `src/multimodal/router.py` | Orchestrates the full capability pipeline with fail-closed policy |
+| MultimodalQCService | `src/multimodal/service.py` | Provider-neutral product entry point |
+
+### Switching providers
+
+```env
+# Always use mock (CI default)
+MULTIMODAL_ENABLE_REAL_CALLS=false
+
+# Use Qwen/DashScope
+MULTIMODAL_ENABLE_REAL_CALLS=true
+MULTIMODAL_PROVIDER=qwen
+DASHSCOPE_API_KEY=...
+
+# Use mock even when real calls are enabled
+MULTIMODAL_ENABLE_REAL_CALLS=true
+MULTIMODAL_PROVIDER=mock
+```
+
+No product service code changes are required to switch providers.
+
+### Running the new tests
+
+```bash
+make test
+# or run the multimodal suite specifically:
+uv run pytest tests/test_multimodal_provider_registry.py tests/test_multimodal_schema_validation.py tests/test_image_quality_capability.py tests/test_sku_match_capability.py tests/test_qc_inspection_capability.py tests/test_defect_grounding_capability.py tests/test_ocr_capability.py tests/test_report_generation_capability.py tests/test_multimodal_router_policy.py tests/test_legacy_qwen_compatibility.py -v
+```
+
+---
+
 ## Overview
 
 | Layer | Default implementation | Role | Provider lock-in |
