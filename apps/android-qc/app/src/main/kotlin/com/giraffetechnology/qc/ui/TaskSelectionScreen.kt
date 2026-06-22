@@ -27,6 +27,21 @@ private sealed class SelectedSkuSource {
     }
 }
 
+/**
+ * Returns true when a TaskSelectionState transition should clear the current selection.
+ * TaskConfirmed is excluded — navigation fires before the selection could be misused.
+ */
+internal fun shouldClearSelection(state: TaskSelectionState): Boolean = when (state) {
+    is TaskSelectionState.SearchingBackend,
+    is TaskSelectionState.ManualResults,
+    is TaskSelectionState.MatchCandidates,
+    is TaskSelectionState.BackendError,
+    is TaskSelectionState.NoMatch,
+    is TaskSelectionState.ReviewRequired,
+    is TaskSelectionState.MnnPending -> true
+    else -> false
+}
+
 @Composable
 fun TaskSelectionScreen(
     taskSelectionController: TaskSelectionController,
@@ -48,10 +63,11 @@ fun TaskSelectionScreen(
     var query by remember { mutableStateOf("") }
     var selectedSource by remember { mutableStateOf<SelectedSkuSource?>(null) }
 
-    // Navigate when task is confirmed.
+    // Navigate on TaskConfirmed; clear stale selection on every other result-bearing state.
     LaunchedEffect(selectionState) {
-        if (selectionState is TaskSelectionState.TaskConfirmed) {
-            onTaskConfirmed((selectionState as TaskSelectionState.TaskConfirmed).task)
+        when (val st = selectionState) {
+            is TaskSelectionState.TaskConfirmed -> onTaskConfirmed(st.task)
+            else -> if (shouldClearSelection(selectionState)) selectedSource = null
         }
     }
 
@@ -83,7 +99,10 @@ fun TaskSelectionScreen(
                 modifier      = Modifier.weight(1f),
             )
             Button(
-                onClick  = { scope.launch { taskSelectionController.searchByItemNumber(query) } },
+                onClick = {
+                    selectedSource = null
+                    scope.launch { taskSelectionController.searchByItemNumber(query) }
+                },
                 enabled  = query.isNotBlank()
                     && selectionState !is TaskSelectionState.SearchingBackend,
             ) { Text("Search") }

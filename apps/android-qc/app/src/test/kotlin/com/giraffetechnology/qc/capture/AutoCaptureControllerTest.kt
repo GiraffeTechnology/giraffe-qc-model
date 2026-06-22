@@ -158,6 +158,43 @@ class AutoCaptureControllerTest {
     }
 
     @Test
+    fun `locking frame with no candidate resets to Searching`() {
+        ctrl.onCameraStreaming()
+        detector.setNext(goodDetection())
+        ctrl.processFrame(frame(), nowMs = 0L)    // → CandidateDetected
+        ctrl.processFrame(frame(), nowMs = 100L)  // → Locking (stableCount = 1)
+
+        // Item leaves the frame: no candidate in the next detection
+        detector.setNext(noCandidate())
+        ctrl.processFrame(frame(), nowMs = 200L)
+        assertEquals(
+            "no-candidate frame during Locking must reset to Searching",
+            AutoCaptureState.Searching, ctrl.state.value,
+        )
+    }
+
+    @Test
+    fun `locking frame with null boundingBox resets to Searching`() {
+        ctrl.onCameraStreaming()
+        detector.setNext(goodDetection())
+        ctrl.processFrame(frame(), nowMs = 0L)    // → CandidateDetected
+        ctrl.processFrame(frame(), nowMs = 100L)  // → Locking (stableCount = 1)
+
+        // Detector signals hasCandidate=true but lost the bounding box
+        detector.setNext(TargetDetection(
+            hasCandidate = true,
+            confidence   = 0.9f,
+            boundingBox  = null,
+            quality      = FrameQuality.GOOD,
+        ))
+        ctrl.processFrame(frame(), nowMs = 200L)
+        assertEquals(
+            "null-boundingBox frame during Locking must reset to Searching",
+            AutoCaptureState.Searching, ctrl.state.value,
+        )
+    }
+
+    @Test
     fun `triggerCapture produces Captured state`() = runTest {
         val box = NormalizedBox(0.5f, 0.5f, 0.3f, 0.3f)
         val f   = frame()

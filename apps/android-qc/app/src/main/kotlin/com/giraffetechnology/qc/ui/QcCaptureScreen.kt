@@ -1,5 +1,9 @@
 package com.giraffetechnology.qc.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -8,24 +12,32 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.giraffetechnology.qc.camera.CameraXCaptureController
 import com.giraffetechnology.qc.capture.*
 import com.giraffetechnology.qc.qwen.MnnRuntimeLoader
 import com.giraffetechnology.qc.sku.*
 import kotlinx.coroutines.launch
 
+internal enum class CameraPermissionState { Checking, Granted, Denied }
+
+/** Maps an Android runtime permission result to CameraPermissionState. Extracted for unit testing. */
+internal fun resolvePermissionState(isGranted: Boolean): CameraPermissionState =
+    if (isGranted) CameraPermissionState.Granted else CameraPermissionState.Denied
+
 /**
  * QC Capture screen — landscape Pad layout.
  *
- * Left 3/4  = CameraX live preview in strict 4:3 container.
+ * Left 3/4  = CameraX live preview (only after camera permission granted).
  * Right 1/4 = SKU info + capture state + action buttons.
  *
- * Manual Capture is enabled once cameraXController.isReady is true.
- * captureStill() -> PadInspectionCoordinator.inspect() -> onInspectionResult.
- * Qwen3-VL runs only on the captured still image, never on live frames.
+ * Camera permission is checked before CameraPreviewPane is composed so that
+ * CameraXCaptureController.bind() is never called without CAMERA permission.
+ * Manual Capture is enabled only when permission is Granted AND isCameraReady.
  */
 @Composable
 fun QcCaptureScreen(
@@ -41,6 +53,26 @@ fun QcCaptureScreen(
     val captureState by autoCaptureController.state.collectAsState()
     val runtimeState by runtimeLoader.runtimeState.collectAsState()
     val isCameraReady by cameraXController.isReady.collectAsState()
+
+    val context = LocalContext.current
+
+    // Check permission synchronously on first composition so the initial state is accurate.
+    // CameraPreviewPane is only composed (and bind() only called) when state is Granted.
+    var cameraPermState by remember {
+        val granted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.CAMERA,
+        ) == PackageManager.PERMISSION_GRANTED
+        mutableStateOf(if (granted) CameraPermissionState.Granted else CameraPermissionState.Checking)
+    }
+
+    val permLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        cameraPermState = resolvePermissionState(granted)
+    }
+
+    // captureError is cleared on each new manual capture attempt and set on failure.
+    var captureError by remember { mutableStateOf<String?>(null) }
 
     // Auto-capture path: when AutoCapture produces a photo, run local inspection.
     LaunchedEffect(captureState) {
@@ -60,7 +92,7 @@ fun QcCaptureScreen(
     }
 
     Row(modifier = Modifier.fillMaxSize()) {
-        // ── Left 3/4: CameraX preview in 4:3 container ────────────────────────────────────
+        // ── Left 3/4: camera preview — shown only after permission is granted ──────────────────────
         Box(
             modifier = Modifier
                 .weight(3f)
@@ -68,29 +100,74 @@ fun QcCaptureScreen(
                 .background(Color.Black),
             contentAlignment = Alignment.Center,
         ) {
-            // maxWidth/maxHeight from BoxWithConstraintsScope are in Dp.
-            BoxWithConstraints(contentAlignment = Alignment.Center) {
-                val (previewW, previewH) = fitAspect43(maxWidth.value, maxHeight.value)
-                Box(
-                    modifier = Modifier
-                        .size(width = previewW.dp, height = previewH.dp)
-                        .border(2.dp, Color.DarkGray),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CameraPreviewPane(
-                        controller = cameraXController,
-                        modifier   = Modifier.fillMaxSize(),
-                    )
+            when (cameraPermState) {
+                CameraPermissionState.Granted -> {
+                    BoxWithConstraints(contentAlignment = Alignment.Center) {
+                        val (previewW, previewH) = fitAspect43(maxWidth.value, maxHeight.value)
+                        Box(
+                            modifier = Modifier
+                                .size(width = previewW.dp, height = previewH.dp)
+                                .border(2.dp, Color.DarkGray),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CameraPreviewPane(
+                                controller = cameraXController,
+                                modifier   = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+                    if (captureState is AutoCaptureState.Locked) {
+                        LockBoxOverlay()
+                    }
                 }
-            }
 
-            // Lock-box overlay when detector has a locked target.
-            if (captureState is AutoCaptureState.Locked) {
-                LockBoxOverlay()
+                CameraPermissionState.Checking -> {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                    ) {
+                        Text(
+                            "Camera permission required",
+                            color      = Color.White,
+                            fontSize   = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Button(onClick = { permLauncher.launch(Manifest.permission.CAMERA) }) {
+                            Text("Grant Camera Permission")
+                        }
+                    }
+                }
+
+                CameraPermissionState.Denied -> {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                    ) {
+                        Text(
+                            "Camera permission denied",
+                            color      = Color(0xFFEF5350),
+                            fontSize   = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Manual capture unavailable until camera permission is granted",
+                            color    = Color.White,
+                            fontSize = 13.sp,
+                        )
+                    }
+                }
             }
         }
 
-        // ── Right 1/4: task info + state + buttons ───────────────────────────────────────────
+        // ── Right 1/4: task info + state + buttons ──────────────────────────────────────────────
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -130,12 +207,21 @@ fun QcCaptureScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(captureStateLabel(captureState), fontSize = 12.sp)
 
+            captureError?.let { err ->
+                Text(
+                    "Capture failed: $err",
+                    color    = MaterialTheme.colorScheme.error,
+                    fontSize = 12.sp,
+                )
+            }
+
             Spacer(Modifier.weight(1f))
 
-            // Manual capture: enabled once CameraX signals isReady.
+            // Manual Capture: requires both camera permission and CameraX ready signal.
             Button(
                 onClick = {
                     scope.launch {
+                        captureError = null
                         runCatching { cameraXController.captureStill() }
                             .onSuccess { photo ->
                                 val result = inspectionCoordinator?.inspect(task, photo)
@@ -149,9 +235,12 @@ fun QcCaptureScreen(
                                     )
                                 onInspectionResult(result)
                             }
+                            .onFailure { e ->
+                                captureError = e.message ?: "Capture failed"
+                            }
                     }
                 },
-                enabled  = isCameraReady,
+                enabled  = isCameraReady && cameraPermState == CameraPermissionState.Granted,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Manual Capture") }
 

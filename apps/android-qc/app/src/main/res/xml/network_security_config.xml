@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Factory LAN SKU backend uses HTTP on the local 192.168.1.10 network.
+    Cleartext is permitted only for this specific factory IP host.
+    Pad-side QC inference remains local-only MNN; QWEN_CLOUD_ENABLED=false is unchanged.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.1.10</domain>
+    </domain-config>
+</network-security-config>

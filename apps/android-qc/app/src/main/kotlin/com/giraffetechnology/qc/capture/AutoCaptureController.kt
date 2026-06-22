@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlin.math.abs
 
-// ── State types ───────────────────────────────────────────────────────────────
+// ── State types ───────────────────────────────────────────────────────────────────────────────
 
 sealed class AutoCaptureState {
     object Idle : AutoCaptureState()
@@ -29,7 +29,7 @@ data class CapturedPhoto(
     val boundingBox: NormalizedBox,
 )
 
-// ── Controller ────────────────────────────────────────────────────────────────
+// ── Controller ───────────────────────────────────────────────────────────────────────────────
 
 /**
  * State machine that drives the auto-capture flow:
@@ -42,6 +42,7 @@ data class CapturedPhoto(
  *
  * Locking exit conditions:
  *   - Timeout → Rejected(LOCKING_TIMEOUT)  (never Searching)
+ *   - No candidate / null box → Searching   (item left frame)
  *   - Excessive drift → Searching
  *   - Bad quality > toleranceFrames → Searching
  *   - Bad quality within tolerance → frame skipped, stable count unchanged
@@ -102,6 +103,14 @@ class AutoCaptureController(
 
                 val detection = detector.detect(frame)
 
+                // Guard: candidate gone or bounding box lost — item left frame during locking.
+                // Counting a stable frame without a live candidate would lock on a stale target.
+                if (!detection.hasCandidate || detection.boundingBox == null) {
+                    resetLockingState()
+                    _state.value = AutoCaptureState.Searching
+                    return
+                }
+
                 // Quality gate.
                 if (detection.quality != FrameQuality.GOOD) {
                     qualityFailCount++
@@ -109,7 +118,7 @@ class AutoCaptureController(
                         resetLockingState()
                         _state.value = AutoCaptureState.Searching
                     }
-                    // Within tolerance: skip frame — don’t count as stable, don’t reset.
+                    // Within tolerance: skip frame — don't count as stable, don't reset.
                     return
                 }
 
