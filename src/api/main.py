@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from src.api.qc_router import router as qc_router
+from src.api.sku_router import router as sku_router
 from src.db.session import init_db
 
 
@@ -24,6 +25,7 @@ app = FastAPI(
 )
 
 app.include_router(qc_router)
+app.include_router(sku_router)
 
 
 @app.get("/health")
