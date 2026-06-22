@@ -3,40 +3,53 @@ package com.giraffetechnology.qc
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.*
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import com.giraffetechnology.qc.sku.MnnRuntimeState
+import com.giraffetechnology.qc.sku.PadInspectionResult
+import com.giraffetechnology.qc.sku.QcTask
+import com.giraffetechnology.qc.ui.QcCaptureScreen
+import com.giraffetechnology.qc.ui.ResultScreen
+import com.giraffetechnology.qc.ui.TaskSelectionScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         PadRuntimeGraph.init(this)
         setContent {
-            val runtimeState by PadRuntimeGraph.runtimeLoader.runtimeState.collectAsState()
             MaterialTheme {
-                Scaffold { padding ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(padding),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        when (runtimeState) {
-                            is MnnRuntimeState.Ready    -> Text("Giraffe QC — Ready")
-                            is MnnRuntimeState.Loading  -> Text("MNN loading…")
-                            is MnnRuntimeState.NotReady -> Text("Local runtime not ready")
-                        }
-                    }
-                }
+                PadApp()
             }
         }
+    }
+}
+
+@Composable
+private fun PadApp() {
+    var screen by remember { mutableStateOf<PadScreen>(PadScreen.TaskSelection) }
+
+    when (val s = screen) {
+        is PadScreen.TaskSelection -> TaskSelectionScreen(
+            taskSelectionController = PadRuntimeGraph.taskSelectionController,
+            runtimeLoader           = PadRuntimeGraph.runtimeLoader,
+            skuRepository           = PadRuntimeGraph.skuRepository as? com.giraffetechnology.qc.sku.ApiSkuRepository,
+            onTaskConfirmed         = { task -> screen = PadScreen.QcCapture(task) },
+        )
+
+        is PadScreen.QcCapture -> QcCaptureScreen(
+            task                 = s.task,
+            autoCaptureController = PadRuntimeGraph.autoCaptureController,
+            runtimeLoader        = PadRuntimeGraph.runtimeLoader,
+            onInspectionResult   = { result ->
+                screen = PadScreen.Result(s.task, result)
+            },
+            onBack               = { screen = PadScreen.TaskSelection },
+        )
+
+        is PadScreen.Result -> ResultScreen(
+            task     = s.task,
+            result   = s.result,
+            onRetake = { screen = PadScreen.QcCapture(s.task) },
+            onDone   = { screen = PadScreen.TaskSelection },
+        )
     }
 }
