@@ -14,7 +14,6 @@ import androidx.compose.ui.unit.sp
 import com.giraffetechnology.qc.capture.*
 import com.giraffetechnology.qc.qwen.MnnRuntimeLoader
 import com.giraffetechnology.qc.sku.*
-import kotlinx.coroutines.launch
 
 /**
  * QC Capture screen — landscape Pad layout.
@@ -36,7 +35,7 @@ fun QcCaptureScreen(
     val captureState by autoCaptureController.state.collectAsState()
     val runtimeState by runtimeLoader.runtimeState.collectAsState()
 
-    // When AutoCapture produces a photo, run inspection (only the still image, not live frames).
+    // When AutoCapture produces a photo, run local inspection (still image only, not live frames).
     LaunchedEffect(captureState) {
         if (captureState is AutoCaptureState.Captured) {
             val photo = (captureState as AutoCaptureState.Captured).capture
@@ -54,7 +53,7 @@ fun QcCaptureScreen(
     }
 
     Row(modifier = Modifier.fillMaxSize()) {
-        // ── Left 3/4: camera / capture region ────────────────────────────────
+        // ── Left 3/4: camera / capture region ───────────────────────────────
         Box(
             modifier = Modifier
                 .weight(3f)
@@ -63,10 +62,9 @@ fun QcCaptureScreen(
             contentAlignment = Alignment.Center,
         ) {
             // Strict 4:3 preview container centred in the left region, no stretch.
+            // maxWidth/maxHeight from BoxWithConstraintsScope are already in Dp.
             BoxWithConstraints(contentAlignment = Alignment.Center) {
-                val maxW = constraints.maxWidth.toFloat()
-                val maxH = constraints.maxHeight.toFloat()
-                val (previewW, previewH) = fitAspect43(maxW, maxH)
+                val (previewW, previewH) = fitAspect43(maxWidth.value, maxHeight.value)
                 Box(
                     modifier = Modifier
                         .size(width = previewW.dp, height = previewH.dp)
@@ -74,7 +72,7 @@ fun QcCaptureScreen(
                         .background(Color(0xFF1A1A1A)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    // Camera source: CameraUnavailableFrameSource in this scaffold.
+                    // Camera source is CameraUnavailableFrameSource in this scaffold.
                     Text("Camera unavailable", color = Color.Gray, fontSize = 14.sp)
                 }
             }
@@ -85,7 +83,7 @@ fun QcCaptureScreen(
             }
         }
 
-        // ── Right 1/4: task info + state + buttons ────────────────────────────
+        // ── Right 1/4: task info + state + buttons ───────────────────────────
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -173,7 +171,7 @@ private fun captureStateLabel(state: AutoCaptureState): String = when (state) {
 
 /**
  * Computes (width, height) fitting a 4:3 aspect ratio inside the given container.
- * Returned values are floats in the same unit as the inputs (px from BoxWithConstraints).
+ * Inputs and outputs are in the same unit (dp values from BoxWithConstraintsScope).
  */
 internal fun fitAspect43(containerW: Float, containerH: Float): Pair<Float, Float> {
     val targetAspect = 4f / 3f

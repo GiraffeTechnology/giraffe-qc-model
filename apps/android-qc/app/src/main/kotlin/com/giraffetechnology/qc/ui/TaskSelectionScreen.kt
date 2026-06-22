@@ -1,6 +1,5 @@
 package com.giraffetechnology.qc.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -16,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.giraffetechnology.qc.sku.*
 import com.giraffetechnology.qc.qwen.MnnRuntimeLoader
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 @Composable
@@ -28,9 +28,13 @@ fun TaskSelectionScreen(
     val scope = rememberCoroutineScope()
     val selectionState by taskSelectionController.state.collectAsState()
     val runtimeState by runtimeLoader.runtimeState.collectAsState()
-    val backendState by (skuRepository?.connectionState ?: remember {
-        kotlinx.coroutines.flow.MutableStateFlow<BackendConnectionState>(BackendConnectionState.Unknown)
-    }).collectAsState()
+
+    // Unconditional remember — avoids conditional composable call violation.
+    val fallbackConnectionFlow = remember {
+        MutableStateFlow<BackendConnectionState>(BackendConnectionState.Unknown)
+    }
+    val backendStateFlow = skuRepository?.connectionState ?: fallbackConnectionFlow
+    val backendState by backendStateFlow.collectAsState()
 
     var query by remember { mutableStateOf("") }
     var selectedSku by remember { mutableStateOf<Sku?>(null) }
@@ -58,7 +62,10 @@ fun TaskSelectionScreen(
         Spacer(Modifier.height(16.dp))
 
         // Search row
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             OutlinedTextField(
                 value         = query,
                 onValueChange = { query = it },
@@ -108,7 +115,7 @@ fun TaskSelectionScreen(
 
         // SKU result list
         val skuList: List<Sku> = when (val st = selectionState) {
-            is TaskSelectionState.ManualResults  -> st.results
+            is TaskSelectionState.ManualResults   -> st.results
             is TaskSelectionState.MatchCandidates -> st.result.candidates.map { it.sku }
             else -> emptyList()
         }
@@ -124,7 +131,9 @@ fun TaskSelectionScreen(
                         .clickable { selectedSku = sku }
                         .border(
                             width = if (isSelected) 2.dp else 0.dp,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            color = if (isSelected)
+                                MaterialTheme.colorScheme.primary
+                            else Color.Transparent,
                         ),
                     tonalElevation = if (isSelected) 4.dp else 1.dp,
                 ) {
@@ -139,16 +148,14 @@ fun TaskSelectionScreen(
 
         // Action buttons
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Photo-match button
             OutlinedButton(
                 onClick = { scope.launch { taskSelectionController.runMatch("") } },
             ) { Text("Photo Match") }
 
             Spacer(Modifier.weight(1f))
 
-            // Manual confirm
             Button(
-                onClick  = {
+                onClick = {
                     selectedSku?.let { sku ->
                         taskSelectionController.confirmManual(
                             sku,
@@ -163,13 +170,13 @@ fun TaskSelectionScreen(
 }
 
 @Composable
-private fun RuntimeStatusChip(state: com.giraffetechnology.qc.sku.MnnRuntimeState) {
+private fun RuntimeStatusChip(state: MnnRuntimeState) {
     val (label, color) = when (state) {
-        is com.giraffetechnology.qc.sku.MnnRuntimeState.Ready    -> "Ready" to Color(0xFF2E7D32)
-        is com.giraffetechnology.qc.sku.MnnRuntimeState.Loading  -> "MNN loading" to Color(0xFFF57F17)
-        is com.giraffetechnology.qc.sku.MnnRuntimeState.NotReady -> "Local runtime not ready" to Color(0xFFB71C1C)
+        is MnnRuntimeState.Ready    -> "Ready" to Color(0xFF2E7D32)
+        is MnnRuntimeState.Loading  -> "MNN loading" to Color(0xFFF57F17)
+        is MnnRuntimeState.NotReady -> "Local runtime not ready" to Color(0xFFB71C1C)
     }
-    Chip(label = label, color = color)
+    StatusChip(label = label, color = color)
 }
 
 @Composable
@@ -180,20 +187,20 @@ private fun BackendStatusChip(state: BackendConnectionState) {
         is BackendConnectionState.Offline   -> "Offline" to Color(0xFFB71C1C)
         is BackendConnectionState.Error     -> "Error" to Color(0xFFB71C1C)
     }
-    Chip(label = label, color = color)
+    StatusChip(label = label, color = color)
 }
 
 @Composable
-private fun Chip(label: String, color: Color) {
+private fun StatusChip(label: String, color: Color) {
     Surface(
-        color  = color.copy(alpha = 0.15f),
-        shape  = MaterialTheme.shapes.small,
+        color = color.copy(alpha = 0.15f),
+        shape = MaterialTheme.shapes.small,
     ) {
         Text(
             label,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-            color    = color,
-            fontSize = 12.sp,
+            modifier   = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            color      = color,
+            fontSize   = 12.sp,
             fontWeight = FontWeight.SemiBold,
         )
     }
@@ -202,7 +209,7 @@ private fun Chip(label: String, color: Color) {
 @Composable
 private fun StatusBanner(message: String, color: Color) {
     Surface(
-        color  = color.copy(alpha = 0.12f),
+        color    = color.copy(alpha = 0.12f),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(
