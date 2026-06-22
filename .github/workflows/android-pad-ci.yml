@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/android-pad-qwen3-vl-2b-mnn-final
+      - fix/android-pad-ui-backend-integration
     paths:
       - 'apps/android-qc/**'
       - 'scripts/download_mnn_android_libs.sh'
@@ -69,6 +70,27 @@ jobs:
             :app:assemblePadLocalDebug --stacktrace \
             :app:testPadLocalDebugUnitTest --stacktrace
 
+      - name: Static check — no mock/fake in src/main
+        working-directory: apps/android-qc
+        run: |
+          result=$(git grep -rn "MockTargetDetector\|MockCameraFrameSource\|FakeSkuRepository\|FakeInspectors\|FakeQwen" -- app/src/main || true)
+          if [ -n "$result" ]; then
+            echo "ERROR: mock/fake contamination in src/main:"
+            echo "$result"
+            exit 1
+          fi
+          echo "Static check passed: src/main is clean."
+
+      - name: Static check — no forbidden model/API refs
+        working-directory: apps/android-qc
+        run: |
+          result=$(git grep -nE "Qwen2|Qwen3-VL-4B|DashScope|Qwen API|cloud fallback|fake pass|mock pass" -- app/src/main || true)
+          if [ -n "$result" ]; then
+            echo "WARNING: potentially forbidden references found in src/main:"
+            echo "$result"
+          fi
+          echo "Static check complete."
+
       - name: Upload APK artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -84,3 +106,7 @@ jobs:
           name: test-results
           path: apps/android-qc/app/build/test-results/**/*.xml
           retention-days: 14
+
+      - name: CI Note
+        run: |
+          echo "CI used MNN stubs. Real native MNN inference was not validated."
