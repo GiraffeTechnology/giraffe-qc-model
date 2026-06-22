@@ -98,3 +98,68 @@ returning a fake pass.
 
 Do not claim production-ready offline QC inference until `nativeRunInference()` is
 actually called and native logs confirm it.
+
+---
+
+## SKU API Backend
+
+The Android `ApiSkuRepository` calls the backend at:
+
+```
+GET /api/v1/sku/search?q={query}
+GET /api/v1/sku/{sku_id}
+```
+
+As of this iteration, the backend implements both endpoints with a real database.
+See `docs/QC_SAMPLE_DB_API.md` for the full schema and API reference.
+
+### Search Response Shape
+
+The backend returns exactly the shape `ApiSkuRepository` expects:
+
+```json
+{
+  "items": [
+    {
+      "id": "sku-flower-001",
+      "item_number": "ITEM-FLOWER-001",
+      "name": "Artificial Flower A",
+      "reference_image_url": "http://192.168.1.10:8080/assets/ref/sku-flower-001-front.jpg",
+      "standard_photo_path": "/factory/ref/sku-flower-001-front.jpg"
+    }
+  ]
+}
+```
+
+### Seeded SKUs
+
+Three SKUs are available immediately after running the seed script:
+
+| item_number | name |
+|---|---|
+| `ITEM-FLOWER-001` | Artificial Flower A |
+| `ITEM-HAIRCLIP-001` | Hair Clip Standard |
+| `ITEM-BRACELET-001` | Bracelet Standard |
+
+Seed command:
+```bash
+uv run python scripts/seed_qc_sample_data.py
+```
+
+### Backend Connection
+
+The Android Pad connects to the backend on the factory LAN.
+Default backend URL (set in `PadRuntimeGraph`): `http://192.168.1.10:8080`
+
+The backend does not require `tenant_id` from the Android client;
+it defaults to `"default"` when the parameter is absent.
+
+### Compatibility Status
+
+| Android call | Backend status |
+|---|---|
+| `GET /api/v1/sku/search?q=...` | **Implemented** |
+| `GET /api/v1/sku/{sku_id}` | **Implemented** |
+
+The Android Pad UI can search real backend SKU data without any Android
+code changes.
