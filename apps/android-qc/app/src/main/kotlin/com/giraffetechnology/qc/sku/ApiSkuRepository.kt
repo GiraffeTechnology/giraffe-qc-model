@@ -38,8 +38,12 @@ private class RealHttpTransport : HttpTransport {
  * SKU repository that fetches data from the factory LAN backend.
  * API contract: GET /api/v1/sku/search?q={query} and GET /api/v1/sku/{id}.
  * Returns empty list / null on any error; never crashes the UI.
+ *
+ * Constructor is internal so the internal HttpTransport parameter type is not
+ * exposed in the public API surface. All callers within the module (graph,
+ * tests) use internal visibility.
  */
-class ApiSkuRepository(
+class ApiSkuRepository internal constructor(
     private val baseUrl: String,
     private val transport: HttpTransport = RealHttpTransport(),
 ) : SkuRepository {
