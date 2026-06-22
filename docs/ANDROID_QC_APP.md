@@ -2,34 +2,44 @@
 
 ## Overview
 
-A single-APK Android application providing on-device visual quality control inspection using Qwen2-VL running via the MNN inference engine.
+A single-APK Android application providing on-device visual quality control
+inspection using **Qwen3-VL-2B-Instruct-MNN** running via the MNN inference
+engine on an Android Pad.
+
+Android Pad target model: **Qwen3-VL-2B-Instruct-MNN**.
+Pad-side inference is local-only.
+
+Current UI/backend integration supports SKU search, manual confirmation,
+capture workflow, and safe MNN pending/review_required behavior.
+
+Real JNI-backed native MNN inference remains a separate acceptance gate.
 
 ## Architecture
 
 ```
-CameraX capture
-    │
-    ▼
-LocalStorage (saves captures + standard photos locally first)
-    │
-    ▼
-QwenInspectionRouter
-    ├── MnnQwenInspector (on-device, primary)
-    │       └── MNN JNI → Qwen2-VL-2B-Instruct-MNN (INT4)
-    │
-    └── CloudQwenInspector (fallback, requires explicit consent)
-            └── DashScope API
-    │
-    ▼
-QcResultParser (§4.3.5)
-    │   ├── Strips markdown wrappers
-    │   ├── Rejects hallucinated QC IDs
-    │   ├── Fills missing items as review_required
-    │   └── Clamps confidence to [0, 1]
-    │
-    ▼
-InspectionResult (pass | fail | review_required)
+App launch
+  → PadRuntimeGraph.init()
+  → TaskSelectionScreen
+      │  └ operator searches item number → ApiSkuRepository → factory LAN
+      │  └ operator confirms SKU manually
+  → QcCaptureScreen
+      │  └ AutoCaptureController state machine
+      │  └ manual or auto capture → still image only (NOT live frames)
+  → PadInspectionCoordinator
+      │  └ MNN not ready → MNN_PENDING / review_required
+      │  └ MNN ready → MnnQwenInspector → local only
+  → ResultScreen (shows ACCEPTED / NOT_ACCEPTED / review_required / MNN_PENDING)
 ```
+
+## Network Rules
+
+| Direction | Allowed |
+|-----------|--------|
+| Pad → factory LAN SKU API | Yes (SKU/task data only) |
+| Pad → local Room / file storage | Yes |
+| Pad → local MNN runtime | Yes |
+| Pad → Qwen API / DashScope | **No** |
+| Pad → cloud model fallback for QC | **No** |
 
 ## Module Layout
 
@@ -37,49 +47,54 @@ InspectionResult (pass | fail | review_required)
 apps/android-qc/
   app/
     src/main/kotlin/com/giraffetechnology/qc/
+      PadRuntimeGraph.kt           ← singleton production graph
+      PadScreen.kt                 ← navigation state sealed class
+      MainActivity.kt              ← entry point + navigation host
+      ui/
+        TaskSelectionScreen.kt     ← SKU search, manual confirm, photo match
+        QcCaptureScreen.kt         ← 4:3 camera region + auto-capture state panel
+        ResultScreen.kt            ← result display (ACCEPTED/review_required/MNN_PENDING)
+      sku/
+        ApiSkuRepository.kt        ← factory LAN SKU API with real JSON parsing
+        BackendConnectionState.kt  ← Connected / Offline / Error
+        TaskSelectionController.kt ← complete state machine
+        PadInspectionCoordinator.kt← local inspection coordinator
+        PadInspectionResult.kt     ← result data class (cloudInferenceUsed always false)
       qwen/
-        QwenInspector.kt          ← data types + interface
-        QcPromptBuilder.kt        ← builds MNN inference prompt
-        QcResultParser.kt         ← parses + validates model output
-        QwenInspectionRouter.kt   ← on-device first routing + fallback
-        MnnQwenInspector.kt       ← MNN JNI bridge (scaffold → production)
-        MnnRuntimeLoader.kt       ← MNN native library loader
-        ModelProvisioning.kt      ← download / bundle + SHA-256 verify
-        fake/
-          FakeInspectors.kt       ← deterministic fakes for CI tests
-      benchmark/
-        BenchmarkActivity.kt      ← §4.3.0 latency benchmark
-      MainActivity.kt             ← entry point
-    src/test/kotlin/...
-      QcResultParserTest.kt
-      QwenInspectorRouterTest.kt
-      QcPromptBuilderTest.kt
-      ModelProvisioningTest.kt
+        MnnQwenInspector.kt        ← MNN JNI bridge (scaffold)
+        MnnRuntimeLoader.kt        ← MNN native library loader
+      capture/
+        AutoCaptureController.kt   ← Idle→Searching→Locking→Locked→Captured state machine
+        PendingTargetDetector.kt   ← safe placeholder (no fake result)
+      camera/
+        CameraUnavailableFrameSource.kt ← safe placeholder
 ```
 
 ## Building
 
 ```bash
+bash scripts/download_mnn_android_libs.sh --ci-stubs
 cd apps/android-qc
-./gradlew assembleDebug
-./gradlew test          # JVM unit tests (no device required)
+./gradlew clean
+./gradlew :app:assemblePadLocalDebug --stacktrace
+./gradlew :app:testPadLocalDebugUnitTest --stacktrace
 ```
-
-## Running Unit Tests
-
-```bash
-./gradlew :app:test
-```
-
-All tests use fake inspectors and run without a device or real model.
-
-## Deployment
-
-See [DEPLOYMENT_LOCAL_QWEN.md](DEPLOYMENT_LOCAL_QWEN.md) for device requirements, model provisioning, and the ADB benchmark workflow.
 
 ## Safety Guarantees
 
 - **Fail-closed**: parse errors and model timeouts return `review_required`, never `pass`.
-- **§4.5.4**: an on-device `fail` result is final; cloud fallback cannot convert it to `pass`.
-- **Dual-guard cloud**: both `cloudEnabled=true` and `allowSendImages=true` are required before any image leaves the device.
-- **Checksum-mandatory**: model weights are SHA-256 verified on every provision; a mismatch halts the app.
+- **No cloud QC inference**: `QWEN_CLOUD_ENABLED=false`, `ALLOW_SEND_IMAGES_TO_CLOUD_QWEN=false`.
+- **No fake pass**: `ALLOW_STUB_PASS=false`.
+- **MNN pending is explicit**: when MNN is unavailable the result is `MNN_PENDING` or
+  `review_required`, never `ACCEPTED`.
+- **User confirmation required**: all task confirmation paths require an explicit user tap;
+  no auto-binding.
+
+## MNN Status
+
+Real JNI-backed `nativeRunInference()` is not yet wired. When MNN native libs are
+absent the app displays `MNN_PENDING` / `review_required` instead of crashing or
+returning a fake pass.
+
+Do not claim production-ready offline QC inference until `nativeRunInference()` is
+actually called and native logs confirm it.

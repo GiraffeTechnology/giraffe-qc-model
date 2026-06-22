@@ -1,0 +1,113 @@
+name: Android Pad CI — Qwen3-VL-2B-MNN
+
+on:
+  push:
+    branches:
+      - fix/android-pad-qwen3-vl-2b-mnn-final
+      - fix/android-pad-ui-backend-integration
+      - fix/android-pad-ui-backend-e2e-completion
+    paths:
+      - 'apps/android-qc/**'
+      - 'scripts/download_mnn_android_libs.sh'
+      - '.github/workflows/android-pad-ci.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'apps/android-qc/**'
+
+jobs:
+  android-build-test:
+    name: Build & Test (3x consecutive)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Set up Gradle 8.6
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.6'
+
+      - name: Install Android SDK platform and build tools
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
+
+      - name: Create MNN CI stubs (satisfies verifyMnnNativeDeps)
+        run: bash scripts/download_mnn_android_libs.sh --ci-stubs
+
+      - name: Generate Gradle wrapper
+        working-directory: apps/android-qc
+        run: gradle wrapper --gradle-version 8.6 --distribution-type bin
+
+      - name: Run 1 of 3 — assemble padLocalDebug + unit tests
+        working-directory: apps/android-qc
+        run: |
+          ./gradlew clean \
+            :app:assemblePadLocalDebug --stacktrace \
+            :app:testPadLocalDebugUnitTest --stacktrace
+
+      - name: Run 2 of 3 — assemble padLocalDebug + unit tests
+        working-directory: apps/android-qc
+        run: |
+          ./gradlew clean \
+            :app:assemblePadLocalDebug --stacktrace \
+            :app:testPadLocalDebugUnitTest --stacktrace
+
+      - name: Run 3 of 3 — assemble padLocalDebug + unit tests
+        working-directory: apps/android-qc
+        run: |
+          ./gradlew clean \
+            :app:assemblePadLocalDebug --stacktrace \
+            :app:testPadLocalDebugUnitTest --stacktrace
+
+      - name: Static check — no mock/fake in src/main
+        working-directory: apps/android-qc
+        run: |
+          result=$(git grep -rn "MockTargetDetector\|MockCameraFrameSource\|FakeSkuRepository\|FakeInspectors\|FakeQwen" -- app/src/main || true)
+          if [ -n "$result" ]; then
+            echo "ERROR: mock/fake contamination in src/main:"
+            echo "$result"
+            exit 1
+          fi
+          echo "Static check passed: src/main is clean."
+
+      - name: Static check — no forbidden model/API refs
+        working-directory: apps/android-qc
+        run: |
+          result=$(git grep -nE "Qwen2|Qwen3-VL-4B|DashScope|Qwen API|cloud fallback|fake pass|mock pass" -- app/src/main || true)
+          if [ -n "$result" ]; then
+            echo "WARNING: potentially forbidden references found in src/main:"
+            echo "$result"
+          fi
+          echo "Static check complete."
+
+      - name: Upload APK artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pad-local-debug-apk
+          path: apps/android-qc/app/build/outputs/apk/padLocal/debug/*.apk
+          retention-days: 14
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: apps/android-qc/app/build/test-results/**/*.xml
+          retention-days: 14
+
+      - name: CI Note
+        run: |
+          echo "CI used MNN stubs. Real native MNN inference was not validated."

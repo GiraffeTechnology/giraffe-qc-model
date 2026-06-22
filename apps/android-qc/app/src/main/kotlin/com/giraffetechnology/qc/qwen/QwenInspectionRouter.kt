@@ -45,25 +45,26 @@ class QwenInspectionRouter(
             return makeReviewRequired(qcPoints, "on_device_disabled")
         }
 
-        // Try on-device
+        // Try on-device — null means an exception occurred during inference
         val onDeviceResult = tryOnDevice(standardPhotos, capturedPhoto, qcPoints, context)
-            ?: return makeReviewRequired(qcPoints, "on_device_unavailable")
+            ?: return handleFallback(standardPhotos, capturedPhoto, qcPoints, context, "on_device_error")
 
-        // §4.5.4: fail is final
+        // §4.5.4: fail is final when configured so
         if (onDeviceResult.overallResult == "fail" && config.onDeviceFailIsFinal) {
             Log.d(TAG, "On-device FAIL is final per §4.5.4")
             return onDeviceResult
         }
 
-        // Accept if meets quality bar
+        // Accept if meets quality bar (only "pass" with sufficient confidence)
         if (isAcceptable(onDeviceResult)) {
             Log.d(TAG, "On-device result accepted: ${onDeviceResult.overallResult}")
             return onDeviceResult
         }
 
-        // Fallback
+        // Fallback: on-device returned fail (not final), low confidence, or review_required
         val fallbackReason = when (onDeviceResult.overallResult) {
             "review_required" -> "on_device_review_required"
+            "fail"            -> "on_device_fail_not_final"
             else              -> "on_device_confidence_below_threshold"
         }
         return handleFallback(standardPhotos, capturedPhoto, qcPoints, context, fallbackReason)
@@ -81,17 +82,14 @@ class QwenInspectionRouter(
             }
         } catch (e: TimeoutCancellationException) {
             Log.w(TAG, "On-device timeout after ${config.onDeviceTimeoutMs}ms")
-            handleFallback(standardPhotos, capturedPhoto, qcPoints, context, "on_device_timeout")
             null
         } catch (e: UnsupportedOperationException) {
             val reason = if (e.message?.contains("not_provisioned") == true)
                 "on_device_model_not_provisioned" else "on_device_unsupported"
             Log.w(TAG, "On-device error ($reason): ${e.message}")
-            handleFallback(standardPhotos, capturedPhoto, qcPoints, context, reason)
             null
         } catch (e: Exception) {
             Log.w(TAG, "On-device error: ${e.message}")
-            handleFallback(standardPhotos, capturedPhoto, qcPoints, context, "on_device_error")
             null
         }
     }
@@ -117,11 +115,12 @@ class QwenInspectionRouter(
         }
     }
 
+    // Only a "pass" verdict with sufficient confidence and non-empty items is acceptable.
+    // "fail" and "review_required" always go to the fallback path.
     private fun isAcceptable(result: QwenInspectionOutput): Boolean {
-        if (result.overallResult !in setOf("pass", "fail", "review_required")) return false
+        if (result.overallResult != "pass") return false
         if (result.items.isEmpty()) return false
         if (result.confidence < config.minConfidence) return false
-        if (result.overallResult == "review_required") return false
         return true
     }
 

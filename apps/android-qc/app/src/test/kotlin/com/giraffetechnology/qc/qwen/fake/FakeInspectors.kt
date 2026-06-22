@@ -1,17 +1,24 @@
 package com.giraffetechnology.qc.qwen.fake
 
-import com.giraffetechnology.qc.qwen.*
+import com.giraffetechnology.qc.qwen.CapturePhotoInput
+import com.giraffetechnology.qc.qwen.FallbackInfo
+import com.giraffetechnology.qc.qwen.InspectionContext
+import com.giraffetechnology.qc.qwen.InspectionItemResult
+import com.giraffetechnology.qc.qwen.QcPointInput
+import com.giraffetechnology.qc.qwen.QwenInspectionOutput
+import com.giraffetechnology.qc.qwen.QwenInspector
+import com.giraffetechnology.qc.qwen.StandardPhotoInput
 import kotlinx.coroutines.delay
 
-// §4.9.3 — Deterministic fake inspectors for unit/CI tests.
-// Never load the real MNN model or call real cloud APIs in tests.
+// Test-only deterministic fake inspectors for unit/CI tests.
+// These classes MUST NOT appear in src/main — use PendingTargetDetector there instead.
 
 class FakeOnDeviceQwenInspector(
     private val resultOverride: String = "pass",
     private val confidence: Float = 0.95f,
 ) : QwenInspector {
     override val engineName = "local_qwen_mnn"
-    override val modelName  = "FakeQwen-2B"
+    override val modelName  = "FakeQwen-3B"
 
     override suspend fun inspect(
         standardPhotos: List<StandardPhotoInput>,

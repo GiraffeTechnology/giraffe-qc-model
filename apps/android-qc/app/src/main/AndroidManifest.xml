@@ -1,15 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET" />
+
     <uses-feature android:name="android.hardware.camera.any" android:required="true" />
 
     <application
         android:allowBackup="false"
-        android:label="GiraffeQC"
-        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+        android:label="@string/app_name"
+        android:theme="@style/Theme.GiraffeQC"
+        android:supportsRtl="true"
+        android:networkSecurityConfig="@xml/network_security_config">
 
         <activity
             android:name=".MainActivity"
@@ -21,7 +23,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Benchmark activity — launched via adb for §4.3.0 latency measurement -->
         <activity
             android:name=".benchmark.BenchmarkActivity"
             android:exported="true">

@@ -1,40 +1,54 @@
 package com.giraffetechnology.qc
 
-import android.app.Activity
 import android.os.Bundle
-import android.util.Log
-import com.giraffetechnology.qc.qwen.*
-import kotlinx.coroutines.*
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.*
+import androidx.compose.material3.MaterialTheme
+import com.giraffetechnology.qc.ui.QcCaptureScreen
+import com.giraffetechnology.qc.ui.ResultScreen
+import com.giraffetechnology.qc.ui.TaskSelectionScreen
 
-class MainActivity : Activity() {
-
-    companion object { private const val TAG = "QCMain" }
-
-    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-
+class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.i(TAG, "QC app started")
-        scope.launch { initInspectionPipeline() }
+        PadRuntimeGraph.init(this)
+        setContent {
+            MaterialTheme {
+                PadApp()
+            }
+        }
     }
+}
 
-    override fun onDestroy() {
-        super.onDestroy()
-        scope.cancel()
-    }
+@Composable
+private fun PadApp() {
+    var screen by remember { mutableStateOf<PadScreen>(PadScreen.TaskSelection) }
 
-    private suspend fun initInspectionPipeline() {
-        val runtimeLoader = MnnRuntimeLoader(this)
-        val config = RouterConfig(
-            onDeviceEnabled    = true,
-            onDeviceTimeoutMs  = 10_000L,
-            cloudEnabled       = false,
-            minConfidence      = 0.82f,
-            onDeviceFailIsFinal = true,
+    when (val s = screen) {
+        is PadScreen.TaskSelection -> TaskSelectionScreen(
+            taskSelectionController = PadRuntimeGraph.taskSelectionController,
+            runtimeLoader           = PadRuntimeGraph.runtimeLoader,
+            skuRepository           = PadRuntimeGraph.skuRepository
+                as? com.giraffetechnology.qc.sku.ApiSkuRepository,
+            onTaskConfirmed         = { task -> screen = PadScreen.QcCapture(task) },
         )
-        val onDeviceInspector = MnnQwenInspector(this, runtimeLoader)
-        val router = QwenInspectionRouter(onDeviceInspector, config = config)
-        Log.i(TAG, "Inspection pipeline ready: engine=${onDeviceInspector.engineName} router=$router")
-        // UI wiring happens here once views are added
+
+        is PadScreen.QcCapture -> QcCaptureScreen(
+            task                  = s.task,
+            autoCaptureController = PadRuntimeGraph.autoCaptureController,
+            runtimeLoader         = PadRuntimeGraph.runtimeLoader,
+            cameraXController     = PadRuntimeGraph.cameraXCaptureController,
+            inspectionCoordinator = PadRuntimeGraph.inspectionCoordinator,
+            onInspectionResult    = { result -> screen = PadScreen.Result(s.task, result) },
+            onBack                = { screen = PadScreen.TaskSelection },
+        )
+
+        is PadScreen.Result -> ResultScreen(
+            task     = s.task,
+            result   = s.result,
+            onRetake = { screen = PadScreen.QcCapture(s.task) },
+            onDone   = { screen = PadScreen.TaskSelection },
+        )
     }
 }
