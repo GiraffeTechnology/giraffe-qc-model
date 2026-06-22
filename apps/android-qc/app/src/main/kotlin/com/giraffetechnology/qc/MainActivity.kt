@@ -5,8 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import androidx.compose.material3.MaterialTheme
-import com.giraffetechnology.qc.sku.PadInspectionResult
-import com.giraffetechnology.qc.sku.QcTask
 import com.giraffetechnology.qc.ui.QcCaptureScreen
 import com.giraffetechnology.qc.ui.ResultScreen
 import com.giraffetechnology.qc.ui.TaskSelectionScreen
@@ -31,18 +29,18 @@ private fun PadApp() {
         is PadScreen.TaskSelection -> TaskSelectionScreen(
             taskSelectionController = PadRuntimeGraph.taskSelectionController,
             runtimeLoader           = PadRuntimeGraph.runtimeLoader,
-            skuRepository           = PadRuntimeGraph.skuRepository as? com.giraffetechnology.qc.sku.ApiSkuRepository,
+            skuRepository           = PadRuntimeGraph.skuRepository
+                as? com.giraffetechnology.qc.sku.ApiSkuRepository,
             onTaskConfirmed         = { task -> screen = PadScreen.QcCapture(task) },
         )
 
         is PadScreen.QcCapture -> QcCaptureScreen(
-            task                 = s.task,
+            task                  = s.task,
             autoCaptureController = PadRuntimeGraph.autoCaptureController,
-            runtimeLoader        = PadRuntimeGraph.runtimeLoader,
-            onInspectionResult   = { result ->
-                screen = PadScreen.Result(s.task, result)
-            },
-            onBack               = { screen = PadScreen.TaskSelection },
+            runtimeLoader         = PadRuntimeGraph.runtimeLoader,
+            inspectionCoordinator = PadRuntimeGraph.inspectionCoordinator,
+            onInspectionResult    = { result -> screen = PadScreen.Result(s.task, result) },
+            onBack                = { screen = PadScreen.TaskSelection },
         )
 
         is PadScreen.Result -> ResultScreen(

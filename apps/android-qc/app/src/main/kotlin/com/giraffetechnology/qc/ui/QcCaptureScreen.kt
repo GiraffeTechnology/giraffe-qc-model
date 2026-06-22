@@ -33,29 +33,28 @@ fun QcCaptureScreen(
     onInspectionResult: (PadInspectionResult) -> Unit,
     onBack: () -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
     val captureState by autoCaptureController.state.collectAsState()
     val runtimeState by runtimeLoader.runtimeState.collectAsState()
 
-    // When AutoCapture produces a photo, run inspection.
+    // When AutoCapture produces a photo, run inspection (only the still image, not live frames).
     LaunchedEffect(captureState) {
         if (captureState is AutoCaptureState.Captured) {
             val photo = (captureState as AutoCaptureState.Captured).capture
             val result = inspectionCoordinator?.inspect(task, photo)
                 ?: PadInspectionResult(
-                    overallResult     = "MNN_PENDING",
-                    reason            = "Inspection coordinator not available",
-                    modelName         = "Qwen3-VL-2B-Instruct-MNN",
-                    localOnly         = true,
+                    overallResult      = "MNN_PENDING",
+                    reason             = "Inspection coordinator not available",
+                    modelName          = "Qwen3-VL-2B-Instruct-MNN",
+                    localOnly          = true,
                     cloudInferenceUsed = false,
-                    capturedImagePath = photo.rawImagePath,
+                    capturedImagePath  = photo.rawImagePath,
                 )
             onInspectionResult(result)
         }
     }
 
     Row(modifier = Modifier.fillMaxSize()) {
-        // ── Left 3/4: camera / capture region ─────────────────────────────────
+        // ── Left 3/4: camera / capture region ────────────────────────────────
         Box(
             modifier = Modifier
                 .weight(3f)
@@ -63,8 +62,7 @@ fun QcCaptureScreen(
                 .background(Color.Black),
             contentAlignment = Alignment.Center,
         ) {
-            // Strict 4:3 preview container centred in the left region.
-            // Camera source is CameraUnavailableFrameSource until CameraX is wired.
+            // Strict 4:3 preview container centred in the left region, no stretch.
             BoxWithConstraints(contentAlignment = Alignment.Center) {
                 val maxW = constraints.maxWidth.toFloat()
                 val maxH = constraints.maxHeight.toFloat()
@@ -76,22 +74,18 @@ fun QcCaptureScreen(
                         .background(Color(0xFF1A1A1A)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        "Camera unavailable",
-                        color    = Color.Gray,
-                        fontSize = 14.sp,
-                    )
+                    // Camera source: CameraUnavailableFrameSource in this scaffold.
+                    Text("Camera unavailable", color = Color.Gray, fontSize = 14.sp)
                 }
             }
 
-            // Lock-box overlay when detector has a target.
+            // Lock-box overlay when detector has a locked target.
             if (captureState is AutoCaptureState.Locked) {
-                val box = (captureState as AutoCaptureState.Locked).box
-                LockBoxOverlay(box)
+                LockBoxOverlay()
             }
         }
 
-        // ── Right 1/4: task info + state + buttons ─────────────────────────────
+        // ── Right 1/4: task info + state + buttons ────────────────────────────
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -114,31 +108,28 @@ fun QcCaptureScreen(
 
             Divider()
 
-            // Runtime state
             Text("Runtime", fontWeight = FontWeight.Bold, fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
                 when (runtimeState) {
-                    is com.giraffetechnology.qc.sku.MnnRuntimeState.Ready    -> "Ready"
-                    is com.giraffetechnology.qc.sku.MnnRuntimeState.Loading  -> "MNN loading…"
-                    is com.giraffetechnology.qc.sku.MnnRuntimeState.NotReady -> "Not ready"
+                    is MnnRuntimeState.Ready    -> "Ready"
+                    is MnnRuntimeState.Loading  -> "MNN loading…"
+                    is MnnRuntimeState.NotReady -> "Not ready"
                 },
                 fontSize = 12.sp,
             )
 
             Divider()
 
-            // Auto-capture state
             Text("Capture state", fontWeight = FontWeight.Bold, fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(captureStateLabel(captureState), fontSize = 12.sp)
 
             Spacer(Modifier.weight(1f))
 
-            // Manual capture button — only enabled when camera source provides a frame.
-            // Camera is unavailable in this scaffold; button is shown but disabled.
+            // Manual capture: disabled until CameraX is wired and a real frame is available.
             Button(
-                onClick  = { /* wire to real frame capture when CameraX is integrated */ },
+                onClick  = { },
                 enabled  = false,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Manual Capture") }
@@ -157,9 +148,7 @@ fun QcCaptureScreen(
 }
 
 @Composable
-private fun LockBoxOverlay(box: NormalizedBox) {
-    // Rendered as a fixed-size Box overlay; real coordinate mapping requires
-    // the preview pixel dimensions to be passed in. This shows a visual cue.
+private fun LockBoxOverlay() {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -169,30 +158,26 @@ private fun LockBoxOverlay(box: NormalizedBox) {
 }
 
 private fun captureStateLabel(state: AutoCaptureState): String = when (state) {
-    is AutoCaptureState.Idle             -> "Waiting for camera"
-    is AutoCaptureState.Searching        -> "Searching target"
+    is AutoCaptureState.Idle              -> "Waiting for camera"
+    is AutoCaptureState.Searching         -> "Searching target"
     is AutoCaptureState.CandidateDetected -> "Candidate detected"
-    is AutoCaptureState.Locking          -> "Locking…"
-    is AutoCaptureState.Locked           -> "Locked"
-    is AutoCaptureState.Capturing        -> "Capturing…"
-    is AutoCaptureState.Captured         -> "Captured"
-    is AutoCaptureState.Rejected         -> when ((state as AutoCaptureState.Rejected).reason) {
-        RejectReason.LOCKING_TIMEOUT -> "Locking timeout"
+    is AutoCaptureState.Locking           -> "Locking…"
+    is AutoCaptureState.Locked            -> "Locked"
+    is AutoCaptureState.Capturing         -> "Capturing…"
+    is AutoCaptureState.Captured          -> "Captured"
+    is AutoCaptureState.Rejected          -> when (state.reason) {
+        RejectReason.LOCKING_TIMEOUT  -> "Locking timeout"
         RejectReason.CAPTURE_IO_ERROR -> "Capture IO error"
     }
 }
 
 /**
- * Computes (width, height) that fits a 4:3 aspect ratio inside the given container.
- * Returns values in logical dp (the constraints are already in px but the result
- * is used with Modifier.size so the caller must ensure units align).
+ * Computes (width, height) fitting a 4:3 aspect ratio inside the given container.
+ * Returned values are floats in the same unit as the inputs (px from BoxWithConstraints).
  */
 internal fun fitAspect43(containerW: Float, containerH: Float): Pair<Float, Float> {
     val targetAspect = 4f / 3f
     val fromHeight = containerH * targetAspect
-    return if (fromHeight <= containerW) {
-        fromHeight to containerH
-    } else {
-        containerW to (containerW / targetAspect)
-    }
+    return if (fromHeight <= containerW) Pair(fromHeight, containerH)
+    else Pair(containerW, containerW / targetAspect)
 }
