@@ -6,19 +6,23 @@ import kotlinx.coroutines.flow.asStateFlow
 
 sealed class TaskSelectionState {
     object Idle : TaskSelectionState()
+    /** Backend search in progress. */
+    object SearchingBackend : TaskSelectionState()
+    data class BackendError(val message: String) : TaskSelectionState()
+    data class ManualResults(val results: List<Sku>) : TaskSelectionState()
     /** MNN runtime is not ready; runMatch() cannot proceed. */
     object MnnPending : TaskSelectionState()
-    data class ManualResults(val results: List<Sku>) : TaskSelectionState()
     data class MatchCandidates(val result: SkuMatchResult) : TaskSelectionState()
+    data class ReviewRequired(val reason: String) : TaskSelectionState()
+    object NoMatch : TaskSelectionState()
     data class TaskConfirmed(val task: QcTask) : TaskSelectionState()
 }
 
 /**
  * Manages SKU task selection for a QC session.
  *
- * All task confirmation paths require explicit user action — there is no
- * auto-binding. runMatch() transitions to MnnPending when the local
- * runtime is not ready, never returning a fabricated result.
+ * All confirmation paths require explicit user action — no auto-binding.
+ * runMatch() transitions to MnnPending when the local runtime is not ready.
  */
 class TaskSelectionController(
     private val skuRepo: SkuRepository,
@@ -28,8 +32,13 @@ class TaskSelectionController(
     val state: StateFlow<TaskSelectionState> = _state.asStateFlow()
 
     suspend fun searchByItemNumber(query: String) {
-        val results = skuRepo.findByItemNumber(query)
-        _state.value = TaskSelectionState.ManualResults(results)
+        _state.value = TaskSelectionState.SearchingBackend
+        runCatching {
+            val results = skuRepo.findByItemNumber(query)
+            _state.value = TaskSelectionState.ManualResults(results)
+        }.onFailure { e ->
+            _state.value = TaskSelectionState.BackendError(e.message ?: "Unknown error")
+        }
     }
 
     suspend fun runMatch(capturedImagePath: String) {
@@ -38,16 +47,23 @@ class TaskSelectionController(
             return
         }
         val result = matcher.match(capturedImagePath)
-        _state.value = TaskSelectionState.MatchCandidates(result)
+        _state.value = when (result.status) {
+            MatchStatus.OK             -> TaskSelectionState.MatchCandidates(result)
+            MatchStatus.REVIEW_REQUIRED -> TaskSelectionState.ReviewRequired(
+                "Ambiguous match — please select SKU manually"
+            )
+            MatchStatus.NO_MATCH       -> TaskSelectionState.NoMatch
+            MatchStatus.MNN_PENDING    -> TaskSelectionState.MnnPending
+        }
     }
 
     /** Confirm a candidate returned by runMatch. Resolves as MNN_PHOTO_MATCH. */
     fun confirmCandidate(candidate: SkuCandidate) {
         _state.value = TaskSelectionState.TaskConfirmed(
             QcTask(
-                sku = candidate.sku,
+                sku            = candidate.sku,
                 confirmedByUser = true,
-                resolvedBy = SkuResolutionMethod.MNN_PHOTO_MATCH,
+                resolvedBy     = SkuResolutionMethod.MNN_PHOTO_MATCH,
             )
         )
     }
@@ -59,12 +75,6 @@ class TaskSelectionController(
         )
     }
 
-    /** Return to Idle to begin a new capture-for-match cycle. */
-    fun startCapturingForMatch() {
-        _state.value = TaskSelectionState.Idle
-    }
-
-    fun reset() {
-        _state.value = TaskSelectionState.Idle
-    }
+    fun startCapturingForMatch() { _state.value = TaskSelectionState.Idle }
+    fun reset() { _state.value = TaskSelectionState.Idle }
 }
