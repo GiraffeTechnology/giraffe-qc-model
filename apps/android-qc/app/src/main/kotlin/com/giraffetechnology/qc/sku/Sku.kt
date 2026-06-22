@@ -5,4 +5,5 @@ data class Sku(
     val itemNumber: String,
     val name: String,
     val standardPhotoPath: String? = null,
+    val referenceImageUrl: String? = null,
 )
