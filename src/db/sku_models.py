@@ -1,7 +1,7 @@
-"""SQLAlchemy models for QC SKU catalog (sample library for Android Pad)."""
+"""SQLAlchemy models for QC SKU catalog (shared by Pad and Server editions)."""
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, JSON
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.models import Base, _utcnow
@@ -10,6 +10,9 @@ from src.db.models import Base, _utcnow
 class QCSkuItem(Base):
     """SKU / sample master entry — the operator-facing item catalog."""
     __tablename__ = "qc_sku_items"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "item_number", name="uq_sku_tenant_item_number"),
+    )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default="default")

@@ -14,7 +14,7 @@ from src.api.main import app
 from src.api.deps import get_db_dep
 
 
-# ─── Fixtures ─────────────────────────────────────────────────────────────────
+# ─── Fixtures ───────────────────────────────────────────────────────────────
 
 
 @pytest.fixture(scope="module")
@@ -52,7 +52,7 @@ def client(db_session_factory):
 TENANT = "default"
 
 
-# ─── Unit: SKU Model Creation ─────────────────────────────────────────────────────
+# ─── Unit: SKU Model Creation ──────────────────────────────────────────────────────
 
 
 class TestSkuModelCreation:
@@ -97,8 +97,34 @@ class TestSkuModelCreation:
         assert resp.status_code == 201
         assert resp.json()["tenant_id"] == "default"
 
+    def test_create_duplicate_item_number_returns_409(self, client):
+        client.post("/api/v1/sku", json={
+            "tenant_id": TENANT,
+            "item_number": "ITEM-DUP-UNIQUE-001",
+            "name": "Duplicate Test A",
+        })
+        resp = client.post("/api/v1/sku", json={
+            "tenant_id": TENANT,
+            "item_number": "ITEM-DUP-UNIQUE-001",
+            "name": "Duplicate Test B",
+        })
+        assert resp.status_code == 409
 
-# ─── Unit: Photo Metadata Creation ──────────────────────────────────────────────────
+    def test_same_item_number_different_tenant_is_allowed(self, client):
+        client.post("/api/v1/sku", json={
+            "tenant_id": "tenant-a",
+            "item_number": "ITEM-CROSS-TENANT-001",
+            "name": "Cross Tenant A",
+        })
+        resp = client.post("/api/v1/sku", json={
+            "tenant_id": "tenant-b",
+            "item_number": "ITEM-CROSS-TENANT-001",
+            "name": "Cross Tenant B",
+        })
+        assert resp.status_code == 201
+
+
+# ─── Unit: Photo Metadata Creation ──────────────────────────────────────────────────────
 
 
 class TestPhotoMetadataCreation:
@@ -141,7 +167,7 @@ class TestPhotoMetadataCreation:
         assert resp.status_code == 404
 
 
-# ─── Unit: Primary Photo Selection ──────────────────────────────────────────────────
+# ─── Unit: Primary Photo Selection ──────────────────────────────────────────────────────
 
 
 class TestPrimaryPhotoSelection:
@@ -184,7 +210,7 @@ class TestPrimaryPhotoSelection:
         assert detail.json()["reference_image_url"] == "http://192.168.1.10:8080/assets/ref/second.jpg"
 
 
-# ─── Unit: Inspection Requirement Creation ────────────────────────────────────────────
+# ─── Unit: Inspection Requirement Creation ───────────────────────────────────────────────────
 
 
 class TestInspectionRequirementCreation:
@@ -232,7 +258,7 @@ class TestInspectionRequirementCreation:
         assert resp.status_code == 404
 
 
-# ─── Unit: Detection Point Creation ───────────────────────────────────────────────────
+# ─── Unit: Detection Point Creation ───────────────────────────────────────────────────────────
 
 
 class TestDetectionPointCreation:
@@ -285,7 +311,7 @@ class TestDetectionPointCreation:
         assert resp.status_code == 404
 
 
-# ─── API: Search ──────────────────────────────────────────────────────────────────
+# ─── API: Search ──────────────────────────────────────────────────────────────────────
 
 
 class TestSkuSearch:
@@ -333,20 +359,6 @@ class TestSkuSearch:
         assert resp.status_code == 200
         assert len(resp.json()["items"]) >= 1
 
-    def test_inactive_sku_not_returned(self, client):
-        # An SKU with status != 'active' must not appear in search results.
-        # We verify the filter is active by checking active SKUs ARE returned
-        # (the DB filter `status == 'active'` is the guard; setting inactive
-        # requires direct DB access outside the public API scope of this iteration).
-        client.post("/api/v1/sku", json={
-            "tenant_id": TENANT,
-            "item_number": "ITEM-ACTIVE-CHECK-001",
-            "name": "Active SKU Check",
-        })
-        resp = client.get("/api/v1/sku/search", params={"q": "ITEM-ACTIVE-CHECK-001", "tenant_id": TENANT})
-        items = resp.json()["items"]
-        assert all(i["item_number"] == "ITEM-ACTIVE-CHECK-001" for i in items)
-
     def test_search_response_has_required_android_fields(self, client):
         client.post("/api/v1/sku", json={
             "tenant_id": TENANT,
@@ -388,7 +400,7 @@ class TestSkuSearch:
         assert "items" in resp.json()
 
 
-# ─── API: Detail ───────────────────────────────────────────────────────────────────
+# ─── API: Detail ─────────────────────────────────────────────────────────────────────
 
 
 class TestSkuDetail:
@@ -463,7 +475,7 @@ class TestSkuDetail:
         assert resp.status_code == 200
 
 
-# ─── Android Contract Test ───────────────────────────────────────────────────────────
+# ─── Android Contract Test ────────────────────────────────────────────────────────────────
 
 
 class TestAndroidContract:
@@ -524,7 +536,63 @@ class TestAndroidContract:
         assert isinstance(resp.json()["items"], list)
 
 
-# ─── E2E Smoke Test ───────────────────────────────────────────────────────────────
+# ─── Inactive / Archived SKU Filtering ──────────────────────────────────────────────────
+
+
+class TestInactiveSkuFiltering:
+    """Real test: directly mark SKU inactive/archived and confirm search excludes it."""
+
+    def test_inactive_sku_excluded_from_search(self, client, db_session_factory):
+        resp = client.post("/api/v1/sku", json={
+            "tenant_id": TENANT,
+            "item_number": "ITEM-INACTIVE-REAL-001",
+            "name": "Inactive Real Test SKU",
+        })
+        assert resp.status_code == 201
+        sku_id = resp.json()["id"]
+
+        # Confirm it appears in search while active
+        search = client.get("/api/v1/sku/search", params={"q": "ITEM-INACTIVE-REAL-001", "tenant_id": TENANT})
+        assert any(i["item_number"] == "ITEM-INACTIVE-REAL-001" for i in search.json()["items"])
+
+        # Directly set status to inactive via DB session
+        from src.db.sku_models import QCSkuItem
+        session = db_session_factory()
+        try:
+            sku = session.query(QCSkuItem).filter(QCSkuItem.id == sku_id).first()
+            sku.status = "inactive"
+            session.commit()
+        finally:
+            session.close()
+
+        # Confirm it no longer appears in search
+        search2 = client.get("/api/v1/sku/search", params={"q": "ITEM-INACTIVE-REAL-001", "tenant_id": TENANT})
+        assert not any(i["item_number"] == "ITEM-INACTIVE-REAL-001" for i in search2.json()["items"])
+
+    def test_archived_sku_excluded_from_search(self, client, db_session_factory):
+        resp = client.post("/api/v1/sku", json={
+            "tenant_id": TENANT,
+            "item_number": "ITEM-ARCHIVED-REAL-001",
+            "name": "Archived Real Test SKU",
+        })
+        assert resp.status_code == 201
+        sku_id = resp.json()["id"]
+
+        # Directly set status to archived
+        from src.db.sku_models import QCSkuItem
+        session = db_session_factory()
+        try:
+            sku = session.query(QCSkuItem).filter(QCSkuItem.id == sku_id).first()
+            sku.status = "archived"
+            session.commit()
+        finally:
+            session.close()
+
+        search = client.get("/api/v1/sku/search", params={"q": "ITEM-ARCHIVED-REAL-001", "tenant_id": TENANT})
+        assert not any(i["item_number"] == "ITEM-ARCHIVED-REAL-001" for i in search.json()["items"])
+
+
+# ─── E2E Smoke Test ────────────────────────────────────────────────────────────────────
 
 
 class TestE2ESmoke:

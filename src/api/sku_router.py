@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_db_dep
@@ -28,7 +29,7 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-# ─── Request / Response schemas ────────────────────────────────────────────────
+# ─── Request / Response schemas ──────────────────────────────────────────────
 
 
 class CreateSkuRequest(BaseModel):
@@ -221,7 +222,7 @@ def _sku_to_detail(sku: QCSkuItem) -> SkuDetailResponse:
     )
 
 
-# ─── Endpoints ────────────────────────────────────────────────────────────────
+# ─── Endpoints ──────────────────────────────────────────────────────────────────
 
 # POST /api/v1/sku — must be registered before /{sku_id} routes
 @router.post("", response_model=CreateSkuResponse, status_code=status.HTTP_201_CREATED)
@@ -229,6 +230,21 @@ def create_sku(
     body: CreateSkuRequest,
     db: Session = Depends(get_db_dep),
 ) -> CreateSkuResponse:
+    # Reject duplicate (tenant_id, item_number)
+    existing = (
+        db.query(QCSkuItem)
+        .filter(
+            QCSkuItem.tenant_id == body.tenant_id,
+            QCSkuItem.item_number == body.item_number,
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"item_number '{body.item_number}' already exists for tenant '{body.tenant_id}'",
+        )
+
     now = _utcnow()
     sku = QCSkuItem(
         id=_new_id(),
@@ -242,7 +258,14 @@ def create_sku(
         updated_at=now,
     )
     db.add(sku)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"item_number '{body.item_number}' already exists for tenant '{body.tenant_id}'",
+        )
     db.refresh(sku)
     return sku
 
@@ -302,8 +325,10 @@ def add_photo(
 
     now = _utcnow()
     if body.is_primary:
+        # Clear previous primary — filter by both sku_id and tenant_id for safety
         db.query(QCStandardPhoto).filter(
-            QCStandardPhoto.sku_id == sku_id
+            QCStandardPhoto.sku_id == sku_id,
+            QCStandardPhoto.tenant_id == body.tenant_id,
         ).update({"is_primary": False})
 
     photo = QCStandardPhoto(
