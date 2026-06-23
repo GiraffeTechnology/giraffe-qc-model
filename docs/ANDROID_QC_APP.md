@@ -101,6 +101,42 @@ actually called and native logs confirm it.
 
 ---
 
+## Shared Sample Admin Page
+
+The sample database and admin web UI at `/admin/samples` are **shared by the
+Pad edition and the Server edition**. They are not Android-only.
+
+The Pad connects to the factory LAN backend to search samples; the same
+backend also serves the admin page for creating and managing those samples.
+No admin code branches by edition.
+
+See `docs/QC_SAMPLE_ADMIN_UI.md` for the full admin page documentation.
+
+---
+
+## Pad vs Server Edition
+
+The system has two runtime editions. They share the sample DB, admin page,
+and SKU API. They differ only in the Qwen model and inference permissions.
+
+| Component | Pad Edition (`padLocal`) | Server Edition (`server`) |
+|---|---|---|
+| Sample DB | Shared | Shared |
+| Sample Admin Page | Shared | Shared |
+| SKU API | Shared | Shared |
+| Standard Photos | Shared | Shared |
+| Inspection Requirements | Shared | Shared |
+| Detection Points | Shared | Shared |
+| Qwen Model | Qwen3-VL-2B-Instruct-MNN | Qwen3-VL-8B |
+| Qwen API | Disabled | Allowed if configured |
+| Cloud Inference | Disabled | Allowed if configured |
+| Version suffix | `*-padLocal` | `*-server` |
+
+Edition is configured via the `QC_RUNTIME_EDITION` environment variable.
+See `src/runtime/editions.py` for the full config module.
+
+---
+
 ## SKU API Backend
 
 The Android `ApiSkuRepository` calls the backend at:

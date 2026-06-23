@@ -9,6 +9,29 @@ AI-native quality control inference system for industrial procurement, with two 
 |Android Tablet App|Qwen3-VL-2B-Instruct-MNN|Local, via MNN runtime                                   |Fully offline                 |
 |QC Model (Server) |Qwen3-VL-8B             |Local inference, with API fallback on capability overflow|Local-first, network on demand|
 
+## Pad vs Server Edition
+
+The system has two runtime editions. Both editions share the same sample
+database, admin page, SKU API, standard photos, inspection requirements,
+and detection points. They differ only in the Qwen model and whether
+API/cloud inference is permitted.
+
+| Component | Pad Edition (`padLocal`) | Server Edition (`server`) |
+|---|---|---|
+| Sample DB | Shared | Shared |
+| Sample Admin Page | Shared | Shared |
+| SKU API | Shared | Shared |
+| Standard Photos | Shared | Shared |
+| Inspection Requirements | Shared | Shared |
+| Detection Points | Shared | Shared |
+| Qwen Model | Qwen3-VL-2B-Instruct-MNN | Qwen3-VL-8B |
+| Qwen API | Disabled | Allowed if configured |
+| Cloud Inference | Disabled | Allowed if configured |
+| Version suffix | `*-padLocal` | `*-server` |
+
+Edition is selected by the `QC_RUNTIME_EDITION` environment variable
+(`padLocal` or `server`). See `src/runtime/editions.py`.
+
 ## Status
 
 ### Android Tablet App
@@ -28,6 +51,15 @@ Configured with **Qwen3-VL-8B** as the primary inference model.
 - When local model confidence/capability is insufficient ("capability overflow") for a given case, the server falls back to a cloud API call to supplement the result.
 - Cloud calls are a fallback path only — not the default inference route.
 
+### QC Sample DB & Admin Page
+
+- SKU catalog DB with standard photos, inspection requirements, and detection points.
+- Android-compatible SKU search API at `/api/v1/sku/search`.
+- Shared admin web UI at `/admin/samples` (FastAPI + Jinja2, no React).
+- Photo upload (file) and URL/path registration both supported.
+- Visual ROI editor for detection points (canvas drag-to-draw).
+- Shared by Pad and Server editions.
+
 ## Why on-device, not server-side
 
 Earlier designs for this project assumed local inference would run on
@@ -38,21 +70,21 @@ running on mainstream Snapdragon-driven phones/pads. That constraint
 rules out larger models (3B+ multimodal models take tens of seconds to
 minutes even on flagship Snapdragon hardware with a dedicated mobile
 inference engine) and points to a small (≤2B parameter), heavily
-quantized model run through **MNN** (Alibaba’s open-source mobile
+quantized model run through **MNN** (Alibaba's open-source mobile
 inference engine), accepting that a model this size needs more
 frequent escalation to human review or cloud fallback than a
 server-grade model would.
 
 This tradeoff is acceptable here because real QC inspections in this
 product are narrow, single-SKU comparisons (one captured photo vs. that
-SKU’s known-good standard photo, checked against a short, predefined
+SKU's known-good standard photo, checked against a short, predefined
 QC point checklist) — not open-domain visual reasoning.
 
 ## Core Principles
 
 - **No fake results.** The system never fabricates a pass/fail outcome.
 - **No silent cloud fallback.** Cloud inference is only invoked on local capability overflow, and is never the default path.
-- **No silent degradation.** If the Tablet app’s MNN runtime is unavailable, the result must be explicitly marked `MNN pending` / `review_required` rather than defaulting to any pass/fail value.
+- **No silent degradation.** If the Tablet app's MNN runtime is unavailable, the result must be explicitly marked `MNN pending` / `review_required` rather than defaulting to any pass/fail value.
 
 ## Architecture
 
@@ -64,18 +96,19 @@ Android QC App (single APK, no root, no separate server required)
   ├── SKU matching: on-device MNN visual similarity (when ready), with manual fallback
   └── Result display, labeling which engine produced each result
 
-giraffe-qc-model backend (this repo’s Python service — optional for
-an individual device’s inspection to work; required for fleet-level
+giraffe-qc-model backend (this repo's Python service — optional for
+an individual device's inspection to work; required for fleet-level
 aggregation, reporting, and abcdYi integration)
   ├── FastAPI
   ├── SKU / standard photo / QC point / inspection data model
+  ├── QC Sample Admin page (/admin/samples) — shared Pad + Server edition
   ├── DashScope/Qwen cloud fallback provider
   └── abcdYi-compatible asset registry APIs + events
 ```
 
-Inference is the operative word for “on-device first”: a device with
+Inference is the operative word for "on-device first": a device with
 the model already provisioned can complete a full inspection with zero
-network connectivity. The backend’s role is aggregation and the cloud
+network connectivity. The backend's role is aggregation and the cloud
 fallback leg, not running the primary inspection.
 
 ## Repository structure
@@ -108,21 +141,27 @@ giraffe-qc-model/
 ├── src/
 │   ├── cv/                # classical CV comparator (pre-dates this effort)
 │   ├── db/                # SQLAlchemy models, session, config
-│   ├── api/               # FastAPI routers
+│   ├── api/               # FastAPI routers (SKU API + admin router)
+│   ├── runtime/           # editions.py — Pad vs Server edition config
+│   ├── web/
+│   │   ├── templates/     # Jinja2 templates for admin UI
+│   │   └── static/        # CSS and vanilla JS (roi_editor.js)
 │   └── qwen/              # QWEN provider abstraction, schema, parser,
 │                          # router, DashScope cloud provider, fake providers
-├── tests/                 # 203 Python unit tests + 6 opt-in integration tests
+├── tests/                 # Python unit tests + admin route tests
 └── docs/
     ├── LOCAL_FIRST_QWEN_QC.md
     ├── DEPLOYMENT_LOCAL_QWEN.md
     ├── ANDROID_QC_APP.md
-    └── API_CONTRACT.md
+    ├── API_CONTRACT.md
+    ├── QC_SAMPLE_DB_API.md
+    └── QC_SAMPLE_ADMIN_UI.md
 ```
 
 The Android app module and its MNN integration live alongside this
 backend (see `docs/ANDROID_QC_APP.md` for the current module layout);
 check that doc for the authoritative path, since the Android side is
-being developed in parallel and its structure may be ahead of what’s
+being developed in parallel and its structure may be ahead of what's
 summarized here.
 
 ## Current state
@@ -157,7 +196,7 @@ than letting it drift.
 - [x] §4.5.1–4.5.4 exhaustive branch coverage: every router decision
   path exercised with deterministic fakes.
 - [x] Multi-tenant isolation (12 tests) verified: cross-tenant reads
-  return 404 (not 403), listing endpoints never leak other tenants’
+  return 404 (not 403), listing endpoints never leak other tenants'
   data.
 - [x] Never-convert-failure-to-pass invariant verified across all
   failure modes via parametrized tests.
@@ -167,6 +206,20 @@ than letting it drift.
 - [x] Android unit tests: `AutoCaptureControllerTest` (10 tests),
   `TaskSelectionControllerTest` (6 tests), `PreviewBoxCalculationsTest`
   (5 tests) — all pass with `./gradlew :app:testPadLocalDebugUnitTest`.
+- [x] QC Sample DB + SKU API implemented: `qc_sku_items`,
+  `qc_standard_photos`, `qc_inspection_requirements`,
+  `qc_detection_points` models; `/api/v1/sku/search` and
+  `/api/v1/sku/{sku_id}` endpoints; Android-compatible response shape.
+- [x] Shared QC Sample Admin UI at `/admin/samples`: create SKU,
+  upload or register photos, set primary photo, add requirements,
+  draw ROI detection points with visual canvas editor, archive SKU.
+  Shared by Pad and Server editions.
+- [x] Pad vs Server edition config (`src/runtime/editions.py`):
+  `QC_RUNTIME_EDITION=padLocal|server` with per-edition defaults for
+  model name, Qwen API, and cloud inference.
+- [x] DB integrity: unique `(tenant_id, item_number)` constraint with
+  409 API response on duplicate; primary photo clearing filtered by
+  both `sku_id` and `tenant_id`.
 - [ ] Real on-device MNN inference not yet confirmed — JNI native
   integration is scaffolded but `nativeRunInference()` is not yet
   wired to the MNN AAR. Status will be updated once a physical
@@ -221,6 +274,14 @@ bash scripts/download_mnn_android_libs.sh --ci-stubs
 cd apps/android-qc && ./gradlew :app:assemblePadLocalDebug :app:testPadLocalDebugUnitTest
 ```
 
+### QC Sample Admin UI
+
+```bash
+uv sync --group dev
+uv run uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8080
+# Open http://127.0.0.1:8080/admin/samples
+```
+
 ### Qwen cloud integration tests (opt-in)
 
 The Qwen real-API integration tests are **skipped by default** unless all
@@ -240,9 +301,11 @@ of the following environment variables are set:
 A few project-wide rules worth knowing before contributing:
 
 - **Never commit model weights or other large binary model artifacts**
-  into this repository’s normal git history. Model provisioning is a
+  into this repository's normal git history. Model provisioning is a
   documented, scripted fetch (bundled at build time or sideloaded) —
   see `docs/DEPLOYMENT_LOCAL_QWEN.md`.
+- **Never commit uploaded sample images.** The `data/qc_samples/`
+  directory is listed in `.gitignore`. Only metadata is stored in the DB.
 - **Mock everything expensive in tests.** Unit/CI tests must never call
   the real MNN model or the real DashScope API. Use the deterministic
   fake providers/inspectors (`FakeOnDeviceQwenInspector`,
@@ -260,6 +323,9 @@ A few project-wide rules worth knowing before contributing:
 - **Do not call Qwen API or DashScope from the Pad QC inference path.**
   Cloud inference is not permitted on the Pad app — all pad-side QC
   inference must use the local MNN runtime.
+- **The sample DB and admin page are edition-agnostic.** No admin or
+  sample-catalog code may branch by `QC_RUNTIME_EDITION`. Only
+  inference behaviour may differ per edition.
 
 ## Related documentation
 
@@ -269,3 +335,5 @@ A few project-wide rules worth knowing before contributing:
 - `docs/ANDROID_QC_APP.md` — Android app module layout and capture flow
 - `docs/API_CONTRACT.md` — backend API contract for the Android app
   and any fleet-aggregation consumers
+- `docs/QC_SAMPLE_DB_API.md` — QC sample catalog schema and SKU API reference
+- `docs/QC_SAMPLE_ADMIN_UI.md` — shared admin web interface for managing samples

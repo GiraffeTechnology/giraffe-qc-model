@@ -12,6 +12,9 @@ The SKU catalog stores the reference information the Android Pad needs to:
 3. Present inspection requirements to the operator
 4. Define detection points / QC focus areas
 
+The sample DB and SKU API are **shared by the Pad edition and the Server
+edition**. Neither the schema nor the API branches by edition.
+
 ## Database Tables
 
 ### `qc_sku_items` — SKU / Sample Master
@@ -27,6 +30,10 @@ The SKU catalog stores the reference information the Android Pad needs to:
 | `status` | String(32) | `active` \| `inactive` \| `archived` |
 | `created_at` | DateTime | UTC |
 | `updated_at` | DateTime | UTC |
+
+**Unique constraint:** `(tenant_id, item_number)` — the same item number
+cannot be created twice within the same tenant. A duplicate create returns
+HTTP 409.
 
 Only `status=active` records are returned by the search API.
 
@@ -50,12 +57,22 @@ Only `status=active` records are returned by the search API.
 | `created_at` | DateTime | UTC |
 | `updated_at` | DateTime | UTC |
 
-Photos are stored as metadata only (no binary blobs). The `image_url` points
-to the static file served by the backend; `local_path` is the factory
-filesystem path used by the Android Pad when running on-LAN.
+**Photo storage modes:**
 
-When `is_primary=true` is set on a new photo, the backend clears the previous
-primary photo for that SKU automatically.
+- **Mode A (file upload):** Files are stored at
+  `data/qc_samples/{tenant_id}/{sku_id}/photos/{filename}`. `local_path` is
+  set to the stored path. `sha256`, `mime_type`, `width_px`, and `height_px`
+  are computed automatically from the uploaded bytes.
+- **Mode B (URL / path registration):** Provide `image_url` (HTTP) or
+  `local_path` (factory filesystem path) directly. No file is stored locally.
+
+The `data/qc_samples/` directory is listed in `.gitignore` — uploaded
+images are never committed to git.
+
+**Primary photo:** When `is_primary=true` is set on a new photo, the backend
+clears the previous primary photo for that SKU and tenant. The clearing
+query filters by both `sku_id` **and** `tenant_id` to prevent cross-tenant
+data mutations.
 
 ### `qc_inspection_requirements` — Pass/Fail Criteria
 
@@ -108,6 +125,24 @@ ROI coordinates use normalized [0,1] values:
 
 Detection points are inspection definitions / expected focus areas, not
 MNN model outputs.
+
+## Data Integrity
+
+### Unique SKU item number per tenant
+
+The DB carries a unique constraint `uq_sku_tenant_item_number` on
+`(tenant_id, item_number)`. The API pre-checks for duplicates before insert
+and returns HTTP 409 if the combination already exists. An `IntegrityError`
+catch provides a secondary safeguard against races.
+
+Different tenants may share the same `item_number`.
+
+### Primary photo tenant safety
+
+When clearing the previous primary photo before setting a new one, the
+query filters by **both** `sku_id` and `tenant_id`. This prevents a primary
+photo belonging to one tenant from being inadvertently cleared by an
+operation on a different tenant.
 
 ## API Endpoints
 
@@ -203,6 +238,8 @@ POST /api/v1/sku
 }
 ```
 
+Returns **HTTP 409** if `(tenant_id, item_number)` already exists.
+
 ### Add Standard Photo
 
 ```
@@ -221,7 +258,8 @@ POST /api/v1/sku/{sku_id}/photos
 }
 ```
 
-If `is_primary=true`, the backend clears the existing primary photo for this SKU.
+If `is_primary=true`, the backend clears the existing primary photo for this
+SKU and tenant before setting the new one.
 
 ### Add Inspection Requirement
 
@@ -324,4 +362,12 @@ curl "http://127.0.0.1:8080/api/v1/sku/search?q=FLOWER"
 # Detail
 curl http://127.0.0.1:8080/api/v1/sku/sku-flower-001
 # {"id":"sku-flower-001","photos":[...],"inspection_requirements":[...], ...}
+
+# Admin UI
+# Open http://127.0.0.1:8080/admin/samples in a browser
 ```
+
+## Related Documentation
+
+- `docs/QC_SAMPLE_ADMIN_UI.md` — admin web interface for managing samples
+- `docs/ANDROID_QC_APP.md` — Android app module and SKU API integration
