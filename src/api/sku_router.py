@@ -29,7 +29,7 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-# ─── Request / Response schemas ──────────────────────────────────────────────
+# ─── Request / Response schemas ──────────────────────────────────────────────────
 
 
 class CreateSkuRequest(BaseModel):
@@ -153,7 +153,7 @@ class AddDetectionPointRequest(BaseModel):
     sort_order: int = 0
 
 
-# ─── Helpers ──────────────────────────────────────────────────────────────────
+# ─── Helpers ───────────────────────────────────────────────────────────────────────────────
 
 
 def _primary_photo(sku: QCSkuItem) -> Optional[QCStandardPhoto]:
@@ -222,7 +222,17 @@ def _sku_to_detail(sku: QCSkuItem) -> SkuDetailResponse:
     )
 
 
-# ─── Endpoints ──────────────────────────────────────────────────────────────────
+def _escape_like(value: str) -> str:
+    """Escape LIKE special characters so they are treated as literals."""
+    return (
+        value
+        .replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
+
+
+# ─── Endpoints ─────────────────────────────────────────────────────────────────────────────────
 
 # POST /api/v1/sku — must be registered before /{sku_id} routes
 @router.post("", response_model=CreateSkuResponse, status_code=status.HTTP_201_CREATED)
@@ -280,13 +290,17 @@ def search_sku(
     if not q.strip():
         return SkuSearchResponse(items=[])
 
-    pattern = f"%{q}%"
+    escaped = _escape_like(q.strip())
+    pattern = f"%{escaped}%"
     skus = (
         db.query(QCSkuItem)
         .filter(
             QCSkuItem.tenant_id == tenant_id,
             QCSkuItem.status == "active",
-            (QCSkuItem.item_number.ilike(pattern) | QCSkuItem.name.ilike(pattern)),
+            (
+                QCSkuItem.item_number.ilike(pattern, escape="\\")
+                | QCSkuItem.name.ilike(pattern, escape="\\")
+            ),
         )
         .all()
     )
@@ -403,6 +417,23 @@ def add_detection_point(
     )
     if not sku:
         raise HTTPException(status_code=404, detail="SKU not found")
+
+    if body.requirement_id:
+        req = (
+            db.query(QCInspectionRequirement)
+            .filter(
+                QCInspectionRequirement.id == body.requirement_id,
+                QCInspectionRequirement.sku_id == sku_id,
+                QCInspectionRequirement.tenant_id == body.tenant_id,
+                QCInspectionRequirement.is_active == True,
+            )
+            .first()
+        )
+        if not req:
+            raise HTTPException(
+                status_code=400,
+                detail="requirement_id does not belong to this SKU and tenant",
+            )
 
     now = _utcnow()
     dp = QCDetectionPoint(

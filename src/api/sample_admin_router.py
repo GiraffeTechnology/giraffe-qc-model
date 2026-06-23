@@ -63,8 +63,9 @@ def list_samples(
         .all()
     )
     return templates.TemplateResponse(
+        request,
         "sample_list.html",
-        {"request": request, "skus": skus, "tenant_id": tenant_id},
+        context={"skus": skus, "tenant_id": tenant_id},
     )
 
 
@@ -72,8 +73,9 @@ def list_samples(
 @router.get("/samples/new", response_class=HTMLResponse)
 def new_sample_form(request: Request, tenant_id: str = "default"):
     return templates.TemplateResponse(
+        request,
         "sample_new.html",
-        {"request": request, "tenant_id": tenant_id, "error": None},
+        context={"tenant_id": tenant_id, "error": None},
     )
 
 
@@ -95,9 +97,9 @@ def create_sample(
     )
     if existing:
         return templates.TemplateResponse(
+            request,
             "sample_new.html",
-            {
-                "request": request,
+            context={
                 "tenant_id": tenant_id,
                 "error": f"Item number '{item_number}' already exists.",
                 "item_number": item_number,
@@ -126,9 +128,9 @@ def create_sample(
     except IntegrityError:
         db.rollback()
         return templates.TemplateResponse(
+            request,
             "sample_new.html",
-            {
-                "request": request,
+            context={
                 "tenant_id": tenant_id,
                 "error": f"Item number '{item_number}' already exists.",
                 "item_number": item_number,
@@ -157,9 +159,9 @@ def sample_detail(
     if not sku:
         raise HTTPException(status_code=404, detail="SKU not found")
     return templates.TemplateResponse(
+        request,
         "sample_detail.html",
-        {
-            "request": request,
+        context={
             "sku": sku,
             "primary_photo": _primary_photo(sku),
             "tenant_id": tenant_id,

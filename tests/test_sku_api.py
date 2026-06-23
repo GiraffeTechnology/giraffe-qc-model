@@ -1,6 +1,8 @@
 """Tests for the SKU catalog API — Android-compatible SKU search and detail endpoints."""
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -14,7 +16,7 @@ from src.api.main import app
 from src.api.deps import get_db_dep
 
 
-# ─── Fixtures ───────────────────────────────────────────────────────────────
+# ─── Fixtures ───────────────────────────────────────────────────────────────────────────────
 
 
 @pytest.fixture(scope="module")
@@ -52,7 +54,11 @@ def client(db_session_factory):
 TENANT = "default"
 
 
-# ─── Unit: SKU Model Creation ──────────────────────────────────────────────────────
+def _uid() -> str:
+    return uuid.uuid4().hex[:8]
+
+
+# ─── Unit: SKU Model Creation ────────────────────────────────────────────────────────────────────────
 
 
 class TestSkuModelCreation:
@@ -124,7 +130,7 @@ class TestSkuModelCreation:
         assert resp.status_code == 201
 
 
-# ─── Unit: Photo Metadata Creation ──────────────────────────────────────────────────────
+# ─── Unit: Photo Metadata Creation ────────────────────────────────────────────────────────────────────
 
 
 class TestPhotoMetadataCreation:
@@ -132,7 +138,7 @@ class TestPhotoMetadataCreation:
     def setup(self, client):
         resp = client.post("/api/v1/sku", json={
             "tenant_id": TENANT,
-            "item_number": "ITEM-PHOTO-001",
+            "item_number": f"ITEM-PHOTO-{_uid()}",
             "name": "Photo Test SKU",
         })
         self.sku_id = resp.json()["id"]
@@ -167,15 +173,16 @@ class TestPhotoMetadataCreation:
         assert resp.status_code == 404
 
 
-# ─── Unit: Primary Photo Selection ──────────────────────────────────────────────────────
+# ─── Unit: Primary Photo Selection ───────────────────────────────────────────────────────────────────
 
 
 class TestPrimaryPhotoSelection:
     @pytest.fixture(autouse=True)
     def setup(self, client):
+        self.item_number = f"ITEM-PRIMARY-{_uid()}"
         resp = client.post("/api/v1/sku", json={
             "tenant_id": TENANT,
-            "item_number": "ITEM-PRIMARY-001",
+            "item_number": self.item_number,
             "name": "Primary Photo Test SKU",
         })
         self.sku_id = resp.json()["id"]
@@ -187,7 +194,7 @@ class TestPrimaryPhotoSelection:
             "local_path": "/factory/ref/primary.jpg",
             "is_primary": True,
         })
-        resp = client.get("/api/v1/sku/search", params={"q": "ITEM-PRIMARY-001", "tenant_id": TENANT})
+        resp = client.get("/api/v1/sku/search", params={"q": self.item_number, "tenant_id": TENANT})
         assert resp.status_code == 200
         items = resp.json()["items"]
         assert len(items) == 1
@@ -210,7 +217,7 @@ class TestPrimaryPhotoSelection:
         assert detail.json()["reference_image_url"] == "http://192.168.1.10:8080/assets/ref/second.jpg"
 
 
-# ─── Unit: Inspection Requirement Creation ───────────────────────────────────────────────────
+# ─── Unit: Inspection Requirement Creation ───────────────────────────────────────────────────────────────────
 
 
 class TestInspectionRequirementCreation:
@@ -218,7 +225,7 @@ class TestInspectionRequirementCreation:
     def setup(self, client):
         resp = client.post("/api/v1/sku", json={
             "tenant_id": TENANT,
-            "item_number": "ITEM-REQ-001",
+            "item_number": f"ITEM-REQ-{_uid()}",
             "name": "Requirement Test SKU",
         })
         self.sku_id = resp.json()["id"]
@@ -258,7 +265,7 @@ class TestInspectionRequirementCreation:
         assert resp.status_code == 404
 
 
-# ─── Unit: Detection Point Creation ───────────────────────────────────────────────────────────
+# ─── Unit: Detection Point Creation ───────────────────────────────────────────────────────────────────────────
 
 
 class TestDetectionPointCreation:
@@ -266,7 +273,7 @@ class TestDetectionPointCreation:
     def setup(self, client):
         resp = client.post("/api/v1/sku", json={
             "tenant_id": TENANT,
-            "item_number": "ITEM-DP-001",
+            "item_number": f"ITEM-DP-{_uid()}",
             "name": "Detection Point Test SKU",
         })
         self.sku_id = resp.json()["id"]
@@ -311,7 +318,168 @@ class TestDetectionPointCreation:
         assert resp.status_code == 404
 
 
-# ─── API: Search ──────────────────────────────────────────────────────────────────────
+# ─── P2: Detection Point requirement_id Validation ────────────────────────────────────────────
+
+
+class TestDetectionPointRequirementValidation:
+    @pytest.fixture(autouse=True)
+    def setup(self, client):
+        u = _uid()
+        # Main SKU and its requirement
+        resp = client.post("/api/v1/sku", json={
+            "tenant_id": TENANT,
+            "item_number": f"ITEM-REQ-MAIN-{u}",
+            "name": "Req Validation Main SKU",
+        })
+        self.sku_id = resp.json()["id"]
+        req_resp = client.post(f"/api/v1/sku/{self.sku_id}/requirements", json={
+            "tenant_id": TENANT,
+            "code": f"REQ-MAIN-{u}",
+            "title": "Main Requirement",
+            "requirement_text": "Test",
+        })
+        self.req_id = req_resp.json()["id"]
+
+        # Different SKU and its requirement (same tenant)
+        resp2 = client.post("/api/v1/sku", json={
+            "tenant_id": TENANT,
+            "item_number": f"ITEM-REQ-OTHER-{u}",
+            "name": "Req Validation Other SKU",
+        })
+        self.other_sku_id = resp2.json()["id"]
+        req_resp2 = client.post(f"/api/v1/sku/{self.other_sku_id}/requirements", json={
+            "tenant_id": TENANT,
+            "code": f"REQ-OTHER-{u}",
+            "title": "Other Requirement",
+            "requirement_text": "Test",
+        })
+        self.other_req_id = req_resp2.json()["id"]
+
+        # Cross-tenant SKU and requirement
+        other_tenant = f"tenant-x-{u}"
+        resp3 = client.post("/api/v1/sku", json={
+            "tenant_id": other_tenant,
+            "item_number": f"ITEM-REQ-X-{u}",
+            "name": "Cross Tenant SKU",
+        })
+        self.cross_sku_id = resp3.json()["id"]
+        req_resp3 = client.post(f"/api/v1/sku/{self.cross_sku_id}/requirements", json={
+            "tenant_id": other_tenant,
+            "code": f"REQ-X-{u}",
+            "title": "Cross Tenant Requirement",
+            "requirement_text": "Test",
+        })
+        self.cross_req_id = req_resp3.json()["id"]
+
+    def test_same_sku_requirement_accepted(self, client):
+        resp = client.post(f"/api/v1/sku/{self.sku_id}/detection-points", json={
+            "tenant_id": TENANT,
+            "requirement_id": self.req_id,
+            "point_code": f"DP-VALID-{_uid()}",
+            "label": "Valid DP",
+        })
+        assert resp.status_code == 201
+
+    def test_different_sku_requirement_rejected(self, client):
+        # other_req_id belongs to other_sku, not sku_id
+        resp = client.post(f"/api/v1/sku/{self.sku_id}/detection-points", json={
+            "tenant_id": TENANT,
+            "requirement_id": self.other_req_id,
+            "point_code": f"DP-WRONG-SKU-{_uid()}",
+            "label": "Wrong SKU DP",
+        })
+        assert resp.status_code == 400
+
+    def test_nonexistent_requirement_rejected(self, client):
+        resp = client.post(f"/api/v1/sku/{self.sku_id}/detection-points", json={
+            "tenant_id": TENANT,
+            "requirement_id": "nonexistent-req-id-99999",
+            "point_code": f"DP-NOEXIST-{_uid()}",
+            "label": "Nonexistent Req DP",
+        })
+        assert resp.status_code == 400
+
+    def test_cross_tenant_requirement_rejected(self, client):
+        # cross_req_id belongs to a different tenant
+        resp = client.post(f"/api/v1/sku/{self.sku_id}/detection-points", json={
+            "tenant_id": TENANT,
+            "requirement_id": self.cross_req_id,
+            "point_code": f"DP-CROSS-{_uid()}",
+            "label": "Cross Tenant DP",
+        })
+        assert resp.status_code == 400
+
+
+# ─── P2: LIKE Wildcard Escaping ─────────────────────────────────────────────────────────────────────
+
+
+class TestSearchLikeEscaping:
+    @pytest.fixture(autouse=True)
+    def setup(self, client):
+        self.u = _uid()
+        # Items for underscore escaping tests:
+        #   exact_under has literal _ between ABC and DEF
+        #   near_under  has X instead of _ (would match if _ were a wildcard)
+        client.post("/api/v1/sku", json={
+            "tenant_id": TENANT,
+            "item_number": f"ESCAPE-UNDER-{self.u}",
+            "name": f"ABC_DEF_{self.u}",
+        })
+        client.post("/api/v1/sku", json={
+            "tenant_id": TENANT,
+            "item_number": f"ESCAPE-NEARUNDER-{self.u}",
+            "name": f"ABCXDEF_{self.u}",
+        })
+        # Items for percent escaping tests:
+        #   exact_pct  has literal % between GHI and JKL
+        #   near_pct   has long text instead (would match if % were a wildcard)
+        client.post("/api/v1/sku", json={
+            "tenant_id": TENANT,
+            "item_number": f"ESCAPE-PCT-{self.u}",
+            "name": f"GHI%JKL_{self.u}",
+        })
+        client.post("/api/v1/sku", json={
+            "tenant_id": TENANT,
+            "item_number": f"ESCAPE-NEARPCT-{self.u}",
+            "name": f"GHIanythingJKL_{self.u}",
+        })
+
+    def test_normal_search_still_works(self, client):
+        resp = client.get("/api/v1/sku/search", params={"q": self.u, "tenant_id": TENANT})
+        assert resp.status_code == 200
+        assert len(resp.json()["items"]) >= 4
+
+    def test_underscore_not_treated_as_wildcard(self, client):
+        resp = client.get("/api/v1/sku/search", params={
+            "q": f"ABC_DEF_{self.u}",
+            "tenant_id": TENANT,
+        })
+        assert resp.status_code == 200
+        names = [i["name"] for i in resp.json()["items"]]
+        assert f"ABC_DEF_{self.u}" in names
+        assert f"ABCXDEF_{self.u}" not in names
+
+    def test_percent_not_treated_as_wildcard(self, client):
+        resp = client.get("/api/v1/sku/search", params={
+            "q": f"GHI%JKL_{self.u}",
+            "tenant_id": TENANT,
+        })
+        assert resp.status_code == 200
+        names = [i["name"] for i in resp.json()["items"]]
+        assert f"GHI%JKL_{self.u}" in names
+        assert f"GHIanythingJKL_{self.u}" not in names
+
+    def test_literal_underscore_search_returns_underscore_items(self, client):
+        resp = client.get("/api/v1/sku/search", params={
+            "q": f"ESCAPE-UNDER-{self.u}",
+            "tenant_id": TENANT,
+        })
+        items = resp.json()["items"]
+        assert any(i["item_number"] == f"ESCAPE-UNDER-{self.u}" for i in items)
+        assert all(i["item_number"] != f"ESCAPE-NEARUNDER-{self.u}" for i in items)
+
+
+# ─── API: Search ─────────────────────────────────────────────────────────────────────────────────
 
 
 class TestSkuSearch:
@@ -400,15 +568,16 @@ class TestSkuSearch:
         assert "items" in resp.json()
 
 
-# ─── API: Detail ─────────────────────────────────────────────────────────────────────
+# ─── API: Detail ─────────────────────────────────────────────────────────────────────────────────
 
 
 class TestSkuDetail:
     @pytest.fixture(autouse=True)
     def setup(self, client):
+        self.item_number = f"ITEM-DETAIL-{_uid()}"
         resp = client.post("/api/v1/sku", json={
             "tenant_id": TENANT,
-            "item_number": "ITEM-DETAIL-001",
+            "item_number": self.item_number,
             "name": "Detail Test SKU",
             "category": "test_category",
             "description": "A test SKU for detail tests",
@@ -420,7 +589,7 @@ class TestSkuDetail:
         assert resp.status_code == 200
         data = resp.json()
         assert data["id"] == self.sku_id
-        assert data["item_number"] == "ITEM-DETAIL-001"
+        assert data["item_number"] == self.item_number
         assert data["category"] == "test_category"
 
     def test_get_sku_includes_photos(self, client):
@@ -475,7 +644,7 @@ class TestSkuDetail:
         assert resp.status_code == 200
 
 
-# ─── Android Contract Test ────────────────────────────────────────────────────────────────
+# ─── Android Contract Test ──────────────────────────────────────────────────────────────────────────────
 
 
 class TestAndroidContract:
@@ -483,9 +652,10 @@ class TestAndroidContract:
 
     @pytest.fixture(autouse=True)
     def setup(self, client):
+        self.item_number = f"ITEM-CONTRACT-{_uid()}"
         resp = client.post("/api/v1/sku", json={
             "tenant_id": TENANT,
-            "item_number": "ITEM-CONTRACT-001",
+            "item_number": self.item_number,
             "name": "Android Contract SKU",
         })
         self.sku_id = resp.json()["id"]
@@ -497,7 +667,7 @@ class TestAndroidContract:
         })
 
     def test_search_response_shape(self, client):
-        resp = client.get("/api/v1/sku/search", params={"q": "ITEM-CONTRACT-001", "tenant_id": TENANT})
+        resp = client.get("/api/v1/sku/search", params={"q": self.item_number, "tenant_id": TENANT})
         assert resp.status_code == 200
         body = resp.json()
 
@@ -505,21 +675,21 @@ class TestAndroidContract:
         assert isinstance(body["items"], list)
         assert len(body["items"]) >= 1
 
-        item = next(i for i in body["items"] if i["item_number"] == "ITEM-CONTRACT-001")
+        item = next(i for i in body["items"] if i["item_number"] == self.item_number)
         assert item["id"] == self.sku_id
-        assert item["item_number"] == "ITEM-CONTRACT-001"
+        assert item["item_number"] == self.item_number
         assert item["name"] == "Android Contract SKU"
         assert item["reference_image_url"] == "http://192.168.1.10:8080/assets/ref/contract.jpg"
         assert item["standard_photo_path"] == "/factory/ref/contract.jpg"
 
     def test_search_response_has_exactly_required_android_fields(self, client):
-        resp = client.get("/api/v1/sku/search", params={"q": "ITEM-CONTRACT-001", "tenant_id": TENANT})
-        item = next(i for i in resp.json()["items"] if i["item_number"] == "ITEM-CONTRACT-001")
+        resp = client.get("/api/v1/sku/search", params={"q": self.item_number, "tenant_id": TENANT})
+        item = next(i for i in resp.json()["items"] if i["item_number"] == self.item_number)
         required_fields = {"id", "item_number", "name", "reference_image_url", "standard_photo_path"}
         assert required_fields.issubset(set(item.keys()))
 
     def test_search_without_tenant_id_uses_default(self, client):
-        resp = client.get("/api/v1/sku/search", params={"q": "ITEM-CONTRACT-001"})
+        resp = client.get("/api/v1/sku/search", params={"q": self.item_number})
         assert resp.status_code == 200
         assert "items" in resp.json()
 
@@ -532,11 +702,11 @@ class TestAndroidContract:
         assert "detection_points" in data
 
     def test_search_items_is_list(self, client):
-        resp = client.get("/api/v1/sku/search", params={"q": "ITEM-CONTRACT-001", "tenant_id": TENANT})
+        resp = client.get("/api/v1/sku/search", params={"q": self.item_number, "tenant_id": TENANT})
         assert isinstance(resp.json()["items"], list)
 
 
-# ─── Inactive / Archived SKU Filtering ──────────────────────────────────────────────────
+# ─── Inactive / Archived SKU Filtering ──────────────────────────────────────────────────────────────
 
 
 class TestInactiveSkuFiltering:
@@ -592,7 +762,7 @@ class TestInactiveSkuFiltering:
         assert not any(i["item_number"] == "ITEM-ARCHIVED-REAL-001" for i in search.json()["items"])
 
 
-# ─── E2E Smoke Test ────────────────────────────────────────────────────────────────────
+# ─── E2E Smoke Test ────────────────────────────────────────────────────────────────────────────────
 
 
 class TestE2ESmoke:
