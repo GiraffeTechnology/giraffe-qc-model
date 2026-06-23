@@ -1,0 +1,31 @@
+{
+  "contract_version": "multimodal-qc-v1",
+  "overall_result": "review_required",
+  "engine": "router",
+  "provider": "qwen",
+  "model_name": "none",
+  "confidence": 0.0,
+  "items": [
+    {
+      "qc_point_id": "qp_001",
+      "qc_point_code": "COLOR_MATCH",
+      "name": "Color consistency",
+      "result": "review_required",
+      "confidence": 0.0,
+      "reason": "on_device_model_not_provisioned"
+    },
+    {
+      "qc_point_id": "qp_002",
+      "qc_point_code": "LABEL_PRESENT",
+      "name": "Label presence",
+      "result": "review_required",
+      "confidence": 0.0,
+      "reason": "on_device_model_not_provisioned"
+    }
+  ],
+  "fallback": {
+    "used": false,
+    "reason": "on_device_model_not_provisioned"
+  },
+  "summary": "Deferred: on_device_model_not_provisioned"
+}

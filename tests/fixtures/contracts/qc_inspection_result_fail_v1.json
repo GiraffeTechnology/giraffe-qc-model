@@ -1,0 +1,31 @@
+{
+  "contract_version": "multimodal-qc-v1",
+  "overall_result": "fail",
+  "engine": "local_qwen_mnn",
+  "provider": "qwen",
+  "model_name": "Qwen3-VL-4B-Instruct-MNN",
+  "confidence": 0.88,
+  "items": [
+    {
+      "qc_point_id": "qp_001",
+      "qc_point_code": "COLOR_MATCH",
+      "name": "Color consistency",
+      "result": "fail",
+      "confidence": 0.90,
+      "reason": "Significant color deviation detected on left edge."
+    },
+    {
+      "qc_point_id": "qp_002",
+      "qc_point_code": "LABEL_PRESENT",
+      "name": "Label presence",
+      "result": "pass",
+      "confidence": 0.87,
+      "reason": "Label is present and correct."
+    }
+  ],
+  "fallback": {
+    "used": false,
+    "reason": null
+  },
+  "summary": "1 of 2 QC points failed."
+}

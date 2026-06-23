@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "multimodal_qc_result_schema_v1",
+  "title": "MultimodalQCResult",
+  "description": "Provider-neutral QC inspection result schema. contract_version must equal 'multimodal-qc-v1'.",
+  "type": "object",
+  "required": ["contract_version", "overall_result", "engine", "provider", "model_name", "confidence", "items", "fallback"],
+  "additionalProperties": true,
+  "properties": {
+    "contract_version": {
+      "type": "string",
+      "const": "multimodal-qc-v1"
+    },
+    "overall_result": {
+      "type": "string",
+      "enum": ["pass", "fail", "review_required"]
+    },
+    "engine": {
+      "type": "string"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "model_name": {
+      "type": "string"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["qc_point_id", "qc_point_code", "name", "result", "confidence", "reason"],
+        "additionalProperties": true,
+        "properties": {
+          "qc_point_id": { "type": "string" },
+          "qc_point_code": { "type": "string" },
+          "name": { "type": "string" },
+          "result": {
+            "type": "string",
+            "enum": ["pass", "fail", "review_required"]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "fallback": {
+      "type": "object",
+      "required": ["used"],
+      "properties": {
+        "used": { "type": "boolean" },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
+    "summary": {
+      "type": "string"
+    },
+    "capability_versions": {
+      "type": "object",
+      "description": "Optional map of capability name to prompt version used."
+    }
+  }
+}

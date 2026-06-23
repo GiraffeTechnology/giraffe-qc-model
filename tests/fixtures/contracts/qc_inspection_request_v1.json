@@ -1,0 +1,23 @@
+{
+  "contract_version": "multimodal-qc-v1",
+  "tenant_id": "tenant_001",
+  "sku_id": "sku_abc",
+  "standard_id": "std_001",
+  "inspection_id": "insp_20260623_001",
+  "standard_image_paths": ["/images/std_001_front.jpg"],
+  "captured_image_path": "/images/captured_20260623.jpg",
+  "qc_points": [
+    {
+      "qc_point_id": "qp_001",
+      "qc_point_code": "COLOR_MATCH",
+      "name": "Color consistency",
+      "description": "Product color must match standard reference."
+    },
+    {
+      "qc_point_id": "qp_002",
+      "qc_point_code": "LABEL_PRESENT",
+      "name": "Label presence",
+      "description": "Brand label must be fully visible."
+    }
+  ]
+}
