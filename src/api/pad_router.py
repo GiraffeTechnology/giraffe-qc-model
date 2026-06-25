@@ -145,16 +145,23 @@ async def pad_chat(
         context=context,
         bridge=bridge,
     )
+    # standard_confirmation cards are already fully structured in payload;
+    # other cards expose payload nested under "type".
+    if result.action_card:
+        if result.action_card.action_type == "standard_confirmation":
+            action_card_data = result.action_card.payload
+        else:
+            action_card_data = result.action_card.payload
+    else:
+        action_card_data = None
+
     return JSONResponse({
         "reply": result.reply_text,
         "detected_language": result.detected_language,
         "intent": result.intent,
         "confidence": result.confidence,
         "requires_confirmation": result.requires_confirmation,
-        "action_card": {
-            "action_type": result.action_card.action_type,
-            "payload": result.action_card.payload,
-        } if result.action_card else None,
+        "action_card": action_card_data,
     })
 
 

@@ -515,3 +515,241 @@ def test_27_llm_must_not_bypass_confirmation(auth_client, db_session):
     assert rev_count_after == rev_count_before, (
         "Chat endpoint must not create standard revisions — LLM output is never trusted directly"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 28: Chinese fuzzy standard input returns standard_confirmation card
+# ---------------------------------------------------------------------------
+_ZH_STANDARD_MSG = (
+    "这件衬衣检查纽扣7颗，领口线迹不能歪，布面不能有污渍，标签位置要对。"
+)
+
+
+def test_28_chinese_fuzzy_standard_input_creates_standard_confirmation_card(auth_client, seeded_sku):
+    resp = auth_client.post(
+        "/api/v1/pad/chat",
+        json={"message": _ZH_STANDARD_MSG, "context": {"sku_id": seeded_sku.id}},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["detected_language"] == "zh-CN"
+    assert data["intent"] == "create_standard_intake"
+    assert data["confidence"] >= 0.5
+    assert data["requires_confirmation"] is True
+
+    card = data["action_card"]
+    assert card is not None
+    assert card["type"] == "standard_confirmation"
+    assert card["source_language"] == "zh-CN"
+    assert "canonical_english_text" in card
+    assert card["requires_confirmation"] is True
+
+    codes = {cp["point_code"] for cp in card["checkpoints"]}
+    assert "BUTTON_COUNT" in codes, f"Expected BUTTON_COUNT in {codes}"
+    assert "COLLAR_STITCHING" in codes, f"Expected COLLAR_STITCHING in {codes}"
+    assert "FABRIC_STAIN" in codes, f"Expected FABRIC_STAIN in {codes}"
+    assert "LABEL_POSITION" in codes, f"Expected LABEL_POSITION in {codes}"
+
+    btn = next(cp for cp in card["checkpoints"] if cp["point_code"] == "BUTTON_COUNT")
+    assert btn["expected_value"] == "7", f"Expected BUTTON_COUNT expected_value=7, got {btn['expected_value']}"
+
+
+# ---------------------------------------------------------------------------
+# Test 29: Japanese fuzzy standard input returns standard_confirmation card
+# ---------------------------------------------------------------------------
+_JA_STANDARD_MSG = (
+    "シャツのボタン7個、衿の縫い目は真っ直ぐ、生地の汚れなし、ラベルの位置正確。"
+)
+
+
+def test_29_japanese_fuzzy_standard_input_creates_standard_confirmation_card(auth_client, seeded_sku):
+    resp = auth_client.post(
+        "/api/v1/pad/chat",
+        json={"message": _JA_STANDARD_MSG, "context": {"sku_id": seeded_sku.id}},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["detected_language"] == "ja"
+    assert data["intent"] == "create_standard_intake"
+    assert data["confidence"] >= 0.5
+    assert data["requires_confirmation"] is True
+
+    card = data["action_card"]
+    assert card is not None
+    assert card["type"] == "standard_confirmation"
+    assert card["source_language"] == "ja"
+    assert card["requires_confirmation"] is True
+
+    codes = {cp["point_code"] for cp in card["checkpoints"]}
+    assert "BUTTON_COUNT" in codes, f"Expected BUTTON_COUNT in {codes}"
+    assert "COLLAR_STITCHING" in codes, f"Expected COLLAR_STITCHING in {codes}"
+    assert "FABRIC_STAIN" in codes, f"Expected FABRIC_STAIN in {codes}"
+    assert "LABEL_POSITION" in codes, f"Expected LABEL_POSITION in {codes}"
+
+    btn = next(cp for cp in card["checkpoints"] if cp["point_code"] == "BUTTON_COUNT")
+    assert btn["expected_value"] == "7"
+
+
+# ---------------------------------------------------------------------------
+# Test 30: Chat with create_standard_intake creates QCStandardIntake (not revision)
+# ---------------------------------------------------------------------------
+def test_30_pad_chat_create_standard_intake_creates_qc_standard_intake_but_not_active_revision(
+    auth_client, db_session, seeded_sku
+):
+    from src.db.intake_models import QCStandardIntake
+    from src.db.sku_models import QCSkuStandardRevision
+
+    intake_count_before = db_session.query(QCStandardIntake).filter_by(sku_id=seeded_sku.id).count()
+    rev_count_before = db_session.query(QCSkuStandardRevision).filter_by(
+        sku_id=seeded_sku.id, status="active"
+    ).count()
+
+    resp = auth_client.post(
+        "/api/v1/pad/chat",
+        json={"message": _ZH_STANDARD_MSG, "context": {"sku_id": seeded_sku.id}},
+    )
+    assert resp.status_code == 200
+
+    db_session.expire_all()
+    intake_count_after = db_session.query(QCStandardIntake).filter_by(sku_id=seeded_sku.id).count()
+    rev_count_after = db_session.query(QCSkuStandardRevision).filter_by(
+        sku_id=seeded_sku.id, status="active"
+    ).count()
+
+    assert intake_count_after > intake_count_before, "Chat must create a QCStandardIntake record"
+    assert rev_count_after == rev_count_before, (
+        "Chat must NOT create an active standard revision — operator confirmation required"
+    )
+
+    # Intake must be in pending_confirmation status
+    intake = (
+        db_session.query(QCStandardIntake)
+        .filter_by(sku_id=seeded_sku.id)
+        .order_by(QCStandardIntake.created_at.desc())
+        .first()
+    )
+    assert intake is not None
+    assert intake.status == "pending_confirmation"
+
+
+# ---------------------------------------------------------------------------
+# Test 31: Operator confirms standard_confirmation card → creates active revision
+# ---------------------------------------------------------------------------
+def test_31_standard_confirmation_card_confirm_creates_active_revision(
+    auth_client, db_session, seeded_sku
+):
+    from src.db.sku_models import QCSkuStandardRevision
+
+    # First: send Chinese standard text to create a pending intake
+    resp = auth_client.post(
+        "/api/v1/pad/chat",
+        json={"message": _ZH_STANDARD_MSG, "context": {"sku_id": seeded_sku.id}},
+    )
+    assert resp.status_code == 200
+    card = resp.json()["action_card"]
+    intake_id = card["intake_id"]
+    assert intake_id is not None
+
+    rev_count_before = db_session.query(QCSkuStandardRevision).filter_by(sku_id=seeded_sku.id).count()
+
+    # Operator confirms the action card
+    resp2 = auth_client.post("/api/v1/pad/confirm_standard", json={"intake_id": intake_id})
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    assert data2["status"] == "confirmed"
+    assert "revision_id" in data2
+
+    db_session.expire_all()
+    rev_count_after = db_session.query(QCSkuStandardRevision).filter_by(sku_id=seeded_sku.id).count()
+    assert rev_count_after > rev_count_before, "confirm_standard must create a new standard revision"
+
+
+# ---------------------------------------------------------------------------
+# Test 32: Fuzzy standard input preserves raw text and canonical English
+# ---------------------------------------------------------------------------
+def test_32_fuzzy_standard_input_preserves_raw_text_and_canonical_english(
+    auth_client, db_session, seeded_sku
+):
+    from src.db.intake_models import QCStandardIntake
+
+    resp = auth_client.post(
+        "/api/v1/pad/chat",
+        json={"message": _ZH_STANDARD_MSG, "context": {"sku_id": seeded_sku.id}},
+    )
+    assert resp.status_code == 200
+
+    db_session.expire_all()
+    intake = (
+        db_session.query(QCStandardIntake)
+        .filter_by(sku_id=seeded_sku.id)
+        .order_by(QCStandardIntake.created_at.desc())
+        .first()
+    )
+    assert intake is not None
+
+    # Original Chinese must be preserved in raw_text
+    assert intake.raw_text == _ZH_STANDARD_MSG, (
+        f"raw_text must preserve original Chinese, got: {intake.raw_text!r}"
+    )
+
+    # Canonical English must be stored in normalized_text (no CJK characters)
+    assert intake.normalized_text is not None
+    chinese_re = re.compile(r"[一-鿿㐀-䶿]")
+    assert not chinese_re.search(intake.normalized_text), (
+        f"normalized_text must be English, got: {intake.normalized_text!r}"
+    )
+    assert "QC standard" in intake.normalized_text
+
+
+# ---------------------------------------------------------------------------
+# Test 33: Low-confidence standard input does not create intake
+# ---------------------------------------------------------------------------
+def test_33_low_confidence_standard_input_does_not_create_intake(auth_client, db_session, seeded_sku):
+    from src.db.intake_models import QCStandardIntake
+
+    intake_count_before = db_session.query(QCStandardIntake).count()
+
+    resp = auth_client.post(
+        "/api/v1/pad/chat",
+        json={"message": "xyzzy gibberish 12345", "context": {"sku_id": seeded_sku.id}},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["confidence"] < 0.5
+    assert data["intent"] == "unknown"
+    assert data["action_card"] is None
+
+    db_session.expire_all()
+    intake_count_after = db_session.query(QCStandardIntake).count()
+    assert intake_count_after == intake_count_before, (
+        "Low-confidence input must not create a QCStandardIntake record"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 34: standard_confirmation action card schema is stable
+# ---------------------------------------------------------------------------
+def test_34_action_card_schema_is_stable(auth_client, seeded_sku):
+    resp = auth_client.post(
+        "/api/v1/pad/chat",
+        json={"message": _ZH_STANDARD_MSG, "context": {"sku_id": seeded_sku.id}},
+    )
+    assert resp.status_code == 200
+    card = resp.json()["action_card"]
+    assert card is not None
+
+    required_keys = {"type", "intake_id", "source_language", "canonical_english_text",
+                     "checkpoints", "requires_confirmation"}
+    missing = required_keys - card.keys()
+    assert not missing, f"Action card missing required keys: {missing}"
+
+    assert card["type"] == "standard_confirmation"
+    assert isinstance(card["checkpoints"], list)
+    assert len(card["checkpoints"]) >= 2
+
+    cp_required = {"point_code", "label", "severity", "method_hint", "expected_value"}
+    for cp in card["checkpoints"]:
+        missing_cp = cp_required - cp.keys()
+        assert not missing_cp, f"Checkpoint missing keys {missing_cp}: {cp}"
