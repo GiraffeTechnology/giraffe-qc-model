@@ -1,0 +1,171 @@
+/* QC Pad - landscape-first layout */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f8fafc;
+  color: #1e293b;
+  min-height: 100vh;
+}
+
+/* Orientation overlay */
+#orientation-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.9);
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 1.25rem;
+  text-align: center;
+  padding: 2rem;
+}
+
+/* Header */
+.pad-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  background: #1d4ed8;
+  color: #fff;
+}
+
+.pad-logo { font-size: 1.25rem; font-weight: 700; }
+.operator-name { margin-right: 0.5rem; }
+.operator-lang { font-size: 0.85rem; opacity: 0.8; margin-right: 0.75rem; }
+
+/* Workspace layout - two columns */
+.workspace-main {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  height: calc(100vh - 3.5rem);
+  gap: 0;
+}
+
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.chat-input-area {
+  padding: 1rem;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.chat-input-area textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 0.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.chat-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.info-panel {
+  padding: 1rem;
+  background: #f1f5f9;
+  overflow-y: auto;
+}
+
+.language-selector {
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.language-selector select {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+}
+
+.action-cards { display: flex; flex-direction: column; gap: 0.75rem; }
+.placeholder-text { color: #94a3b8; font-style: italic; }
+
+/* Buttons */
+.btn-primary {
+  background: #1d4ed8;
+  color: #fff;
+  border: none;
+  padding: 0.5rem 1.25rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+.btn-primary:hover { background: #1e40af; }
+.btn-primary:disabled { background: #93c5fd; cursor: not-allowed; }
+
+.btn-secondary {
+  background: #e2e8f0;
+  color: #1e293b;
+  border: none;
+  padding: 0.5rem 1.25rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-block;
+}
+.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-logout {
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.5);
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.btn-back { color: #fff; text-decoration: none; }
+
+/* Login page */
+.login-page { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+.login-container { width: 100%; max-width: 400px; padding: 2rem; }
+.login-card { background: #fff; border-radius: 12px; padding: 2.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+.login-header { text-align: center; margin-bottom: 2rem; }
+.login-header h1 { font-size: 1.75rem; color: #1d4ed8; }
+.login-form .form-group { margin-bottom: 1.25rem; }
+.login-form label { display: block; margin-bottom: 0.25rem; font-weight: 500; }
+.login-form input { width: 100%; padding: 0.6rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 1rem; }
+.login-form .btn-primary { width: 100%; padding: 0.75rem; font-size: 1rem; margin-top: 0.5rem; }
+.error-banner { background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; border-radius: 6px; padding: 0.75rem; margin-bottom: 1rem; }
+
+/* Inspection page */
+.inspection-main, .report-main { padding: 1.5rem; max-width: 900px; margin: 0 auto; }
+.inspection-checkpoints, .inspection-actions { margin-bottom: 1.5rem; }
+
+/* Chat message bubbles */
+.message { padding: 0.6rem 1rem; border-radius: 8px; max-width: 80%; }
+.message.user { background: #dbeafe; align-self: flex-end; }
+.message.assistant { background: #f1f5f9; align-self: flex-start; }

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QC Pad Login</title>
+    <link rel="manifest" href="/static/pad_manifest.json">
+    <link rel="stylesheet" href="/static/pad_ui.css">
+</head>
+<body class="login-page">
+    <div id="orientation-overlay">
+        <div class="orientation-message">
+            <p>Please rotate your device to landscape mode to use QC Pad.</p>
+        </div>
+    </div>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <h1>Giraffe QC Pad</h1>
+                <p>Factory Quality Control</p>
+            </div>
+            {% if error %}
+            <div class="error-banner">{{ error }}</div>
+            {% endif %}
+            <form method="POST" action="/pad/login" class="login-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required autocomplete="current-password">
+                </div>
+                <input type="hidden" name="tenant_id" value="demo">
+                <button type="submit" class="btn-primary">Login</button>
+            </form>
+        </div>
+    </div>
+    <script src="/static/pad_orientation.js"></script>
+</body>
+</html>
