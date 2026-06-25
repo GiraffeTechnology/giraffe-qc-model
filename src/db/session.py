@@ -76,11 +76,12 @@ def __getattr__(name: str):
 def init_db() -> None:
     """Create all tables (idempotent — uses CREATE TABLE IF NOT EXISTS).
 
-    Creates tables for old models, qc_models, and new sku_models.
+    Creates tables for old models, qc_models, new sku_models, and pad_models.
     """
     import src.db.qc_models  # noqa: F401 — side-effect import registers tables
     import src.db.sku_models  # noqa: F401 — side-effect import registers tables
     import src.db.execution_models  # noqa: F401 — side-effect import registers tables
+    import src.db.pad_models  # noqa: F401 — side-effect import registers tables
     Base.metadata.create_all(bind=_get_engine())
 
 
