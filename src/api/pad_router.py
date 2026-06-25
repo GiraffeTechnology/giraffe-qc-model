@@ -1,7 +1,6 @@
 """FastAPI router for QC Pad conversational UI."""
 from __future__ import annotations
 
-import io
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -46,7 +45,7 @@ def _require_operator(request: Request) -> int:
 
 @router.get("/pad/login", response_class=HTMLResponse)
 async def pad_login_page(request: Request):
-    return templates.TemplateResponse("pad_login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "pad_login.html", {"error": None})
 
 
 @router.post("/pad/login")
@@ -61,9 +60,7 @@ async def pad_login_submit(
     operator = authenticate_operator(db, username, password, tenant_id)
     if operator is None:
         return templates.TemplateResponse(
-            "pad_login.html",
-            {"request": request, "error": "Invalid credentials"},
-            status_code=401,
+            request, "pad_login.html", {"error": "Invalid credentials"}, status_code=401
         )
     request.session["operator_id"] = str(operator.id)
     request.session["tenant_id"] = tenant_id
@@ -89,12 +86,9 @@ async def pad_workspace(
         request.session.clear()
         return RedirectResponse(url="/pad/login", status_code=302)
     return templates.TemplateResponse(
+        request,
         "pad_workspace.html",
-        {
-            "request": request,
-            "operator": operator,
-            "preferred_language": operator.preferred_language,
-        },
+        {"operator": operator, "preferred_language": operator.preferred_language},
     )
 
 
@@ -107,10 +101,7 @@ async def pad_inspection(
     operator_id = _require_operator(request)
     if operator_id is None:
         return RedirectResponse(url="/pad/login", status_code=302)
-    return templates.TemplateResponse(
-        "pad_inspection.html",
-        {"request": request, "job_id": job_id},
-    )
+    return templates.TemplateResponse(request, "pad_inspection.html", {"job_id": job_id})
 
 
 @router.get("/pad/inspections/{job_id}/report", response_class=HTMLResponse)
@@ -122,10 +113,7 @@ async def pad_report(
     operator_id = _require_operator(request)
     if operator_id is None:
         return RedirectResponse(url="/pad/login", status_code=302)
-    return templates.TemplateResponse(
-        "pad_report.html",
-        {"request": request, "job_id": job_id},
-    )
+    return templates.TemplateResponse(request, "pad_report.html", {"job_id": job_id})
 
 
 # ---------------------------------------------------------------------------

@@ -92,10 +92,11 @@ class FakeOpenClawLLMClient:
     }
 
     def detect_language(self, text: str) -> str:
-        if _CHINESE_RE.search(text):
-            return "zh-CN"
+        # Hiragana/katakana are exclusively Japanese — check before CJK
         if _JAPANESE_RE.search(text):
             return "ja"
+        if _CHINESE_RE.search(text):
+            return "zh-CN"
         return "en"
 
     def translate_to_english(self, text: str, source_lang: str) -> str:
@@ -150,10 +151,10 @@ class RealOpenClawLLMClient:
 
     def detect_language(self, text: str) -> str:
         # Placeholder: real implementation calls remote service
-        if _CHINESE_RE.search(text):
-            return "zh-CN"
         if _JAPANESE_RE.search(text):
             return "ja"
+        if _CHINESE_RE.search(text):
+            return "zh-CN"
         return "en"
 
     def translate_to_english(self, text: str, source_lang: str) -> str:

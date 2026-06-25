@@ -28,12 +28,13 @@ from sqlalchemy.pool import StaticPool
 
 from src.api.main import app
 from src.api.deps import get_db_dep
-from src.db.base import Base
+from src.db.models import Base
 import src.db.pad_models  # noqa: F401 — registers tables
 import src.db.models  # noqa: F401
 import src.db.qc_models  # noqa: F401
 import src.db.sku_models  # noqa: F401
 import src.db.execution_models  # noqa: F401
+import src.db.intake_models  # noqa: F401
 from src.openclaw.qc_agent_bridge import FakeOpenClawLLMClient, QCAgentBridge
 from src.pad.session_service import seed_demo_operators
 
@@ -131,7 +132,8 @@ def test_04_chinese_language_detection():
 # ---------------------------------------------------------------------------
 def test_05_japanese_language_detection():
     bridge = QCAgentBridge(client=FakeOpenClawLLMClient())
-    lang = bridge.detect_language("検査開始")
+    # Hiragana characters (を, し, ま, す) make this unambiguously Japanese
+    lang = bridge.detect_language("検査を開始します")
     assert lang == "ja"
 
 
@@ -159,7 +161,7 @@ def test_07_chinese_text_to_english_intent():
 # ---------------------------------------------------------------------------
 def test_08_japanese_text_to_english_intent():
     bridge = QCAgentBridge(client=FakeOpenClawLLMClient())
-    result = bridge.process("検査開始", preferred_language="ja")
+    result = bridge.process("検査を開始します", preferred_language="ja")
     assert result.intent == "start_inspection"
     assert result.confidence >= 0.5
 
@@ -219,7 +221,7 @@ def test_12_chat_api_chinese_message(auth_client):
 def test_13_chat_api_japanese_message(auth_client):
     resp = auth_client.post(
         "/api/v1/pad/chat",
-        json={"message": "検査開始", "context": {}},
+        json={"message": "検査を開始します", "context": {}},
     )
     assert resp.status_code == 200
     data = resp.json()

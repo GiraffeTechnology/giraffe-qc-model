@@ -1,7 +1,7 @@
 from datetime import datetime
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
-from src.db.base import Base
+from src.db.models import Base
 
 
 class QCOperatorProfile(Base):
