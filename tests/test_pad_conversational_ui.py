@@ -753,3 +753,293 @@ def test_34_action_card_schema_is_stable(auth_client, seeded_sku):
     for cp in card["checkpoints"]:
         missing_cp = cp_required - cp.keys()
         assert not missing_cp, f"Checkpoint missing keys {missing_cp}: {cp}"
+
+
+# ---------------------------------------------------------------------------
+# Test 35: English fuzzy standard input creates standard_confirmation card
+# ---------------------------------------------------------------------------
+_EN_STANDARD_MSG = (
+    "Check this shirt: 7 buttons, collar stitching not crooked, no fabric stains, "
+    "label position correct."
+)
+
+
+def test_english_fuzzy_standard_input_creates_standard_confirmation_card(auth_client, seeded_sku):
+    resp = auth_client.post(
+        "/api/v1/pad/chat",
+        json={"message": _EN_STANDARD_MSG, "context": {"sku_id": seeded_sku.id}},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["detected_language"] == "en"
+    assert data["intent"] == "create_standard_intake"
+    assert data["confidence"] >= 0.5
+    assert data["requires_confirmation"] is True
+
+    card = data["action_card"]
+    assert card is not None
+    assert card["type"] == "standard_confirmation"
+    assert card["source_language"] == "en"
+    assert card["requires_confirmation"] is True
+
+    codes = {cp["point_code"] for cp in card["checkpoints"]}
+    assert "BUTTON_COUNT" in codes, f"Expected BUTTON_COUNT in {codes}"
+    assert "COLLAR_STITCHING" in codes, f"Expected COLLAR_STITCHING in {codes}"
+    assert "FABRIC_STAIN" in codes, f"Expected FABRIC_STAIN in {codes}"
+    assert "LABEL_POSITION" in codes, f"Expected LABEL_POSITION in {codes}"
+
+    btn = next(cp for cp in card["checkpoints"] if cp["point_code"] == "BUTTON_COUNT")
+    assert btn["expected_value"] == "7", f"Expected BUTTON_COUNT expected_value=7, got {btn['expected_value']}"
+
+
+# ---------------------------------------------------------------------------
+# Test 36: Chinese fuzzy standard input (alias with required test name)
+# ---------------------------------------------------------------------------
+def test_chinese_fuzzy_standard_input_creates_standard_confirmation_card(auth_client, seeded_sku):
+    resp = auth_client.post(
+        "/api/v1/pad/chat",
+        json={"message": _ZH_STANDARD_MSG, "context": {"sku_id": seeded_sku.id}},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["detected_language"] == "zh-CN"
+    assert data["intent"] == "create_standard_intake"
+    assert data["requires_confirmation"] is True
+    card = data["action_card"]
+    assert card["type"] == "standard_confirmation"
+    codes = {cp["point_code"] for cp in card["checkpoints"]}
+    assert {"BUTTON_COUNT", "COLLAR_STITCHING", "FABRIC_STAIN", "LABEL_POSITION"}.issubset(codes)
+
+
+# ---------------------------------------------------------------------------
+# Test 37: Japanese fuzzy standard input (alias with required test name)
+# ---------------------------------------------------------------------------
+def test_japanese_fuzzy_standard_input_creates_standard_confirmation_card(auth_client, seeded_sku):
+    resp = auth_client.post(
+        "/api/v1/pad/chat",
+        json={"message": _JA_STANDARD_MSG, "context": {"sku_id": seeded_sku.id}},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["detected_language"] == "ja"
+    assert data["intent"] == "create_standard_intake"
+    assert data["requires_confirmation"] is True
+    card = data["action_card"]
+    assert card["type"] == "standard_confirmation"
+    codes = {cp["point_code"] for cp in card["checkpoints"]}
+    assert {"BUTTON_COUNT", "COLLAR_STITCHING", "FABRIC_STAIN", "LABEL_POSITION"}.issubset(codes)
+
+
+# ---------------------------------------------------------------------------
+# Test 38: Chat creates intake but not active revision (required test name)
+# ---------------------------------------------------------------------------
+def test_pad_chat_create_standard_intake_creates_qc_standard_intake_but_not_active_revision(
+    auth_client, db_session, seeded_sku
+):
+    from src.db.intake_models import QCStandardIntake
+    from src.db.sku_models import QCSkuStandardRevision
+
+    intake_count_before = db_session.query(QCStandardIntake).filter_by(sku_id=seeded_sku.id).count()
+    rev_count_before = db_session.query(QCSkuStandardRevision).filter_by(
+        sku_id=seeded_sku.id, status="active"
+    ).count()
+
+    resp = auth_client.post(
+        "/api/v1/pad/chat",
+        json={"message": _EN_STANDARD_MSG, "context": {"sku_id": seeded_sku.id}},
+    )
+    assert resp.status_code == 200
+
+    db_session.expire_all()
+    intake_count_after = db_session.query(QCStandardIntake).filter_by(sku_id=seeded_sku.id).count()
+    rev_count_after = db_session.query(QCSkuStandardRevision).filter_by(
+        sku_id=seeded_sku.id, status="active"
+    ).count()
+
+    assert intake_count_after > intake_count_before, "Chat must create a QCStandardIntake record"
+    assert rev_count_after == rev_count_before, (
+        "Chat must NOT create an active standard revision — operator confirmation required"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 39: Confirmation creates active revision (required test name)
+# ---------------------------------------------------------------------------
+def test_standard_confirmation_card_confirm_creates_active_revision(
+    auth_client, db_session, seeded_sku
+):
+    from src.db.sku_models import QCSkuStandardRevision
+
+    resp = auth_client.post(
+        "/api/v1/pad/chat",
+        json={"message": _EN_STANDARD_MSG, "context": {"sku_id": seeded_sku.id}},
+    )
+    assert resp.status_code == 200
+    card = resp.json()["action_card"]
+    intake_id = card["intake_id"]
+    assert intake_id is not None
+
+    rev_count_before = db_session.query(QCSkuStandardRevision).filter_by(sku_id=seeded_sku.id).count()
+
+    resp2 = auth_client.post("/api/v1/pad/confirm_standard", json={"intake_id": intake_id})
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    assert data2["status"] == "confirmed"
+    assert "revision_id" in data2
+
+    db_session.expire_all()
+    rev_count_after = db_session.query(QCSkuStandardRevision).filter_by(sku_id=seeded_sku.id).count()
+    assert rev_count_after > rev_count_before, "confirm_standard must create a new standard revision"
+
+
+# ---------------------------------------------------------------------------
+# Test 40: Raw text preserved, canonical English stored separately (required test name)
+# ---------------------------------------------------------------------------
+def test_fuzzy_standard_input_preserves_raw_text_and_canonical_english(
+    auth_client, db_session, seeded_sku
+):
+    from src.db.intake_models import QCStandardIntake
+
+    # Use English input for this variant
+    resp = auth_client.post(
+        "/api/v1/pad/chat",
+        json={"message": _EN_STANDARD_MSG, "context": {"sku_id": seeded_sku.id}},
+    )
+    assert resp.status_code == 200
+
+    db_session.expire_all()
+    intake = (
+        db_session.query(QCStandardIntake)
+        .filter_by(sku_id=seeded_sku.id)
+        .order_by(QCStandardIntake.created_at.desc())
+        .first()
+    )
+    assert intake is not None
+    assert intake.raw_text == _EN_STANDARD_MSG, (
+        f"raw_text must preserve original input, got: {intake.raw_text!r}"
+    )
+    assert intake.normalized_text is not None
+    assert "QC standard" in intake.normalized_text, (
+        f"normalized_text must contain QC standard canonical form, got: {intake.normalized_text!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 41: Low-confidence input does not create intake (required test name)
+# ---------------------------------------------------------------------------
+def test_low_confidence_standard_input_does_not_create_intake(auth_client, db_session, seeded_sku):
+    from src.db.intake_models import QCStandardIntake
+
+    intake_count_before = db_session.query(QCStandardIntake).count()
+
+    resp = auth_client.post(
+        "/api/v1/pad/chat",
+        json={"message": "xyzzy gibberish test 9999", "context": {"sku_id": seeded_sku.id}},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["confidence"] < 0.5
+    assert data["action_card"] is None
+
+    db_session.expire_all()
+    intake_count_after = db_session.query(QCStandardIntake).count()
+    assert intake_count_after == intake_count_before, (
+        "Low-confidence input must not create a QCStandardIntake record"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 42: Action card schema is stable (required test name)
+# ---------------------------------------------------------------------------
+def test_action_card_schema_is_stable(auth_client, seeded_sku):
+    resp = auth_client.post(
+        "/api/v1/pad/chat",
+        json={"message": _EN_STANDARD_MSG, "context": {"sku_id": seeded_sku.id}},
+    )
+    assert resp.status_code == 200
+    card = resp.json()["action_card"]
+    assert card is not None
+
+    required_keys = {"type", "intake_id", "source_language", "canonical_english_text",
+                     "checkpoints", "requires_confirmation"}
+    missing = required_keys - card.keys()
+    assert not missing, f"Action card missing required keys: {missing}"
+
+    assert card["type"] == "standard_confirmation"
+    assert isinstance(card["checkpoints"], list)
+    assert len(card["checkpoints"]) >= 2
+
+    cp_required = {"point_code", "label", "severity", "method_hint", "expected_value"}
+    for cp in card["checkpoints"]:
+        missing_cp = cp_required - cp.keys()
+        assert not missing_cp, f"Checkpoint missing keys {missing_cp}: {cp}"
+
+
+# ---------------------------------------------------------------------------
+# Test 43: standard_confirmation card contains expected checkpoints (required test name)
+# ---------------------------------------------------------------------------
+def test_standard_confirmation_card_contains_expected_checkpoints(auth_client, seeded_sku):
+    resp = auth_client.post(
+        "/api/v1/pad/chat",
+        json={"message": _EN_STANDARD_MSG, "context": {"sku_id": seeded_sku.id}},
+    )
+    assert resp.status_code == 200
+    card = resp.json()["action_card"]
+    assert card is not None
+    assert card["type"] == "standard_confirmation"
+
+    checkpoints = card["checkpoints"]
+    codes = {cp["point_code"] for cp in checkpoints}
+    assert "BUTTON_COUNT" in codes
+    assert "COLLAR_STITCHING" in codes
+    assert "FABRIC_STAIN" in codes
+    assert "LABEL_POSITION" in codes
+
+    btn = next(cp for cp in checkpoints if cp["point_code"] == "BUTTON_COUNT")
+    assert btn["expected_value"] == "7"
+    assert btn["severity"] == "critical"
+    assert btn["method_hint"] == "counting"
+
+    collar = next(cp for cp in checkpoints if cp["point_code"] == "COLLAR_STITCHING")
+    assert collar["severity"] == "major"
+
+    stain = next(cp for cp in checkpoints if cp["point_code"] == "FABRIC_STAIN")
+    assert stain["severity"] == "major"
+
+    label = next(cp for cp in checkpoints if cp["point_code"] == "LABEL_POSITION")
+    assert label["severity"] == "minor"
+
+
+# ---------------------------------------------------------------------------
+# Test 44: Portrait overlay blocks standard_confirmation buttons (required test name)
+# ---------------------------------------------------------------------------
+def test_portrait_overlay_blocks_standard_confirmation_button():
+    """The standard_confirmation confirm button has qc-action-btn class,
+    which the portrait overlay JS disables when device is in portrait mode."""
+    static_dir = Path(__file__).resolve().parent.parent / "src" / "web" / "static"
+    templates_dir = Path(__file__).resolve().parent.parent / "src" / "web" / "templates"
+
+    # Workspace template must have orientation overlay element
+    workspace_html = (templates_dir / "pad_workspace.html").read_text()
+    assert 'id="orientation-overlay"' in workspace_html, (
+        "Template must have orientation overlay element"
+    )
+
+    # Orientation JS must disable qc-action-btn elements in portrait mode
+    orientation_js = (static_dir / "pad_orientation.js").read_text()
+    assert "qc-action-btn" in orientation_js, (
+        "Orientation JS must reference qc-action-btn to disable action buttons in portrait"
+    )
+    assert "disabled" in orientation_js, (
+        "Orientation JS must set disabled on action buttons in portrait mode"
+    )
+
+    # pad_chat.js must add qc-action-btn class to confirm button for standard_confirmation
+    chat_js = (static_dir / "pad_chat.js").read_text()
+    assert "standard_confirmation" in chat_js, (
+        "pad_chat.js must handle standard_confirmation card type"
+    )
+    assert "qc-action-btn" in chat_js, (
+        "pad_chat.js must assign qc-action-btn class to confirm button"
+    )

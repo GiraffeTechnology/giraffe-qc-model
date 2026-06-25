@@ -62,6 +62,18 @@ class FakeOpenClawLLMClient:
         (r'花蕊.*?居中|花芯.*?居中|花蕊.*?对中', "STAMEN_CENTERING", "Stamen Centering", "major", "alignment"),
     ]
 
+    # English patterns: (regex, point_code, label, severity, method_hint)
+    _EN_STANDARD_PATTERNS: List[Tuple] = [
+        (r'(\d+)\s*buttons?', "BUTTON_COUNT", "Button Count", "critical", "counting"),
+        (r'collar\s*stitch(?:ing)?', "COLLAR_STITCHING", "Collar Stitching", "major", "visual_inspection"),
+        (r'(?:no\s+)?(?:fabric\s+)?stains?|fabric.*?clean', "FABRIC_STAIN", "Fabric Stain", "major", "visual_inspection"),
+        (r'label\s*position|label\s*placement|label\s*correct', "LABEL_POSITION", "Label Position", "minor", "visual_inspection"),
+        (r'(\d+)\s*pearls?', "PEARL_COUNT", "Pearl Count", "critical", "counting"),
+        (r'(\d+)\s*rhinestones?|(\d+)\s*crystals?', "RHINESTONE_COUNT", "Rhinestone Count", "critical", "counting"),
+        (r'petals?\s*(?:intact|complete|integrity|not\s*damaged)', "PETAL_INTEGRITY", "Petal Integrity", "critical", "visual_inspection"),
+        (r'stamen\s*(?:center(?:ing|ed)?|align(?:ed)?)', "STAMEN_CENTERING", "Stamen Centering", "major", "alignment"),
+    ]
+
     # Japanese patterns: (regex, point_code, label, severity, method_hint)
     _JA_STANDARD_PATTERNS: List[Tuple] = [
         (r'ボタン\s*(\d+)\s*個|(\d+)\s*個.*?ボタン', "BUTTON_COUNT", "Button Count", "critical", "counting"),
@@ -96,11 +108,26 @@ class FakeOpenClawLLMClient:
         "get_report": [
             "get report", "fetch report", "获取报告", "レポート取得",
         ],
+        "confirm_standard": [
+            "confirm standard", "approve standard", "确认标准", "標準確認",
+        ],
         "confirm_intake": [
             "confirm", "yes", "ok", "approve", "确认", "是", "好的", "確認", "はい",
         ],
+        "reject_standard": [
+            "reject standard", "reject", "cancel standard", "拒绝", "却下",
+        ],
         "create_inspection_job": [
             "create job", "new inspection job", "start job",
+        ],
+        "attach_inspection_media": [
+            "attach photo", "attach image", "upload photo", "add photo",
+        ],
+        "ingest_model_output": [
+            "model result", "ai result", "qwen result", "model output",
+        ],
+        "finalize_inspection": [
+            "finalize", "complete inspection", "finish inspection", "完成检查",
         ],
         "set_language": [
             "language", "lang", "chinese", "english", "japanese", "中文", "英文", "日本語",
@@ -168,6 +195,8 @@ class FakeOpenClawLLMClient:
             patterns = self._ZH_STANDARD_PATTERNS
         elif lang == "ja":
             patterns = self._JA_STANDARD_PATTERNS
+        elif lang == "en":
+            patterns = self._EN_STANDARD_PATTERNS
         else:
             return False, [], raw_text
 
