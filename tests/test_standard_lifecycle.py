@@ -291,3 +291,162 @@ def test_create_inspection_job_fails_without_active_revision(db):
     sku = _make_sku(db)
     with pytest.raises(ValueError, match="No active standard revision"):
         create_inspection_job(db, sku.id, "t1")
+
+
+# ── Product acceptance tests (exact names required by PRD) ───────────────────
+
+
+def test_same_sku_reuses_active_standard_without_reconfirmation(db):
+    """Multiple jobs on the same SKU all use the active revision without re-confirming."""
+    sku = _make_sku(db)
+    rev = create_standard_revision(db, sku.id, "t1")
+    confirm_standard_revision(db, rev.id, confirmed_by="alice", tenant_id="t1")
+
+    job1 = create_inspection_job(db, sku.id, "t1")
+    job2 = create_inspection_job(db, sku.id, "t1")
+    job3 = create_inspection_job(db, sku.id, "t1")
+
+    # All three jobs snapshot the same revision — no extra confirmation needed
+    assert job1.active_standard_revision_id == rev.id
+    assert job2.active_standard_revision_id == rev.id
+    assert job3.active_standard_revision_id == rev.id
+
+
+def test_standard_update_creates_new_revision_only_on_operator_request(db):
+    """The standard is not updated automatically; only an explicit create+confirm call changes it."""
+    sku = _make_sku(db)
+    rev1 = create_standard_revision(db, sku.id, "t1")
+    confirm_standard_revision(db, rev1.id, "alice", "t1")
+
+    # Without any operator action the active revision stays the same
+    assert get_active_standard_revision(db, sku.id, "t1").id == rev1.id
+
+    # An operator explicitly requests an update
+    rev2 = create_standard_revision(db, sku.id, "t1", reason="operator requested: add new checkpoint")
+    assert rev2.status == "draft"  # not yet active — must be confirmed
+    assert get_active_standard_revision(db, sku.id, "t1").id == rev1.id  # still old
+
+    # Operator confirms the new revision
+    confirm_standard_revision(db, rev2.id, "bob", "t1")
+    assert get_active_standard_revision(db, sku.id, "t1").id == rev2.id
+
+
+def test_old_inspection_job_keeps_old_standard_revision(db):
+    """Updating the standard does not retroactively change existing jobs' snapshots."""
+    sku = _make_sku(db)
+    rev1 = create_standard_revision(db, sku.id, "t1")
+    confirm_standard_revision(db, rev1.id, "alice", "t1")
+
+    old_job = create_inspection_job(db, sku.id, "t1")
+    assert old_job.active_standard_revision_id == rev1.id
+
+    # Operator updates the standard
+    rev2 = create_standard_revision(db, sku.id, "t1")
+    confirm_standard_revision(db, rev2.id, "alice", "t1")
+
+    # New jobs use the new revision
+    new_job = create_inspection_job(db, sku.id, "t1")
+    assert new_job.active_standard_revision_id == rev2.id
+
+    # Old job is unchanged
+    db.refresh(old_job)
+    assert old_job.active_standard_revision_id == rev1.id
+
+
+def test_missing_checkpoint_result_blocks_pass(db):
+    """A checkpoint with no submitted result auto-becomes 'missing' and prevents pass."""
+    sku = _make_sku(db)
+    rev = create_standard_revision(db, sku.id, "t1")
+    confirm_standard_revision(db, rev.id, "alice", "t1")
+    dp1 = _make_detection_point(db, sku.id, rev.id, "ALPHA")
+    _make_detection_point(db, sku.id, rev.id, "BETA")  # no result submitted
+
+    job = create_inspection_job(db, sku.id, "t1")
+    submit_checkpoint_result(db, job.id, dp1.id, "pass")
+
+    report = finalize_job(db, job.id)
+    assert report.overall_result == "fail"
+
+
+def test_not_visible_checkpoint_blocks_pass(db):
+    """A checkpoint result of 'not_visible' prevents the job from passing."""
+    sku = _make_sku(db)
+    rev = create_standard_revision(db, sku.id, "t1")
+    confirm_standard_revision(db, rev.id, "alice", "t1")
+    dp = _make_detection_point(db, sku.id, rev.id, "ALPHA")
+
+    job = create_inspection_job(db, sku.id, "t1")
+    submit_checkpoint_result(db, job.id, dp.id, "not_visible")
+
+    report = finalize_job(db, job.id)
+    assert report.overall_result == "fail"
+
+
+def test_low_confidence_checkpoint_blocks_pass(db):
+    """A checkpoint result of 'low_confidence' prevents the job from passing."""
+    sku = _make_sku(db)
+    rev = create_standard_revision(db, sku.id, "t1")
+    confirm_standard_revision(db, rev.id, "alice", "t1")
+    dp = _make_detection_point(db, sku.id, rev.id, "ALPHA")
+
+    job = create_inspection_job(db, sku.id, "t1")
+    submit_checkpoint_result(db, job.id, dp.id, "low_confidence", confidence=0.4)
+
+    report = finalize_job(db, job.id)
+    assert report.overall_result == "fail"
+
+
+def test_major_incidental_finding_creates_review_required(db):
+    """When all checkpoints pass but a major incidental finding is present → review_required."""
+    sku = _make_sku(db)
+    rev = create_standard_revision(db, sku.id, "t1")
+    confirm_standard_revision(db, rev.id, "alice", "t1")
+    dp = _make_detection_point(db, sku.id, rev.id, "ALPHA")
+
+    job = create_inspection_job(db, sku.id, "t1")
+    submit_checkpoint_result(db, job.id, dp.id, "pass")
+    submit_incidental_finding(db, job.id, "Surface scratch on back panel", severity="major")
+
+    report = finalize_job(db, job.id)
+    assert report.overall_result == "review_required"
+
+
+def test_flower_brooch_seed_has_required_four_checkpoints(db):
+    """FLOWER-BROOCH-001 seed contains exactly the four mandated checkpoints."""
+    sku = seed_flower_brooch(db, tenant_id="t1")
+    active = get_active_standard_revision(db, sku.id, "t1")
+    assert active is not None
+
+    points = (
+        db.query(QCDetectionPoint)
+        .filter_by(standard_revision_id=active.id, is_active=True)
+        .all()
+    )
+    code_map = {p.point_code: p for p in points}
+    assert set(code_map.keys()) == {"STAMEN_CENTERING", "PEARL_COUNT", "RHINESTONE_COUNT", "PETAL_INTEGRITY"}
+    assert code_map["STAMEN_CENTERING"].severity == "major"
+    assert code_map["PEARL_COUNT"].severity == "critical"
+    assert code_map["PEARL_COUNT"].expected_value == "3"
+    assert code_map["RHINESTONE_COUNT"].severity == "critical"
+    assert code_map["RHINESTONE_COUNT"].expected_value == "8"
+    assert code_map["PETAL_INTEGRITY"].severity == "critical"
+
+
+def test_no_guess_policy_cannot_pass_without_full_checkpoint_coverage(db):
+    """Submitting results for only a subset of checkpoints prevents a pass verdict."""
+    sku = _make_sku(db)
+    rev = create_standard_revision(db, sku.id, "t1")
+    confirm_standard_revision(db, rev.id, "alice", "t1")
+    dp1 = _make_detection_point(db, sku.id, rev.id, "ALPHA")
+    dp2 = _make_detection_point(db, sku.id, rev.id, "BETA")
+    dp3 = _make_detection_point(db, sku.id, rev.id, "GAMMA")
+
+    job = create_inspection_job(db, sku.id, "t1")
+    # Only submit results for 2 of 3 checkpoints
+    submit_checkpoint_result(db, job.id, dp1.id, "pass")
+    submit_checkpoint_result(db, job.id, dp2.id, "pass")
+    # dp3 intentionally omitted
+
+    report = finalize_job(db, job.id)
+    assert report.overall_result == "fail"
+    assert report.checkpoint_results_count == 3
