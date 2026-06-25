@@ -281,6 +281,18 @@ def confirm_standard_intake(
     if not confirmed_checkpoints:
         raise ValueError("confirmed_checkpoints must not be empty.")
 
+    # Detect duplicate point_codes before creating anything
+    seen_codes: set[str] = set()
+    for i, cp in enumerate(confirmed_checkpoints):
+        code = cp.get("point_code", "").strip().upper()
+        if code in seen_codes:
+            raise ValueError(
+                f"Duplicate point_code {code!r} in confirmed_checkpoints. "
+                "Each checkpoint code must be unique within a standard revision."
+            )
+        if code:
+            seen_codes.add(code)
+
     # Create a new draft revision via the domain service
     revision = create_standard_revision(
         db,

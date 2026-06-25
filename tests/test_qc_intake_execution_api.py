@@ -442,3 +442,475 @@ def test_ingest_model_output_rejects_unknown_point_code(client, seeded_skus):
     )
     assert model_resp.status_code == 400, model_resp.text
     assert "NONEXISTENT_CHECKPOINT" in model_resp.json()["detail"]
+
+
+# ── New tests (13–28) ──────────────────────────────────────────────────────────
+
+# Helper: FLOWER-BROOCH-001 complete model output (all 4 checkpoints pass)
+_BROOCH_FULL_PASS = {
+    "checkpoint_results": [
+        {"point_code": "STAMEN_CENTERING", "result": "pass", "confidence": 0.95},
+        {"point_code": "PEARL_COUNT", "result": "pass", "observed_value": "3", "confidence": 0.99},
+        {"point_code": "RHINESTONE_COUNT", "result": "pass", "observed_value": "8", "confidence": 0.98},
+        {"point_code": "PETAL_INTEGRITY", "result": "pass", "confidence": 0.97},
+    ],
+    "incidental_findings": [],
+}
+
+
+def _create_brooch_job(client, seeded_skus, job_ref=None):
+    """Helper: create a fresh inspection job for FLOWER-BROOCH-001."""
+    sku_id = seeded_skus["FLOWER-BROOCH-001"]
+    resp = client.post(
+        "/api/v1/qc/inspection-jobs",
+        json={"tenant_id": "default", "sku_id": sku_id, "job_ref": job_ref},
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
+
+
+# 13
+def test_create_standard_intake_from_raw_text(client, seeded_skus):
+    sku_id = seeded_skus["FLOWER-BROOCH-001"]
+    resp = client.post(
+        "/api/v1/qc/intakes",
+        json={
+            "tenant_id": "default",
+            "sku_id": sku_id,
+            "raw_text": "Pearl count 3, rhinestone count 8, stamen centering.",
+            "source_type": "api",
+            "operator_id": "op-test13",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["status"] == "received"
+    assert body["sku_id"] == sku_id
+    assert body["tenant_id"] == "default"
+
+
+# 14
+def test_extract_standard_draft_from_intake(client, seeded_skus):
+    sku_id = seeded_skus["FLOWER-BROOCH-001"]
+    create_resp = client.post(
+        "/api/v1/qc/intakes",
+        json={
+            "tenant_id": "default",
+            "sku_id": sku_id,
+            "raw_text": "Stamen centering, petal integrity.",
+        },
+    )
+    assert create_resp.status_code == 201
+    intake_id = create_resp.json()["id"]
+
+    extract_resp = client.post(f"/api/v1/qc/intakes/{intake_id}/extract")
+    assert extract_resp.status_code == 200, extract_resp.text
+    body = extract_resp.json()
+    assert body["status"] == "pending_confirmation"
+    assert body["extracted_json"] is not None
+
+
+# 15
+def test_confirm_intake_creates_active_standard_revision(client, seeded_skus):
+    sku_id = seeded_skus["METAL-BRACKET-001"]
+    create_resp = client.post(
+        "/api/v1/qc/intakes",
+        json={
+            "tenant_id": "default",
+            "sku_id": sku_id,
+            "raw_text": "Hole count 4, surface scratch, edge burr, deformation check.",
+        },
+    )
+    assert create_resp.status_code == 201
+    intake_id = create_resp.json()["id"]
+
+    client.post(f"/api/v1/qc/intakes/{intake_id}/extract")
+
+    confirm_resp = client.post(
+        f"/api/v1/qc/intakes/{intake_id}/confirm",
+        json={
+            "confirmed_by": "op-test15",
+            "checkpoints": [
+                {"point_code": "HOLE_COUNT", "label": "Hole Count", "severity": "critical"},
+                {"point_code": "SURFACE_SCRATCH", "label": "Surface Scratch", "severity": "major"},
+                {"point_code": "EDGE_BURR", "label": "Edge Burr", "severity": "major"},
+                {"point_code": "DEFORMATION_CHECK", "label": "Deformation Check", "severity": "critical"},
+            ],
+        },
+    )
+    assert confirm_resp.status_code == 200, confirm_resp.text
+    body = confirm_resp.json()
+    assert body["status"] == "active"
+    assert body["checkpoint_count"] >= 1
+
+
+# 16
+def test_confirm_intake_rejects_duplicate_checkpoint_codes(client, seeded_skus):
+    sku_id = seeded_skus["SHIRT-CUSTOM-001"]
+    # Create a fresh intake for SHIRT-CUSTOM-001 (has BUTTON_COUNT in its seed)
+    create_resp = client.post(
+        "/api/v1/qc/intakes",
+        json={
+            "tenant_id": "default",
+            "sku_id": sku_id,
+            "raw_text": "Button count 7, collar stitching.",
+        },
+    )
+    assert create_resp.status_code == 201
+    intake_id = create_resp.json()["id"]
+
+    client.post(f"/api/v1/qc/intakes/{intake_id}/extract")
+
+    # Count existing revisions for this SKU before the bad confirm
+    from src.db.sku_models import QCSkuStandardRevision
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    # Submit confirm with duplicate normalized codes: "button_count" and "BUTTON_COUNT"
+    confirm_resp = client.post(
+        f"/api/v1/qc/intakes/{intake_id}/confirm",
+        json={
+            "confirmed_by": "op-test16",
+            "checkpoints": [
+                {"point_code": "button_count", "label": "Button Count A", "severity": "critical"},
+                {"point_code": "BUTTON_COUNT", "label": "Button Count B", "severity": "critical"},
+            ],
+        },
+    )
+    assert confirm_resp.status_code == 400, confirm_resp.text
+    assert "BUTTON_COUNT" in confirm_resp.json()["detail"]
+
+
+# 17
+def test_inspection_job_reuses_active_standard_without_reconfirmation(client, seeded_skus):
+    sku_id = seeded_skus["FLOWER-BROOCH-001"]
+    job_resp1 = client.post(
+        "/api/v1/qc/inspection-jobs",
+        json={"tenant_id": "default", "sku_id": sku_id, "job_ref": "JOB-REUSE-A"},
+    )
+    job_resp2 = client.post(
+        "/api/v1/qc/inspection-jobs",
+        json={"tenant_id": "default", "sku_id": sku_id, "job_ref": "JOB-REUSE-B"},
+    )
+    assert job_resp1.status_code == 201, job_resp1.text
+    assert job_resp2.status_code == 201, job_resp2.text
+    rev1 = job_resp1.json()["active_standard_revision_id"]
+    rev2 = job_resp2.json()["active_standard_revision_id"]
+    assert rev1 == rev2
+
+
+# 18
+def test_model_output_creates_checkpoint_results(client, seeded_skus):
+    job_id = _create_brooch_job(client, seeded_skus, job_ref="JOB-TEST18")
+    model_resp = client.post(
+        f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
+        json={
+            "provider": "anthropic",
+            "model_name": "claude-sonnet-4-6",
+            "raw_output": {
+                "checkpoint_results": [
+                    {"point_code": "STAMEN_CENTERING", "result": "pass", "confidence": 0.95},
+                ],
+                "incidental_findings": [],
+            },
+        },
+    )
+    assert model_resp.status_code == 201, model_resp.text
+    assert model_resp.json()["job_id"] == job_id
+
+
+# 19
+def test_model_output_rejects_unknown_point_code(client, seeded_skus):
+    job_id = _create_brooch_job(client, seeded_skus, job_ref="JOB-TEST19")
+    model_resp = client.post(
+        f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
+        json={
+            "provider": "anthropic",
+            "model_name": "claude-sonnet-4-6",
+            "raw_output": {
+                "checkpoint_results": [
+                    {"point_code": "NONEXISTENT_CODE", "result": "pass"},
+                ],
+                "incidental_findings": [],
+            },
+        },
+    )
+    assert model_resp.status_code == 400, model_resp.text
+
+
+# 20
+def test_model_output_rejects_duplicate_point_code_atomically(client, seeded_skus):
+    job_id = _create_brooch_job(client, seeded_skus, job_ref="JOB-TEST20")
+
+    # Submit with STAMEN_CENTERING appearing twice
+    bad_resp = client.post(
+        f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
+        json={
+            "provider": "anthropic",
+            "model_name": "claude-sonnet-4-6",
+            "raw_output": {
+                "checkpoint_results": [
+                    {"point_code": "STAMEN_CENTERING", "result": "pass", "confidence": 0.95},
+                    {"point_code": "PEARL_COUNT", "result": "pass"},
+                    {"point_code": "STAMEN_CENTERING", "result": "fail"},  # duplicate
+                ],
+                "incidental_findings": [],
+            },
+        },
+    )
+    assert bad_resp.status_code == 400, bad_resp.text
+    detail = bad_resp.json()["detail"]
+    assert "STAMEN_CENTERING" in detail or "duplicate" in detail.lower()
+
+    # Job should still be pending (no partial commit)
+    get_resp = client.get(f"/api/v1/qc/inspection-jobs/{job_id}")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["status"] == "pending"
+
+    # Re-submit a corrected payload (all checkpoints once, all pass) should succeed
+    good_resp = client.post(
+        f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
+        json={
+            "provider": "anthropic",
+            "model_name": "claude-sonnet-4-6",
+            "raw_output": _BROOCH_FULL_PASS,
+        },
+    )
+    assert good_resp.status_code == 201, good_resp.text
+
+
+# 21
+def test_model_output_rejects_existing_checkpoint_result_atomically(client, seeded_skus):
+    job_id = _create_brooch_job(client, seeded_skus, job_ref="JOB-TEST21")
+
+    # First valid submission (all 4 checkpoints pass)
+    first_resp = client.post(
+        f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
+        json={
+            "provider": "anthropic",
+            "model_name": "claude-sonnet-4-6",
+            "raw_output": _BROOCH_FULL_PASS,
+        },
+    )
+    assert first_resp.status_code == 201, first_resp.text
+
+    # Second submission — STAMEN_CENTERING already has a result
+    second_resp = client.post(
+        f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
+        json={
+            "provider": "anthropic",
+            "model_name": "claude-sonnet-4-6",
+            "raw_output": {
+                "checkpoint_results": [
+                    {"point_code": "STAMEN_CENTERING", "result": "pass"},
+                ],
+                "incidental_findings": [],
+            },
+        },
+    )
+    assert second_resp.status_code == 400, second_resp.text
+    detail = second_resp.json()["detail"]
+    assert "STAMEN_CENTERING" in detail or "already exists" in detail.lower()
+
+
+# 22
+def test_model_output_rejects_wrong_media_id_atomically(client, seeded_skus):
+    sku_id = seeded_skus["FLOWER-BROOCH-001"]
+
+    # Create two jobs
+    job1_resp = client.post(
+        "/api/v1/qc/inspection-jobs",
+        json={"tenant_id": "default", "sku_id": sku_id, "job_ref": "JOB-TEST22-A"},
+    )
+    assert job1_resp.status_code == 201
+    job1_id = job1_resp.json()["id"]
+
+    job2_resp = client.post(
+        "/api/v1/qc/inspection-jobs",
+        json={"tenant_id": "default", "sku_id": sku_id, "job_ref": "JOB-TEST22-B"},
+    )
+    assert job2_resp.status_code == 201
+    job2_id = job2_resp.json()["id"]
+
+    # Attach media to job2
+    media_resp = client.post(
+        f"/api/v1/qc/inspection-jobs/{job2_id}/media",
+        json={"image_url": "http://example.com/img.jpg"},
+    )
+    assert media_resp.status_code == 201, media_resp.text
+    media_id = media_resp.json()["id"]
+
+    # Submit model output to job1 with job2's media_id — should fail
+    bad_resp = client.post(
+        f"/api/v1/qc/inspection-jobs/{job1_id}/model-results",
+        json={
+            "provider": "anthropic",
+            "model_name": "claude-sonnet-4-6",
+            "media_id": media_id,
+            "raw_output": _BROOCH_FULL_PASS,
+        },
+    )
+    assert bad_resp.status_code == 400, bad_resp.text
+    assert "media" in bad_resp.json()["detail"].lower()
+
+    # Re-submit without media_id — should succeed
+    good_resp = client.post(
+        f"/api/v1/qc/inspection-jobs/{job1_id}/model-results",
+        json={
+            "provider": "anthropic",
+            "model_name": "claude-sonnet-4-6",
+            "raw_output": _BROOCH_FULL_PASS,
+        },
+    )
+    assert good_resp.status_code == 201, good_resp.text
+
+
+# 23
+def test_finalize_with_missing_checkpoint_returns_review_required(client, seeded_skus):
+    job_id = _create_brooch_job(client, seeded_skus, job_ref="JOB-TEST23")
+
+    # Submit only STAMEN_CENTERING (3 checkpoints missing)
+    client.post(
+        f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
+        json={
+            "provider": "anthropic",
+            "model_name": "claude-sonnet-4-6",
+            "raw_output": {
+                "checkpoint_results": [
+                    {"point_code": "STAMEN_CENTERING", "result": "pass"},
+                ],
+                "incidental_findings": [],
+            },
+        },
+    )
+
+    finalize_resp = client.post(f"/api/v1/qc/inspection-jobs/{job_id}/finalize")
+    assert finalize_resp.status_code == 200, finalize_resp.text
+    assert finalize_resp.json()["overall_result"] == "review_required"
+
+
+# 24
+def test_finalize_with_explicit_checkpoint_fail_returns_fail(client, seeded_skus):
+    job_id = _create_brooch_job(client, seeded_skus, job_ref="JOB-TEST24")
+
+    client.post(
+        f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
+        json={
+            "provider": "anthropic",
+            "model_name": "claude-sonnet-4-6",
+            "raw_output": {
+                "checkpoint_results": [
+                    {"point_code": "STAMEN_CENTERING", "result": "pass"},
+                    {"point_code": "PEARL_COUNT", "result": "pass"},
+                    {"point_code": "RHINESTONE_COUNT", "result": "pass"},
+                    {"point_code": "PETAL_INTEGRITY", "result": "fail"},
+                ],
+                "incidental_findings": [],
+            },
+        },
+    )
+
+    finalize_resp = client.post(f"/api/v1/qc/inspection-jobs/{job_id}/finalize")
+    assert finalize_resp.status_code == 200, finalize_resp.text
+    assert finalize_resp.json()["overall_result"] == "fail"
+
+
+# 25
+def test_major_incidental_finding_returns_review_required(client, seeded_skus):
+    job_id = _create_brooch_job(client, seeded_skus, job_ref="JOB-TEST25")
+
+    # All 4 checkpoints pass, but one major incidental finding
+    client.post(
+        f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
+        json={
+            "provider": "anthropic",
+            "model_name": "claude-sonnet-4-6",
+            "raw_output": {
+                "checkpoint_results": [
+                    {"point_code": "STAMEN_CENTERING", "result": "pass"},
+                    {"point_code": "PEARL_COUNT", "result": "pass"},
+                    {"point_code": "RHINESTONE_COUNT", "result": "pass"},
+                    {"point_code": "PETAL_INTEGRITY", "result": "pass"},
+                ],
+                "incidental_findings": [
+                    {"severity": "major", "description": "Unusual coating irregularity on back face."},
+                ],
+            },
+        },
+    )
+
+    finalize_resp = client.post(f"/api/v1/qc/inspection-jobs/{job_id}/finalize")
+    assert finalize_resp.status_code == 200, finalize_resp.text
+    assert finalize_resp.json()["overall_result"] == "review_required"
+
+
+# 26
+def test_multi_sku_seed_fixtures_have_expected_checkpoints(client, seeded_skus):
+    """All four seeded SKUs must have an active revision (inspection job creation returns 201)."""
+    for item_number, sku_id in seeded_skus.items():
+        resp = client.post(
+            "/api/v1/qc/inspection-jobs",
+            json={
+                "tenant_id": "default",
+                "sku_id": sku_id,
+                "job_ref": f"JOB-SEED-CHECK-{item_number}",
+            },
+        )
+        assert resp.status_code == 201, f"Failed for {item_number}: {resp.text}"
+        assert resp.json()["active_standard_revision_id"] is not None, (
+            f"{item_number} has no active revision"
+        )
+
+
+# 27
+def test_model_output_cannot_submit_checkpoint_from_other_sku(client, seeded_skus):
+    # Create a job for CARTON-LABEL-001
+    carton_sku_id = seeded_skus["CARTON-LABEL-001"]
+    job_resp = client.post(
+        "/api/v1/qc/inspection-jobs",
+        json={"tenant_id": "default", "sku_id": carton_sku_id, "job_ref": "JOB-TEST27"},
+    )
+    assert job_resp.status_code == 201
+    job_id = job_resp.json()["id"]
+
+    # Submit STAMEN_CENTERING which belongs to FLOWER-BROOCH-001, not CARTON-LABEL-001
+    model_resp = client.post(
+        f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
+        json={
+            "provider": "anthropic",
+            "model_name": "claude-sonnet-4-6",
+            "raw_output": {
+                "checkpoint_results": [
+                    {"point_code": "STAMEN_CENTERING", "result": "pass"},
+                ],
+                "incidental_findings": [],
+            },
+        },
+    )
+    assert model_resp.status_code == 400, model_resp.text
+
+
+# 28
+def test_finalize_api_is_idempotent(client, seeded_skus):
+    job_id = _create_brooch_job(client, seeded_skus, job_ref="JOB-TEST28")
+
+    # Submit complete model output (all 4 pass)
+    model_resp = client.post(
+        f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
+        json={
+            "provider": "anthropic",
+            "model_name": "claude-sonnet-4-6",
+            "raw_output": _BROOCH_FULL_PASS,
+        },
+    )
+    assert model_resp.status_code == 201, model_resp.text
+
+    # First finalize
+    finalize1 = client.post(f"/api/v1/qc/inspection-jobs/{job_id}/finalize")
+    assert finalize1.status_code == 200, finalize1.text
+    assert finalize1.json()["overall_result"] == "pass"
+
+    # Second finalize — must be idempotent
+    finalize2 = client.post(f"/api/v1/qc/inspection-jobs/{job_id}/finalize")
+    assert finalize2.status_code == 200, finalize2.text
+    assert finalize2.json()["overall_result"] == "pass"
