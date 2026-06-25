@@ -8,9 +8,14 @@ Covers:
 5.  create_inspection_job snapshots the active revision
 6.  get_active_detection_points_for_job returns only the job's revision points
 7.  All checkpoints pass, no serious findings → overall_result = 'pass'
-8.  Missing checkpoint result → overall_result = 'fail' (no-guess policy)
-9.  low_confidence or not_visible checkpoint result → overall_result = 'fail'
+8.  Missing checkpoint result → overall_result = 'review_required' (no-guess policy)
+9.  low_confidence or not_visible checkpoint result → overall_result = 'review_required'
 10. All checkpoints pass but major incidental finding → 'review_required'
+11. Explicit checkpoint fail → overall_result = 'fail'
+12. Duplicate checkpoint result → rejected
+13. Detection point not from job's revision/SKU/tenant → rejected
+14. Inactive detection point → rejected
+15. finalize_job is idempotent
 """
 from __future__ import annotations
 
@@ -70,18 +75,26 @@ def _make_sku(db, item_number: str = "TEST-SKU-001", tenant_id: str = "t1") -> Q
     return sku
 
 
-def _make_detection_point(db, sku_id: str, revision_id: str, code: str, severity: str = "major") -> QCDetectionPoint:
+def _make_detection_point(
+    db,
+    sku_id: str,
+    revision_id: str,
+    code: str,
+    severity: str = "major",
+    tenant_id: str = "t1",
+    is_active: bool = True,
+) -> QCDetectionPoint:
     import uuid
     dp = QCDetectionPoint(
         id=uuid.uuid4().hex,
-        tenant_id="t1",
+        tenant_id=tenant_id,
         sku_id=sku_id,
         standard_revision_id=revision_id,
         point_code=code,
         label=code.replace("_", " ").title(),
         severity=severity,
         sort_order=1,
-        is_active=True,
+        is_active=is_active,
     )
     db.add(dp)
     db.commit()
@@ -208,8 +221,8 @@ def test_all_checkpoints_pass_no_findings_yields_pass(db):
 
 # ── Test 8 ────────────────────────────────────────────────────────────────────
 
-def test_missing_checkpoint_result_yields_fail(db):
-    """No-guess policy: if a checkpoint has no submitted result → auto-missing → fail."""
+def test_missing_checkpoint_result_yields_review_required(db):
+    """No-guess policy: missing checkpoint → cannot verify → review_required, not fail."""
     sku = _make_sku(db)
     rev = create_standard_revision(db, sku.id, "t1")
     confirm_standard_revision(db, rev.id, "alice", "t1")
@@ -221,23 +234,24 @@ def test_missing_checkpoint_result_yields_fail(db):
     # POINT_B intentionally left without a result
 
     report = finalize_job(db, job.id)
-    assert report.overall_result == "fail"
+    assert report.overall_result == "review_required"
 
 
 # ── Test 9 ────────────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("bad_result", ["low_confidence", "not_visible"])
-def test_non_definitive_checkpoint_yields_fail(db, bad_result):
+@pytest.mark.parametrize("uncertain_result", ["low_confidence", "not_visible"])
+def test_non_definitive_checkpoint_yields_review_required(db, uncertain_result):
+    """Uncertain results cannot verify the checkpoint → review_required, not fail."""
     sku = _make_sku(db)
     rev = create_standard_revision(db, sku.id, "t1")
     confirm_standard_revision(db, rev.id, "alice", "t1")
     dp = _make_detection_point(db, sku.id, rev.id, "POINT_A")
 
     job = create_inspection_job(db, sku.id, "t1")
-    submit_checkpoint_result(db, job.id, dp.id, bad_result)
+    submit_checkpoint_result(db, job.id, dp.id, uncertain_result)
 
     report = finalize_job(db, job.id)
-    assert report.overall_result == "fail"
+    assert report.overall_result == "review_required"
 
 
 # ── Test 10 ───────────────────────────────────────────────────────────────────
@@ -255,6 +269,24 @@ def test_all_pass_but_major_finding_yields_review_required(db):
     report = finalize_job(db, job.id)
     assert report.overall_result == "review_required"
     assert report.findings_count == 1
+
+
+# ── Test 11 ───────────────────────────────────────────────────────────────────
+
+def test_explicit_checkpoint_fail_produces_fail(db):
+    """Visual evidence of failure → verdict = fail (not review_required)."""
+    sku = _make_sku(db)
+    rev = create_standard_revision(db, sku.id, "t1")
+    confirm_standard_revision(db, rev.id, "alice", "t1")
+    dp1 = _make_detection_point(db, sku.id, rev.id, "POINT_A")
+    dp2 = _make_detection_point(db, sku.id, rev.id, "POINT_B")
+
+    job = create_inspection_job(db, sku.id, "t1")
+    submit_checkpoint_result(db, job.id, dp1.id, "pass")
+    submit_checkpoint_result(db, job.id, dp2.id, "fail")
+
+    report = finalize_job(db, job.id)
+    assert report.overall_result == "fail"
 
 
 # ── Bonus: flower brooch seed ─────────────────────────────────────────────────
@@ -354,7 +386,7 @@ def test_old_inspection_job_keeps_old_standard_revision(db):
 
 
 def test_missing_checkpoint_result_blocks_pass(db):
-    """A checkpoint with no submitted result auto-becomes 'missing' and prevents pass."""
+    """A checkpoint with no submitted result auto-becomes 'missing' → review_required, not fail."""
     sku = _make_sku(db)
     rev = create_standard_revision(db, sku.id, "t1")
     confirm_standard_revision(db, rev.id, "alice", "t1")
@@ -365,11 +397,11 @@ def test_missing_checkpoint_result_blocks_pass(db):
     submit_checkpoint_result(db, job.id, dp1.id, "pass")
 
     report = finalize_job(db, job.id)
-    assert report.overall_result == "fail"
+    assert report.overall_result == "review_required"
 
 
 def test_not_visible_checkpoint_blocks_pass(db):
-    """A checkpoint result of 'not_visible' prevents the job from passing."""
+    """A checkpoint result of 'not_visible' → cannot verify → review_required."""
     sku = _make_sku(db)
     rev = create_standard_revision(db, sku.id, "t1")
     confirm_standard_revision(db, rev.id, "alice", "t1")
@@ -379,11 +411,11 @@ def test_not_visible_checkpoint_blocks_pass(db):
     submit_checkpoint_result(db, job.id, dp.id, "not_visible")
 
     report = finalize_job(db, job.id)
-    assert report.overall_result == "fail"
+    assert report.overall_result == "review_required"
 
 
 def test_low_confidence_checkpoint_blocks_pass(db):
-    """A checkpoint result of 'low_confidence' prevents the job from passing."""
+    """A checkpoint result of 'low_confidence' → cannot verify → review_required."""
     sku = _make_sku(db)
     rev = create_standard_revision(db, sku.id, "t1")
     confirm_standard_revision(db, rev.id, "alice", "t1")
@@ -393,7 +425,7 @@ def test_low_confidence_checkpoint_blocks_pass(db):
     submit_checkpoint_result(db, job.id, dp.id, "low_confidence", confidence=0.4)
 
     report = finalize_job(db, job.id)
-    assert report.overall_result == "fail"
+    assert report.overall_result == "review_required"
 
 
 def test_major_incidental_finding_creates_review_required(db):
@@ -433,7 +465,7 @@ def test_flower_brooch_seed_has_required_four_checkpoints(db):
 
 
 def test_no_guess_policy_cannot_pass_without_full_checkpoint_coverage(db):
-    """Submitting results for only a subset of checkpoints prevents a pass verdict."""
+    """Submitting results for only a subset of checkpoints → review_required (missing checkpoint)."""
     sku = _make_sku(db)
     rev = create_standard_revision(db, sku.id, "t1")
     confirm_standard_revision(db, rev.id, "alice", "t1")
@@ -448,5 +480,118 @@ def test_no_guess_policy_cannot_pass_without_full_checkpoint_coverage(db):
     # dp3 intentionally omitted
 
     report = finalize_job(db, job.id)
-    assert report.overall_result == "fail"
+    assert report.overall_result == "review_required"
     assert report.checkpoint_results_count == 3
+
+
+# ── New acceptance tests ──────────────────────────────────────────────────────
+
+
+def test_duplicate_checkpoint_result_rejected(db):
+    """Submitting a second result for the same (job, detection_point) pair raises ValueError."""
+    sku = _make_sku(db)
+    rev = create_standard_revision(db, sku.id, "t1")
+    confirm_standard_revision(db, rev.id, "alice", "t1")
+    dp = _make_detection_point(db, sku.id, rev.id, "ALPHA")
+
+    job = create_inspection_job(db, sku.id, "t1")
+    submit_checkpoint_result(db, job.id, dp.id, "pass")
+
+    with pytest.raises(ValueError, match="already exists"):
+        submit_checkpoint_result(db, job.id, dp.id, "fail")
+
+
+def test_checkpoint_result_rejects_point_from_other_sku(db):
+    """submit_checkpoint_result rejects a detection point that belongs to a different SKU."""
+    sku_a = _make_sku(db, item_number="SKU-A")
+    sku_b = _make_sku(db, item_number="SKU-B")
+
+    rev_a = create_standard_revision(db, sku_a.id, "t1")
+    confirm_standard_revision(db, rev_a.id, "alice", "t1")
+
+    rev_b = create_standard_revision(db, sku_b.id, "t1")
+    confirm_standard_revision(db, rev_b.id, "alice", "t1")
+
+    dp_b = _make_detection_point(db, sku_b.id, rev_b.id, "POINT_B_SKU")
+
+    job_a = create_inspection_job(db, sku_a.id, "t1")
+
+    with pytest.raises(ValueError, match="SKU"):
+        submit_checkpoint_result(db, job_a.id, dp_b.id, "pass")
+
+
+def test_checkpoint_result_rejects_point_from_other_revision(db):
+    """submit_checkpoint_result rejects a detection point from a different standard revision."""
+    sku = _make_sku(db)
+    rev1 = create_standard_revision(db, sku.id, "t1")
+    confirm_standard_revision(db, rev1.id, "alice", "t1")
+
+    rev2 = create_standard_revision(db, sku.id, "t1")
+    confirm_standard_revision(db, rev2.id, "alice", "t1")
+    dp_rev2 = _make_detection_point(db, sku.id, rev2.id, "POINT_REV2")
+
+    # Job was created when rev1 was active — it snapshots rev1
+    job = create_inspection_job(db, sku.id, "t1")
+    # Sanity: job should have snapped rev2 since that's now active
+    # So create job when rev1 was active instead
+    # Let's redo: create job before confirming rev2
+    sku2 = _make_sku(db, item_number="SKU-REV-TEST")
+    rev_old = create_standard_revision(db, sku2.id, "t1")
+    confirm_standard_revision(db, rev_old.id, "alice", "t1")
+    job2 = create_inspection_job(db, sku2.id, "t1")
+    assert job2.active_standard_revision_id == rev_old.id
+
+    rev_new = create_standard_revision(db, sku2.id, "t1")
+    confirm_standard_revision(db, rev_new.id, "alice", "t1")
+    dp_new = _make_detection_point(db, sku2.id, rev_new.id, "POINT_NEW_REV")
+
+    with pytest.raises(ValueError, match="revision"):
+        submit_checkpoint_result(db, job2.id, dp_new.id, "pass")
+
+
+def test_checkpoint_result_rejects_point_from_other_tenant(db):
+    """submit_checkpoint_result rejects a detection point that belongs to a different tenant."""
+    sku_t1 = _make_sku(db, item_number="SKU-T1", tenant_id="t1")
+    sku_t2 = _make_sku(db, item_number="SKU-T2", tenant_id="t2")
+
+    rev_t1 = create_standard_revision(db, sku_t1.id, "t1")
+    confirm_standard_revision(db, rev_t1.id, "alice", "t1")
+
+    rev_t2 = create_standard_revision(db, sku_t2.id, "t2")
+    confirm_standard_revision(db, rev_t2.id, "alice", "t2")
+    dp_t2 = _make_detection_point(db, sku_t2.id, rev_t2.id, "POINT_T2", tenant_id="t2")
+
+    job_t1 = create_inspection_job(db, sku_t1.id, "t1")
+
+    with pytest.raises(ValueError, match="tenant"):
+        submit_checkpoint_result(db, job_t1.id, dp_t2.id, "pass")
+
+
+def test_checkpoint_result_rejects_inactive_point(db):
+    """submit_checkpoint_result rejects a detection point that is not active."""
+    sku = _make_sku(db)
+    rev = create_standard_revision(db, sku.id, "t1")
+    confirm_standard_revision(db, rev.id, "alice", "t1")
+    dp_inactive = _make_detection_point(db, sku.id, rev.id, "INACTIVE_POINT", is_active=False)
+
+    job = create_inspection_job(db, sku.id, "t1")
+
+    with pytest.raises(ValueError, match="not active"):
+        submit_checkpoint_result(db, job.id, dp_inactive.id, "pass")
+
+
+def test_finalize_job_is_idempotent(db):
+    """Calling finalize_job twice returns the same report without raising or creating duplicates."""
+    sku = _make_sku(db)
+    rev = create_standard_revision(db, sku.id, "t1")
+    confirm_standard_revision(db, rev.id, "alice", "t1")
+    dp = _make_detection_point(db, sku.id, rev.id, "ALPHA")
+
+    job = create_inspection_job(db, sku.id, "t1")
+    submit_checkpoint_result(db, job.id, dp.id, "pass")
+
+    report1 = finalize_job(db, job.id)
+    report2 = finalize_job(db, job.id)
+
+    assert report1.id == report2.id
+    assert report2.overall_result == "pass"

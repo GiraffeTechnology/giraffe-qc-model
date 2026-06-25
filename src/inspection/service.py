@@ -14,7 +14,8 @@ from src.db.execution_models import (
     QCAuditEvent,
 )
 
-_NON_PASS_RESULTS = {"fail", "not_visible", "low_confidence", "missing"}
+# Results that require human review (cannot observe, but not proved wrong)
+_REVIEW_REQUIRED_RESULTS = {"missing", "not_visible", "low_confidence", "unsupported"}
 
 
 def _uid() -> str:
@@ -202,9 +203,52 @@ def submit_checkpoint_result(
     model_result_id: Optional[str] = None,
     tenant_id: Optional[str] = None,
 ) -> QCCheckpointResult:
-    """Record the result for one detection-point checkpoint."""
+    """Record the result for one detection-point checkpoint.
+
+    Raises ValueError if:
+    - the detection point does not exist or is inactive
+    - the detection point does not belong to the job's snapshotted revision/SKU/tenant
+    - a result for this (job_id, detection_point_id) pair already exists
+    """
     job = db.query(QCInspectionJob).filter_by(id=job_id).one()
     tid = tenant_id or job.tenant_id
+
+    # Validate detection point belongs to this job's snapshotted revision
+    point = db.query(QCDetectionPoint).filter_by(id=detection_point_id).first()
+    if point is None:
+        raise ValueError(f"Detection point {detection_point_id!r} not found.")
+    if point.tenant_id != job.tenant_id:
+        raise ValueError(
+            f"Detection point {detection_point_id!r} belongs to tenant {point.tenant_id!r}, "
+            f"not the job's tenant {job.tenant_id!r}."
+        )
+    if point.sku_id != job.sku_id:
+        raise ValueError(
+            f"Detection point {detection_point_id!r} belongs to SKU {point.sku_id!r}, "
+            f"not the job's SKU {job.sku_id!r}."
+        )
+    if point.standard_revision_id != job.active_standard_revision_id:
+        raise ValueError(
+            f"Detection point {detection_point_id!r} belongs to revision "
+            f"{point.standard_revision_id!r}, not the job's snapshotted revision "
+            f"{job.active_standard_revision_id!r}."
+        )
+    if not point.is_active:
+        raise ValueError(
+            f"Detection point {detection_point_id!r} is not active."
+        )
+
+    # Reject duplicate results for the same (job, detection_point) pair
+    existing = (
+        db.query(QCCheckpointResult)
+        .filter_by(job_id=job_id, detection_point_id=detection_point_id)
+        .first()
+    )
+    if existing is not None:
+        raise ValueError(
+            f"A checkpoint result for detection_point_id={detection_point_id!r} already exists "
+            f"on job {job_id!r}. Cannot submit duplicate checkpoint results."
+        )
 
     cr = QCCheckpointResult(
         id=_uid(),
@@ -256,13 +300,21 @@ def finalize_job(db: Session, job_id: str) -> QCFinalReport:
 
     Policy:
     - Every active detection point for the job's revision must have exactly
-      one checkpoint result.  A missing result is treated as 'missing'.
-    - Any result of not_visible / low_confidence / missing / fail → cannot pass.
-    - All checkpoints pass AND no major/critical incidental findings → pass.
-    - All checkpoints pass BUT major/critical incidental finding → review_required.
-    - Any checkpoint not pass → fail.
+      one checkpoint result.  A missing result is auto-inserted as 'missing'.
+    - result == 'fail' → verdict = 'fail'
+    - result in {missing, not_visible, low_confidence, unsupported} → verdict = 'review_required'
+    - All checkpoints 'pass' AND major/critical incidental finding → 'review_required'
+    - All checkpoints 'pass' AND no serious finding → 'pass'
+
+    Idempotent: if a final report already exists for a completed job, returns it unchanged.
     """
     job = db.query(QCInspectionJob).filter_by(id=job_id).one()
+
+    # Idempotency: return existing report if job is already finalized
+    existing_report = db.query(QCFinalReport).filter_by(job_id=job_id).first()
+    if existing_report is not None and job.status in ("pass", "fail", "review_required"):
+        return existing_report
+
     points = get_active_detection_points_for_job(db, job_id)
     existing_results = (
         db.query(QCCheckpointResult).filter_by(job_id=job_id).all()
@@ -285,16 +337,17 @@ def finalize_job(db: Session, job_id: str) -> QCFinalReport:
             result_by_point[pt.id] = cr
     db.flush()
 
-    all_pass = all(
-        result_by_point[pt.id].result == "pass" for pt in points
-    ) if points else True
+    has_fail = any(result_by_point[pt.id].result == "fail" for pt in points)
+    has_review_required = any(
+        result_by_point[pt.id].result in _REVIEW_REQUIRED_RESULTS for pt in points
+    )
 
     findings = db.query(QCIncidentalFinding).filter_by(job_id=job_id).all()
     has_serious_finding = any(f.severity in ("major", "critical") for f in findings)
 
-    if not all_pass:
+    if has_fail:
         verdict = "fail"
-    elif has_serious_finding:
+    elif has_review_required or has_serious_finding:
         verdict = "review_required"
     else:
         verdict = "pass"

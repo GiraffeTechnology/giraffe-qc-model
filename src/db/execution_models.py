@@ -1,7 +1,7 @@
 """SQLAlchemy models for QC inspection execution pipeline."""
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, JSON
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.models import Base, _utcnow
@@ -100,6 +100,9 @@ class QCCheckpointResult(Base):
     cannot contribute to a pass verdict.
     """
     __tablename__ = "qc_checkpoint_results"
+    __table_args__ = (
+        UniqueConstraint("job_id", "detection_point_id", name="uq_checkpoint_result_job_point"),
+    )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     job_id: Mapped[str] = mapped_column(ForeignKey("qc_inspection_jobs.id"), nullable=False, index=True)

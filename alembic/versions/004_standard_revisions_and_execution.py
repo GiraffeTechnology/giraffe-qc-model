@@ -115,6 +115,7 @@ def upgrade() -> None:
         sa.Column('confidence', sa.Float, nullable=False, default=1.0),
         sa.Column('notes', sa.Text),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+        sa.UniqueConstraint('job_id', 'detection_point_id', name='uq_checkpoint_result_job_point'),
     )
 
     op.create_table(
