@@ -36,6 +36,53 @@ class QCSkuItem(Base):
     detection_points: Mapped[list["QCDetectionPoint"]] = relationship(
         "QCDetectionPoint", back_populates="sku", cascade="all, delete-orphan"
     )
+    standard_revisions: Mapped[list["QCSkuStandardRevision"]] = relationship(
+        "QCSkuStandardRevision", back_populates="sku", cascade="all, delete-orphan",
+        order_by="QCSkuStandardRevision.revision_no",
+    )
+
+
+class QCSkuStandardRevision(Base):
+    """One revision of the QC inspection standard for a SKU.
+
+    A SKU has exactly one active revision at any time.  All inspection jobs
+    for that SKU pick up the active revision automatically; the operator only
+    needs to confirm the standard once.  When the operator explicitly requests
+    a change a new revision is created (draft/pending_confirmation) and the
+    prior active revision is archived.
+    """
+    __tablename__ = "qc_sku_standard_revisions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    sku_id: Mapped[str] = mapped_column(ForeignKey("qc_sku_items.id"), nullable=False, index=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    revision_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # draft | pending_confirmation | active | archived
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
+    # admin_ui | im | email | voice | api
+    created_from: Mapped[str] = mapped_column(String(32), nullable=False, default="admin_ui")
+    confirmed_by: Mapped[Optional[str]] = mapped_column(String(128))
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by_operator: Mapped[Optional[str]] = mapped_column(String(128))
+    last_update_reason: Mapped[Optional[str]] = mapped_column(Text)
+    superseded_by_revision: Mapped[Optional[int]] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+    sku: Mapped["QCSkuItem"] = relationship("QCSkuItem", back_populates="standard_revisions")
+    photos: Mapped[list["QCStandardPhoto"]] = relationship(
+        "QCStandardPhoto", back_populates="standard_revision", foreign_keys="QCStandardPhoto.standard_revision_id"
+    )
+    inspection_requirements: Mapped[list["QCInspectionRequirement"]] = relationship(
+        "QCInspectionRequirement", back_populates="standard_revision",
+        foreign_keys="QCInspectionRequirement.standard_revision_id",
+    )
+    detection_points: Mapped[list["QCDetectionPoint"]] = relationship(
+        "QCDetectionPoint", back_populates="standard_revision",
+        foreign_keys="QCDetectionPoint.standard_revision_id",
+    )
 
 
 class QCStandardPhoto(Base):
@@ -45,6 +92,9 @@ class QCStandardPhoto(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     sku_id: Mapped[str] = mapped_column(ForeignKey("qc_sku_items.id"), nullable=False, index=True)
+    standard_revision_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("qc_sku_standard_revisions.id"), index=True
+    )
     image_url: Mapped[Optional[str]] = mapped_column(String(512))
     local_path: Mapped[Optional[str]] = mapped_column(String(512))
     thumbnail_url: Mapped[Optional[str]] = mapped_column(String(512))
@@ -61,6 +111,9 @@ class QCStandardPhoto(Base):
     )
 
     sku: Mapped["QCSkuItem"] = relationship("QCSkuItem", back_populates="photos")
+    standard_revision: Mapped[Optional["QCSkuStandardRevision"]] = relationship(
+        "QCSkuStandardRevision", back_populates="photos", foreign_keys=[standard_revision_id]
+    )
 
 
 class QCInspectionRequirement(Base):
@@ -70,6 +123,9 @@ class QCInspectionRequirement(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     sku_id: Mapped[str] = mapped_column(ForeignKey("qc_sku_items.id"), nullable=False, index=True)
+    standard_revision_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("qc_sku_standard_revisions.id"), index=True
+    )
     code: Mapped[str] = mapped_column(String(64), nullable=False)
     title: Mapped[str] = mapped_column(String(256), nullable=False)
     requirement_text: Mapped[str] = mapped_column(Text, nullable=False)
@@ -85,6 +141,10 @@ class QCInspectionRequirement(Base):
     )
 
     sku: Mapped["QCSkuItem"] = relationship("QCSkuItem", back_populates="inspection_requirements")
+    standard_revision: Mapped[Optional["QCSkuStandardRevision"]] = relationship(
+        "QCSkuStandardRevision", back_populates="inspection_requirements",
+        foreign_keys=[standard_revision_id],
+    )
     detection_points: Mapped[list["QCDetectionPoint"]] = relationship(
         "QCDetectionPoint", back_populates="requirement"
     )
@@ -97,6 +157,9 @@ class QCDetectionPoint(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     sku_id: Mapped[str] = mapped_column(ForeignKey("qc_sku_items.id"), nullable=False, index=True)
+    standard_revision_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("qc_sku_standard_revisions.id"), index=True
+    )
     requirement_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("qc_inspection_requirements.id"), index=True
     )
@@ -116,6 +179,10 @@ class QCDetectionPoint(Base):
     )
 
     sku: Mapped["QCSkuItem"] = relationship("QCSkuItem", back_populates="detection_points")
+    standard_revision: Mapped[Optional["QCSkuStandardRevision"]] = relationship(
+        "QCSkuStandardRevision", back_populates="detection_points", foreign_keys=[standard_revision_id]
+    )
     requirement: Mapped[Optional["QCInspectionRequirement"]] = relationship(
         "QCInspectionRequirement", back_populates="detection_points"
     )
+
