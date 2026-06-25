@@ -1,0 +1,18 @@
+{
+  "name": "Giraffe QC Pad",
+  "short_name": "QC Pad",
+  "description": "Factory Quality Control Pad for operators",
+  "display": "standalone",
+  "orientation": "landscape",
+  "start_url": "/pad",
+  "scope": "/pad",
+  "background_color": "#ffffff",
+  "theme_color": "#1d4ed8",
+  "icons": [
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}

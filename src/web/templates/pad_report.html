@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QC Pad Report</title>
+    <link rel="manifest" href="/static/pad_manifest.json">
+    <link rel="stylesheet" href="/static/pad_ui.css">
+    <style>
+        .verdict-pass { color: #16a34a; font-weight: bold; }
+        .verdict-fail { color: #dc2626; font-weight: bold; }
+        .verdict-review_required { color: #d97706; font-weight: bold; }
+    </style>
+</head>
+<body class="report-page">
+    <div id="orientation-overlay">
+        <div class="orientation-message">
+            <p>Please rotate your device to landscape mode to use QC Pad.</p>
+        </div>
+    </div>
+    <header class="pad-header">
+        <a href="/pad/inspections/{{ job_id }}" class="btn-back">&larr; Back to Inspection</a>
+        <h2>Inspection Report #{{ job_id }}</h2>
+    </header>
+    <main class="report-main">
+        <section class="report-summary">
+            <h3>Report Summary</h3>
+            <div id="report-content">
+                <p class="placeholder-text">Loading report data...</p>
+            </div>
+        </section>
+        <div class="report-verdicts">
+            <span class="verdict-pass">PASS = Green</span>
+            <span class="verdict-fail">FAIL = Red</span>
+            <span class="verdict-review_required">REVIEW REQUIRED = Amber</span>
+        </div>
+    </main>
+    <script src="/static/pad_orientation.js"></script>
+</body>
+</html>

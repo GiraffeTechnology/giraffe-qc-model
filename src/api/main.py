@@ -1,12 +1,15 @@
 """FastAPI application entry point for Giraffe QC Model."""
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 
+from src.api.pad_router import router as pad_router
 from src.api.qc_router import router as qc_router
 from src.api.qc_intake_router import router as qc_intake_router
 from src.api.qc_inspection_router import router as qc_inspection_router
@@ -31,8 +34,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SESSION_SECRET", "dev-secret-change-in-prod"),
+)
+
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
+app.include_router(pad_router)
 app.include_router(qc_router)
 app.include_router(sku_router)
 app.include_router(sample_admin_router)
