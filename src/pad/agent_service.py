@@ -91,7 +91,8 @@ def process_pad_message(
     ocr = b.process(raw_text, preferred_language)
 
     if ocr.confidence < INTENT_THRESHOLD:
-        reply_text = ocr.localized_reply or "Clarification needed"
+        reply_en = "Clarification needed"
+        reply_text = ocr.localized_reply or reply_en
         action_card = None
         requires_confirmation = False
     else:
@@ -124,7 +125,7 @@ def process_pad_message(
         role="assistant",
         source_language="en",
         preferred_language=preferred_language,
-        normalized_text_en=reply_text,
+        normalized_text_en=reply_en,
         translated_output_text=reply_text,
         action_json=json.dumps(action_card.payload if action_card else {}),
         intent=ocr.intent,

@@ -1,6 +1,6 @@
 """Tests for PR11: Pad Conversational QC UI.
 
-All 20 required tests covering:
+All 27 required tests covering:
 - Authentication (login, logout, invalid credentials)
 - Language detection (Chinese, Japanese, English)
 - Multilingual processing pipeline
@@ -14,12 +14,18 @@ All 20 required tests covering:
 - Safety rules (LLM never decides final verdict)
 - PWA manifest
 - Orientation overlay presence
-- Confirm standard endpoint
-- Create inspection job endpoint
+- Confirm standard endpoint (real DB write via confirm_standard_intake)
+- Create inspection job endpoint (real DB write via create_inspection_job_from_api)
+- Bridge env-awareness (FakeOpenClawLLMClient when OPENCLAW_API_URL not set)
+- Canonical English audit trail (normalized_text_en never contains localized text)
+- AndroidManifest correctness (existing theme, networkSecurityConfig preserved)
 """
 from __future__ import annotations
 
 import json
+import re
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -76,6 +82,13 @@ def client(db_session):
     with TestClient(app, raise_server_exceptions=True) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(scope="module")
+def seeded_sku(db_session):
+    """Shirt SKU with an active standard revision — available for confirm/job tests."""
+    from src.db.seed_data import seed_shirt_custom
+    return seed_shirt_custom(db_session, tenant_id="demo")
 
 
 @pytest.fixture
@@ -291,31 +304,214 @@ def test_18_language_preference_update(auth_client):
 
 
 # ---------------------------------------------------------------------------
-# Test 19: Confirm standard requires explicit operator action
+# Test 19: Confirm standard requires explicit operator action (real DB write)
 # ---------------------------------------------------------------------------
-def test_19_confirm_standard_requires_intake_id(auth_client):
+def test_19_confirm_standard_requires_intake_id(auth_client, db_session, seeded_sku):
+    from src.intake.service import create_standard_intake, extract_standard_draft
+
     # Missing intake_id -> 400
     resp = auth_client.post("/api/v1/pad/confirm_standard", json={})
     assert resp.status_code == 400
 
-    # With intake_id -> confirmed
-    resp = auth_client.post("/api/v1/pad/confirm_standard", json={"intake_id": 42})
+    # Non-existent intake_id -> 404
+    resp = auth_client.post(
+        "/api/v1/pad/confirm_standard",
+        json={"intake_id": "00000000000000000000000000000000"},
+    )
+    assert resp.status_code == 404
+
+    # Real pending intake -> confirmed with DB-backed revision
+    intake = create_standard_intake(
+        db_session,
+        sku_id=seeded_sku.id,
+        tenant_id="demo",
+        raw_text="collar stitch, fabric stain check",
+    )
+    extract_standard_draft(db_session, intake.id)
+
+    resp = auth_client.post("/api/v1/pad/confirm_standard", json={"intake_id": intake.id})
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "confirmed"
-    assert data["intake_id"] == 42
+    assert data["intake_id"] == intake.id
+    assert "revision_id" in data
 
 
 # ---------------------------------------------------------------------------
-# Test 20: Create inspection job
+# Test 20: Create inspection job (real DB write via create_inspection_job_from_api)
 # ---------------------------------------------------------------------------
-def test_20_create_inspection_job(auth_client):
+def test_20_create_inspection_job(auth_client, seeded_sku):
     resp = auth_client.post(
         "/api/v1/pad/create_inspection_job",
-        json={"sku_id": 1, "standard_id": 1},
+        json={"sku_id": seeded_sku.id},
     )
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "job_created"
-    assert data["sku_id"] == 1
-    assert data["standard_id"] == 1
+    assert data["sku_id"] == seeded_sku.id
+    assert "job_id" in data
+
+
+# ---------------------------------------------------------------------------
+# Test 21: get_bridge() returns FakeOpenClawLLMClient when OPENCLAW_API_URL unset
+# ---------------------------------------------------------------------------
+def test_21_get_bridge_returns_fake_without_env():
+    import os
+    from src.openclaw import qc_agent_bridge as mod
+
+    original_url = os.environ.pop("OPENCLAW_API_URL", None)
+    original_singleton = mod._bridge_singleton
+    mod._bridge_singleton = None
+    try:
+        bridge = mod.get_bridge()
+        assert isinstance(bridge._client, mod.FakeOpenClawLLMClient)
+    finally:
+        if original_url is not None:
+            os.environ["OPENCLAW_API_URL"] = original_url
+        mod._bridge_singleton = original_singleton
+
+
+# ---------------------------------------------------------------------------
+# Test 22: confirm_standard creates real revision + detection points + confirmation
+# ---------------------------------------------------------------------------
+def test_22_confirm_standard_creates_real_revision(auth_client, db_session, seeded_sku):
+    from src.intake.service import create_standard_intake, extract_standard_draft
+    from src.db.sku_models import QCSkuStandardRevision, QCDetectionPoint
+    from src.db.intake_models import QCOperatorConfirmation
+
+    intake = create_standard_intake(
+        db_session,
+        sku_id=seeded_sku.id,
+        tenant_id="demo",
+        raw_text="collar stitch, fabric stain check",
+    )
+    extract_standard_draft(db_session, intake.id)
+
+    rev_count_before = db_session.query(QCSkuStandardRevision).filter_by(sku_id=seeded_sku.id).count()
+
+    resp = auth_client.post("/api/v1/pad/confirm_standard", json={"intake_id": intake.id})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "confirmed"
+
+    db_session.expire_all()
+    rev_count_after = db_session.query(QCSkuStandardRevision).filter_by(sku_id=seeded_sku.id).count()
+    assert rev_count_after > rev_count_before
+
+    conf = db_session.query(QCOperatorConfirmation).filter_by(intake_id=intake.id).first()
+    assert conf is not None
+    assert conf.status == "confirmed"
+
+    revision_id = data["revision_id"]
+    dp_count = db_session.query(QCDetectionPoint).filter_by(standard_revision_id=revision_id).count()
+    assert dp_count > 0
+
+
+# ---------------------------------------------------------------------------
+# Test 23: create_inspection_job creates real QCInspectionJob row
+# ---------------------------------------------------------------------------
+def test_23_create_inspection_job_creates_real_row(auth_client, db_session, seeded_sku):
+    from src.db.execution_models import QCInspectionJob
+
+    job_count_before = db_session.query(QCInspectionJob).filter_by(sku_id=seeded_sku.id).count()
+
+    resp = auth_client.post(
+        "/api/v1/pad/create_inspection_job",
+        json={"sku_id": seeded_sku.id},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "job_id" in data
+
+    db_session.expire_all()
+    job_count_after = db_session.query(QCInspectionJob).filter_by(sku_id=seeded_sku.id).count()
+    assert job_count_after > job_count_before
+
+    job = db_session.query(QCInspectionJob).filter_by(id=data["job_id"]).first()
+    assert job is not None
+    assert job.sku_id == seeded_sku.id
+    assert job.tenant_id == "demo"
+
+
+# ---------------------------------------------------------------------------
+# Test 24: Assistant normalized_text_en stays canonical English (not localized)
+# ---------------------------------------------------------------------------
+def test_24_assistant_normalized_text_en_is_english(auth_client, db_session):
+    from src.db.pad_models import QCConversationMessage
+
+    resp = auth_client.post(
+        "/api/v1/pad/chat",
+        json={"message": "开始检查", "context": {}},
+    )
+    assert resp.status_code == 200
+
+    db_session.expire_all()
+    msg = (
+        db_session.query(QCConversationMessage)
+        .filter_by(role="assistant")
+        .order_by(QCConversationMessage.id.desc())
+        .first()
+    )
+    assert msg is not None
+    assert msg.normalized_text_en is not None
+    chinese_re = re.compile(r"[一-鿿㐀-䶿]")
+    assert not chinese_re.search(msg.normalized_text_en), (
+        f"normalized_text_en must be English but got: {msg.normalized_text_en!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 25: AndroidManifest uses existing Theme.GiraffeQC (not undefined GiraffeQCPad)
+# ---------------------------------------------------------------------------
+def test_25_android_manifest_uses_existing_theme():
+    manifest_path = (
+        Path(__file__).resolve().parent.parent
+        / "apps/android-qc/app/src/main/AndroidManifest.xml"
+    )
+    content = manifest_path.read_text()
+    assert "Theme.GiraffeQCPad" not in content, (
+        "Must not reference undefined theme Theme.GiraffeQCPad"
+    )
+    assert "Theme.GiraffeQC" in content, "Must use existing theme Theme.GiraffeQC"
+
+
+# ---------------------------------------------------------------------------
+# Test 26: AndroidManifest preserves networkSecurityConfig for factory LAN HTTP
+# ---------------------------------------------------------------------------
+def test_26_android_manifest_preserves_network_security_config():
+    manifest_path = (
+        Path(__file__).resolve().parent.parent
+        / "apps/android-qc/app/src/main/AndroidManifest.xml"
+    )
+    content = manifest_path.read_text()
+    assert "networkSecurityConfig" in content, (
+        "Must reference networkSecurityConfig to allow HTTP to factory LAN (192.168.1.10)"
+    )
+    assert 'usesCleartextTraffic="false"' not in content, (
+        "Must not set usesCleartextTraffic=false — breaks HTTP to factory LAN"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 27: LLM must not bypass confirmation (chat alone must not mutate DB)
+# ---------------------------------------------------------------------------
+def test_27_llm_must_not_bypass_confirmation(auth_client, db_session):
+    from src.db.sku_models import QCSkuStandardRevision
+
+    rev_count_before = db_session.query(QCSkuStandardRevision).count()
+
+    # Even with a "confirm" intent, chat endpoint must not create any standard revision
+    resp = auth_client.post(
+        "/api/v1/pad/chat",
+        json={"message": "confirm standard", "context": {}},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    # Chat response must never carry a revision_id — that only comes from explicit confirm endpoint
+    assert "revision_id" not in data
+
+    db_session.expire_all()
+    rev_count_after = db_session.query(QCSkuStandardRevision).count()
+    assert rev_count_after == rev_count_before, (
+        "Chat endpoint must not create standard revisions — LLM output is never trusted directly"
+    )

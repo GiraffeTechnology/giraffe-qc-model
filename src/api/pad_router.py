@@ -10,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_db_dep
-from src.openclaw.qc_agent_bridge import FakeOpenClawLLMClient, QCAgentBridge
+from src.openclaw.qc_agent_bridge import QCAgentBridge, get_bridge
 from src.pad.agent_service import process_pad_message
 from src.pad.session_service import (
     authenticate_operator,
@@ -25,11 +25,9 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 router = APIRouter()
 
-_fake_bridge = QCAgentBridge(client=FakeOpenClawLLMClient())
-
 
 def _get_bridge() -> QCAgentBridge:
-    return _fake_bridge
+    return get_bridge()
 
 
 def _require_operator(request: Request) -> int:
@@ -242,16 +240,37 @@ async def pad_confirm_standard(
     operator_id = _require_operator(request)
     if operator_id is None:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
+    tenant_id = request.session.get("tenant_id", "demo")
     body: Dict[str, Any] = await request.json()
-    intake_id: Optional[int] = body.get("intake_id")
+    intake_id: Optional[str] = body.get("intake_id")
     if intake_id is None:
         return JSONResponse({"error": "intake_id required"}, status_code=400)
-    # LLM output is never trusted directly — operator confirms explicitly here
+
+    from src.db.intake_models import QCStandardIntake
+    intake = db.query(QCStandardIntake).filter_by(id=intake_id).first()
+    if intake is None:
+        return JSONResponse({"error": "intake not found"}, status_code=404)
+
+    confirmed_checkpoints: list = body.get("confirmed_checkpoints") or []
+    if not confirmed_checkpoints and intake.extracted_json:
+        confirmed_checkpoints = intake.extracted_json.get("checkpoints", [])
+
+    try:
+        from src.intake.service import confirm_standard_intake
+        revision, _conf = confirm_standard_intake(
+            db,
+            intake_id=intake_id,
+            confirmed_by=str(operator_id),
+            confirmed_checkpoints=confirmed_checkpoints,
+            tenant_id=tenant_id,
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
     return JSONResponse({
         "status": "confirmed",
         "intake_id": intake_id,
+        "revision_id": revision.id,
         "confirmed_by": operator_id,
-        "message": "Standard confirmed by operator",
     })
 
 
@@ -264,15 +283,26 @@ async def pad_create_inspection_job(
     operator_id = _require_operator(request)
     if operator_id is None:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
+    tenant_id = request.session.get("tenant_id", "demo")
     body: Dict[str, Any] = await request.json()
-    sku_id: Optional[int] = body.get("sku_id")
-    standard_id: Optional[int] = body.get("standard_id")
-    if not sku_id or not standard_id:
-        return JSONResponse({"error": "sku_id and standard_id required"}, status_code=400)
+    sku_id: Optional[str] = body.get("sku_id")
+    if not sku_id:
+        return JSONResponse({"error": "sku_id required"}, status_code=400)
+    try:
+        from src.inspection.api_service import create_inspection_job_from_api
+        job = create_inspection_job_from_api(
+            db,
+            sku_id=str(sku_id),
+            tenant_id=tenant_id,
+            created_by=str(operator_id),
+            job_ref=body.get("job_ref"),
+            notes=body.get("notes"),
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
     return JSONResponse({
         "status": "job_created",
-        "sku_id": sku_id,
-        "standard_id": standard_id,
+        "job_id": job.id,
+        "sku_id": job.sku_id,
         "operator_id": operator_id,
-        "message": "Inspection job created",
     })
