@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QC Pad Inspection</title>
+    <link rel="manifest" href="/static/pad_manifest.json">
+    <link rel="stylesheet" href="/static/pad_ui.css">
+</head>
+<body class="inspection-page">
+    <div id="orientation-overlay">
+        <div class="orientation-message">
+            <p>Please rotate your device to landscape mode to use QC Pad.</p>
+        </div>
+    </div>
+    <header class="pad-header">
+        <a href="/pad" class="btn-back">&larr; Back to Workspace</a>
+        <h2>Inspection Job #{{ job_id }}</h2>
+    </header>
+    <main class="inspection-main">
+        <section class="inspection-checkpoints">
+            <h3>Checkpoints</h3>
+            <div id="checkpoints-list">
+                <p class="placeholder-text">Loading checkpoints...</p>
+            </div>
+        </section>
+        <section class="inspection-actions">
+            <button class="btn-primary qc-action-btn" id="submit-results-btn">Submit Results</button>
+            <a href="/pad/inspections/{{ job_id }}/report" class="btn-secondary">View Report</a>
+        </section>
+    </main>
+    <script src="/static/pad_orientation.js"></script>
+</body>
+</html>
