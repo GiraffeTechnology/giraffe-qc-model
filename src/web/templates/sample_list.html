@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Samples — QC Sample Admin{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>QC Sample Admin</h1>
+    <p class="subtitle">Sample library shared by Pad and Server editions.</p>
+  </div>
+</div>
+
+{% if skus %}
+<table class="sample-table">
+  <thead>
+    <tr>
+      <th>Item Number</th>
+      <th>Name</th>
+      <th>Category</th>
+      <th>Photos</th>
+      <th>Requirements</th>
+      <th>Detection Points</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for sku in skus %}
+    <tr>
+      <td><a href="/admin/samples/{{ sku.id }}?tenant_id={{ tenant_id }}">{{ sku.item_number }}</a></td>
+      <td>{{ sku.name }}</td>
+      <td>{{ sku.category or '—' }}</td>
+      <td>{{ sku.photos | length }}</td>
+      <td>{{ sku.inspection_requirements | length }}</td>
+      <td>{{ sku.detection_points | length }}</td>
+      <td>
+        <a href="/admin/samples/{{ sku.id }}?tenant_id={{ tenant_id }}" class="btn btn-sm">Edit</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+  <p>No samples yet.</p>
+  <a href="/admin/samples/new" class="btn btn-primary">Create your first sample</a>
+</div>
+{% endif %}
+{% endblock %}

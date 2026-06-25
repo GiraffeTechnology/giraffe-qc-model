@@ -2,11 +2,17 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from src.api.qc_router import router as qc_router
+from src.api.sample_admin_router import router as sample_admin_router
+from src.api.sku_router import router as sku_router
 from src.db.session import init_db
+
+_STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "static"
 
 
 @asynccontextmanager
@@ -23,7 +29,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
 app.include_router(qc_router)
+app.include_router(sku_router)
+app.include_router(sample_admin_router)
 
 
 @app.get("/health")

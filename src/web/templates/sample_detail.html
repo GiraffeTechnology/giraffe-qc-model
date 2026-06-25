@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+{% block title %}{{ sku.item_number }} — QC Sample Admin{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ sku.item_number }}</h1>
+    <p class="subtitle">{{ sku.name }}{% if sku.category %} · {{ sku.category }}{% endif %}</p>
+  </div>
+  <div class="page-actions">
+    <form method="post" action="/admin/samples/{{ sku.id }}/archive" style="display:inline">
+      <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+      <button type="submit" class="btn btn-danger"
+              onclick="return confirm('Archive this sample? It will be hidden from search.')">Archive</button>
+    </form>
+  </div>
+</div>
+
+<!-- Standard Photos -->
+<section class="card">
+  <h2>Standard Photos</h2>
+
+  {% if sku.photos %}
+  <div class="photo-list">
+    {% for photo in sku.photos %}
+    <div class="photo-card {% if photo.is_primary %}photo-primary{% endif %}">
+      {% if photo.image_url %}
+      <img src="{{ photo.image_url }}" alt="Photo" class="photo-thumb">
+      {% elif photo.local_path %}
+      <div class="photo-path">{{ photo.local_path }}</div>
+      {% else %}
+      <div class="photo-path">(uploaded file)</div>
+      {% endif %}
+      <div class="photo-meta">
+        <span class="badge {% if photo.is_primary %}badge-primary{% endif %}">
+          {{ 'PRIMARY' if photo.is_primary else (photo.view_type or 'photo') }}
+        </span>
+        {% if photo.angle %}<span class="badge">{{ photo.angle }}</span>{% endif %}
+        {% if photo.width_px and photo.height_px %}
+        <span class="badge">{{ photo.width_px }}×{{ photo.height_px }}</span>
+        {% endif %}
+      </div>
+      {% if not photo.is_primary %}
+      <form method="post" action="/admin/samples/{{ sku.id }}/photos/{{ photo.id }}/set-primary" style="margin-top:6px">
+        <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+        <button type="submit" class="btn btn-sm">Set Primary</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <details class="collapsible" {% if not sku.photos %}open{% endif %}>
+    <summary>Add Photo</summary>
+    <form class="form-card" method="post" action="/admin/samples/{{ sku.id }}/photos" enctype="multipart/form-data">
+      <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+
+      <div class="form-tabs">
+        <label><input type="radio" name="_photo_mode" value="upload" checked onchange="togglePhotoMode(this.value)"> Upload File</label>
+        <label><input type="radio" name="_photo_mode" value="url" onchange="togglePhotoMode(this.value)"> Register URL / Path</label>
+      </div>
+
+      <div id="mode-upload">
+        <div class="form-group">
+          <label for="photo_file">Image File</label>
+          <input type="file" id="photo_file" name="photo_file" accept="image/*">
+        </div>
+      </div>
+
+      <div id="mode-url" style="display:none">
+        <div class="form-group">
+          <label for="image_url">Image URL</label>
+          <input type="text" id="image_url" name="image_url" placeholder="http://192.168.1.10:8080/assets/ref/...">
+        </div>
+        <div class="form-group">
+          <label for="local_path_input">Local Path</label>
+          <input type="text" id="local_path_input" name="local_path_input" placeholder="/factory/ref/...">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="angle">Angle</label>
+          <input type="text" id="angle" name="angle" placeholder="front">
+        </div>
+        <div class="form-group">
+          <label for="view_type">View Type</label>
+          <input type="text" id="view_type" name="view_type" placeholder="standard">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label><input type="checkbox" name="is_primary" value="true"> Set as primary</label>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Add Photo</button>
+      </div>
+    </form>
+  </details>
+</section>
+
+<!-- ROI Editor -->
+{% if primary_photo and primary_photo.image_url %}
+<section class="card">
+  <h2>ROI Editor</h2>
+  <p class="hint">Drag on the photo to draw a detection region. Coordinates are normalized (0–1). Click "Paste from ROI Editor" in the detection point form below.</p>
+  <div class="roi-container">
+    <img id="roi-image" src="{{ primary_photo.image_url }}" alt="Primary photo" class="roi-image">
+    <canvas id="roi-canvas" class="roi-canvas"></canvas>
+  </div>
+  <div class="form-group" style="margin-top:8px">
+    <label for="roi-json-display">ROI JSON</label>
+    <textarea id="roi-json-display" rows="3" class="roi-json-output" readonly placeholder='Drag on image above to generate...'></textarea>
+  </div>
+</section>
+{% endif %}
+
+<!-- Inspection Requirements -->
+<section class="card">
+  <h2>Inspection Requirements</h2>
+
+  {% set active_reqs = sku.inspection_requirements | selectattr('is_active') | list %}
+  {% if active_reqs %}
+  <table class="inner-table">
+    <thead>
+      <tr><th>Code</th><th>Title</th><th>Severity</th><th>Pass Criteria</th></tr>
+    </thead>
+    <tbody>
+      {% for req in active_reqs %}
+      <tr>
+        <td>{{ req.code }}</td>
+        <td>{{ req.title }}</td>
+        <td><span class="badge badge-{{ req.severity }}">{{ req.severity }}</span></td>
+        <td>{{ req.pass_criteria or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <details class="collapsible">
+    <summary>Add Requirement</summary>
+    <form class="form-card" method="post" action="/admin/samples/{{ sku.id }}/requirements">
+      <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="req-code">Code <span class="required">*</span></label>
+          <input type="text" id="req-code" name="code" required placeholder="REQ-001">
+        </div>
+        <div class="form-group">
+          <label for="req-severity">Severity</label>
+          <select id="req-severity" name="severity">
+            <option value="minor">minor</option>
+            <option value="major" selected>major</option>
+            <option value="critical">critical</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="req-title">Title <span class="required">*</span></label>
+        <input type="text" id="req-title" name="title" required placeholder="No visible stain">
+      </div>
+      <div class="form-group">
+        <label for="req-text">Requirement Text <span class="required">*</span></label>
+        <textarea id="req-text" name="requirement_text" rows="2" required placeholder="Describe the requirement..."></textarea>
+      </div>
+      <div class="form-group">
+        <label for="req-criteria">Pass Criteria</label>
+        <input type="text" id="req-criteria" name="pass_criteria" placeholder="No stain larger than 2mm">
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Add Requirement</button>
+      </div>
+    </form>
+  </details>
+</section>
+
+<!-- Detection Points -->
+<section class="card">
+  <h2>Detection Points</h2>
+
+  {% set active_dps = sku.detection_points | selectattr('is_active') | list %}
+  {% if active_dps %}
+  <table class="inner-table">
+    <thead>
+      <tr><th>Code</th><th>Label</th><th>ROI</th><th>Severity</th></tr>
+    </thead>
+    <tbody>
+      {% for dp in active_dps %}
+      <tr>
+        <td>{{ dp.point_code }}</td>
+        <td>{{ dp.label }}</td>
+        <td><code>{{ dp.roi_json or '—' }}</code></td>
+        <td><span class="badge badge-{{ dp.severity }}">{{ dp.severity }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <details class="collapsible">
+    <summary>Add Detection Point</summary>
+    <form class="form-card" method="post" action="/admin/samples/{{ sku.id }}/detection-points">
+      <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="dp-code">Point Code <span class="required">*</span></label>
+          <input type="text" id="dp-code" name="point_code" required placeholder="DP-FRONT-001">
+        </div>
+        <div class="form-group">
+          <label for="dp-severity">Severity</label>
+          <select id="dp-severity" name="severity">
+            <option value="minor">minor</option>
+            <option value="major" selected>major</option>
+            <option value="critical">critical</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="dp-label">Label <span class="required">*</span></label>
+        <input type="text" id="dp-label" name="label" required placeholder="Front surface stain check">
+      </div>
+      <div class="form-group">
+        <label for="dp-description">Description</label>
+        <textarea id="dp-description" name="description" rows="2" placeholder="Optional description"></textarea>
+      </div>
+      <div class="form-group">
+        <label for="dp-roi">ROI JSON</label>
+        <textarea id="dp-roi" name="roi_json_text" rows="2"
+                  placeholder='{"x":0.1,"y":0.2,"w":0.3,"h":0.25}'></textarea>
+        <div style="margin-top:4px;display:flex;align-items:center;gap:8px">
+          <button type="button" class="btn btn-sm" onclick="copyRoiToForm()">Paste from ROI Editor</button>
+          <span id="roi-validation-error" class="validation-error" style="display:none"></span>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary" onclick="return validateRoi()">Add Detection Point</button>
+      </div>
+    </form>
+  </details>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/roi_editor.js"></script>
+<script>
+function togglePhotoMode(mode) {
+  document.getElementById('mode-upload').style.display = mode === 'upload' ? '' : 'none';
+  document.getElementById('mode-url').style.display = mode === 'url' ? '' : 'none';
+}
+
+function copyRoiToForm() {
+  var src = document.getElementById('roi-json-display');
+  if (src && src.value) {
+    document.getElementById('dp-roi').value = src.value;
+  }
+}
+
+function validateRoi() {
+  var textarea = document.getElementById('dp-roi');
+  var errSpan = document.getElementById('roi-validation-error');
+  if (!textarea || !textarea.value.trim()) return true;
+  try {
+    var parsed = JSON.parse(textarea.value);
+    if (parsed.x === undefined || parsed.y === undefined ||
+        parsed.w === undefined || parsed.h === undefined) {
+      errSpan.textContent = 'ROI JSON must have x, y, w, h fields.';
+      errSpan.style.display = '';
+      return false;
+    }
+    errSpan.style.display = 'none';
+    return true;
+  } catch(e) {
+    errSpan.textContent = 'Invalid JSON: ' + e.message;
+    errSpan.style.display = '';
+    return false;
+  }
+}
+</script>
+{% endblock %}
