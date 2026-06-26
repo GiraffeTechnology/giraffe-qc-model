@@ -46,7 +46,7 @@ jobs:
           SESSION_SECRET: ci-acceptance-session-secret
         run: |
           set -euo pipefail
-          rm -f /tmp/giraffe_qc_acceptance.db /tmp/qc_model_uvicorn.log /tmp/pad_session.json
+          rm -f /tmp/giraffe_qc_acceptance.db /tmp/qc_model_uvicorn.log /tmp/pad_session.json /tmp/pad_login.html
           nohup uv run uvicorn src.api.main:app --host 127.0.0.1 --port 8080 > /tmp/qc_model_uvicorn.log 2>&1 &
           server_pid=$!
           echo "SERVER_PID=${server_pid}"
@@ -81,7 +81,9 @@ jobs:
           echo
 
           echo "---- /pad/login ----"
-          curl -fsSI http://127.0.0.1:8080/pad/login
+          login_status=$(curl -sS -o /tmp/pad_login.html -w "%{http_code}" http://127.0.0.1:8080/pad/login)
+          test "${login_status}" = "200"
+          grep -Ei "login|password|operator" /tmp/pad_login.html >/dev/null
 
           echo "---- /api/v1/pad/session unauthenticated should be 401 ----"
           session_status=$(curl -sS -o /tmp/pad_session.json -w "%{http_code}" http://127.0.0.1:8080/api/v1/pad/session)
