@@ -1,0 +1,8 @@
+{
+  "category": "good",
+  "description": "明确合格件 — 无缺陷",
+  "expected_overall_result": "pass",
+  "expected_severity": "low",
+  "confidence_window": null,
+  "notes": "同款产品与标准样本高度一致；颜色、尺寸、表面无异常"
+}

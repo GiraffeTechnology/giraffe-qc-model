@@ -1,0 +1,10 @@
+{
+  "category": "hard",
+  "description": "暗光/难判断 — 鲁棒性测试",
+  "expected_overall_result": null,
+  "expected_severity": null,
+  "confidence_window": null,
+  "must_not_crash": true,
+  "must_not_be_stub": true,
+  "notes": "低光照、旋转或反光图像；不强求判定方向正确，但必须返回结构化输出，不得崩溃"
+}

@@ -1,0 +1,9 @@
+{
+  "category": "defect_dent",
+  "description": "明确凹陷缺陷",
+  "expected_overall_result": "reject",
+  "expected_severity": "high",
+  "expected_defect_types": ["dent", "deformation"],
+  "confidence_window": null,
+  "notes": "产品表面有明显凹陷/变形"
+}

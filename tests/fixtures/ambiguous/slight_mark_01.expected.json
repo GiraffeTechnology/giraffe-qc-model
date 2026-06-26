@@ -1,0 +1,8 @@
+{
+  "category": "ambiguous",
+  "description": "边界件 — 轻微瑝疵",
+  "expected_overall_result": null,
+  "expected_severity": null,
+  "confidence_window": {"acceptable": ["pass", "needs_fix"]},
+  "notes": "轻微表面痕迹，pass/needs_fix 均可接受；不得 reject"
+}

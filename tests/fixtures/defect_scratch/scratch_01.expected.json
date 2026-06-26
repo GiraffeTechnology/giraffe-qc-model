@@ -1,0 +1,9 @@
+{
+  "category": "defect_scratch",
+  "description": "明确划痕缺陷",
+  "expected_overall_result": "reject",
+  "expected_severity": "high",
+  "expected_defect_types": ["scratch", "surface"],
+  "confidence_window": null,
+  "notes": "产品表面有明显划痕，应判 reject 或 needs_fix"
+}
