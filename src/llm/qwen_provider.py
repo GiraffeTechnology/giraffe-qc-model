@@ -1,15 +1,14 @@
 """Qwen / DashScope vision provider — real HTTP calls, no SDK dependency."""
 from __future__ import annotations
 import base64
-import json
 import os
-import re
 import time
 from pathlib import Path
 
 import httpx
 
 from src.llm.base import LLMProvider, ImageCompareResult
+from src.llm.result_parser import QcResultParser
 
 _BASE_URL = os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/api/v1")
 _VISION_ENDPOINT = f"{_BASE_URL}/services/aigc/multimodal-generation/generation"
@@ -23,24 +22,6 @@ def _encode_image(path: str) -> str:
     mime = "image/png" if p.suffix.lower() == ".png" else "image/jpeg"
     b64 = base64.b64encode(p.read_bytes()).decode()
     return f"data:{mime};base64,{b64}"
-
-
-def _extract_json(text: str) -> dict:
-    # Strip markdown fences (``` or ```json ... ```)
-    cleaned = re.sub(r"```(?:json)?", "", text, flags=re.IGNORECASE).strip(" \n`")
-    # Try direct parse
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        pass
-    # Find the first {...} block
-    m = re.search(r"\{.*\}", cleaned, re.DOTALL)
-    if m:
-        try:
-            return json.loads(m.group(0))
-        except json.JSONDecodeError:
-            pass
-    return {"raw_text": text}
 
 
 _JSON_SCHEMA_HINT = (
@@ -147,7 +128,7 @@ class QwenProvider(LLMProvider):
                 f"(HTTP {http_status}): {last_exc}"
             )
 
-        parsed = _extract_json(raw_text)
+        parsed = QcResultParser.parse(raw_text)
         return ImageCompareResult(
             overall_result=parsed.get("overall_result", "unknown"),
             similarity_score=float(parsed.get("similarity_score", 0.0)),

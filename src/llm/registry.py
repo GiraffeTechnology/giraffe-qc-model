@@ -5,7 +5,7 @@ Default (no args): CVComparator — pure local vision, no API key needed.
 LLM_ENABLE_REAL_CALLS=false (default):
   Any LLM provider name silently falls back to CVComparator.
 
-LLM_ENABLE_REAL_CALLS=true + LLM_PROVIDER=qwen/openai but no API key:
+LLM_ENABLE_REAL_CALLS=true + LLM_PROVIDER=qwen/openai/dashscope_openai but no API key:
   Raises ValueError — explicit LLM intent with missing credentials is an
   operator error, not a silent fallback.
 
@@ -15,7 +15,7 @@ LLM_ENABLE_REAL_CALLS=true + key present:
 import os
 from src.llm.base import LLMProvider
 
-_LLM_PROVIDERS = {"qwen", "openai"}
+_LLM_PROVIDERS = {"qwen", "openai", "dashscope_openai"}
 
 
 def get_provider(name: str | None = None) -> LLMProvider:
@@ -55,5 +55,9 @@ def get_provider(name: str | None = None) -> LLMProvider:
     if provider == "openai":
         from src.llm.openai_provider import OpenAIProvider
         return OpenAIProvider()
+
+    if provider == "dashscope_openai":
+        from src.llm.dashscope_openai_provider import DashScopeOpenAIProvider
+        return DashScopeOpenAIProvider()
 
     raise ValueError(f"Unknown LLM provider: {provider!r}")

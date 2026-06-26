@@ -22,7 +22,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.2", "pytest-asyncio>=0.23", "httpx"]
+dev = ["pytest>=8.2", "pytest-asyncio>=0.23", "httpx", "pytest-cov>=5.0"]
+cloud = ["openai>=1.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
@@ -30,9 +31,17 @@ packages = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "real_api: tests that make real API calls (exclude in CI with -m 'not real_api')",
+    "device: tests that require a physical Android device (exclude in CI with -m 'not device')",
+]
 
 [tool.hatch.envs.default]
-features = ["dev"]
+features = ["dev", "cloud"]
 
 [tool.hatch.envs.default.scripts]
-test = "python -m pytest tests/ -v"
+test = "python -m pytest tests/ -v -m 'not real_api and not device'"
+test-cloud = "python -m pytest tests/test_cloud_b1.py -v -m real_api -s"
+test-device = "python -m pytest tests/ -v -m device -s"
+test-all = "python -m pytest tests/ -v"
+test-parser = "python -m pytest tests/test_parser.py -v --tb=short"

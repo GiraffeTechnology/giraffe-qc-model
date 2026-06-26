@@ -14,8 +14,12 @@ __pycache__/
 dist/
 build/
 
-# Env
+# Env / secrets
 .env
+tests/config.env
+
+# Test snapshots that may contain raw image data
+tests/snapshots/**/raw_*
 
 # Claude Code internal
 .claude/
