@@ -1,0 +1,118 @@
+name: QC Model Full Acceptance
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  python-acceptance:
+    name: Python + Pad API acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Sync dependencies
+        run: uv sync --all-extras || uv sync
+
+      - name: PR11 Pad conversational UI tests
+        run: uv run pytest tests/test_pad_conversational_ui.py -v
+
+      - name: PR10 intake and inspection execution tests
+        run: uv run pytest tests/test_standard_lifecycle.py tests/test_qc_intake_execution_api.py -v
+
+      - name: Full non-integration suite
+        run: uv run pytest tests/ --ignore=tests/integration --ignore=tests/test_cloud_qwen_dev_provider.py -v
+
+      - name: Start API server and smoke test routes
+        run: |
+          set -euo pipefail
+          nohup uv run uvicorn src.api.main:app --host 127.0.0.1 --port 8080 > /tmp/qc_model_uvicorn.log 2>&1 &
+          server_pid=$!
+          echo "SERVER_PID=${server_pid}"
+
+          for i in {1..20}; do
+            if curl -fsS http://127.0.0.1:8080/health >/tmp/qc_health.out 2>/tmp/qc_health.err; then
+              break
+            fi
+            sleep 1
+          done
+
+          echo "---- /health ----"
+          cat /tmp/qc_health.out 2>/dev/null || true
+          cat /tmp/qc_health.err 2>/dev/null || true
+          curl -i http://127.0.0.1:8080/health || true
+
+          echo "---- /pad/login ----"
+          curl -i http://127.0.0.1:8080/pad/login || true
+
+          echo "---- /api/v1/pad/session ----"
+          curl -i http://127.0.0.1:8080/api/v1/pad/session || true
+
+          echo "---- uvicorn log tail ----"
+          tail -n 160 /tmp/qc_model_uvicorn.log || true
+
+          kill "${server_pid}" 2>/dev/null || true
+
+  qwen-smoke:
+    name: Optional Qwen smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ github.event_name == 'workflow_dispatch' && secrets.QWEN_API_KEY != '' }}
+
+    steps:
+      - name: Qwen compatible-mode API smoke test
+        env:
+          QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, json, urllib.request, urllib.error
+
+          key = os.environ.get("QWEN_API_KEY", "")
+          url = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+          payload = {
+              "model": "qwen-plus",
+              "messages": [
+                  {"role": "system", "content": "Reply with exactly QC_OK."},
+                  {"role": "user", "content": "Return QC_OK."},
+              ],
+              "max_tokens": 16,
+              "temperature": 0,
+          }
+
+          req = urllib.request.Request(
+              url,
+              data=json.dumps(payload).encode("utf-8"),
+              headers={
+                  "Authorization": "Bearer " + key,
+                  "Content-Type": "application/json",
+              },
+              method="POST",
+          )
+
+          try:
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  body = resp.read().decode("utf-8", errors="replace")
+                  print("QWEN_HTTP_STATUS:", resp.status)
+                  print("QWEN_RESPONSE_HEAD:", body[:1000])
+          except urllib.error.HTTPError as exc:
+              body = exc.read().decode("utf-8", errors="replace")
+              print("QWEN_HTTP_ERROR:", exc.code)
+              print("QWEN_ERROR_BODY:", body[:1000])
+              raise
+          PY
