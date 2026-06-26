@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
+from src.api.pad_e2e_router import router as pad_e2e_router
 from src.api.pad_router import router as pad_router
 from src.api.qc_router import router as qc_router
 from src.api.qc_intake_router import router as qc_intake_router
@@ -42,6 +43,7 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 app.include_router(pad_router)
+app.include_router(pad_e2e_router)
 app.include_router(qc_router)
 app.include_router(sku_router)
 app.include_router(sample_admin_router)
