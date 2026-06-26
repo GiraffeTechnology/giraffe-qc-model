@@ -12,9 +12,9 @@ permissions:
 
 jobs:
   python-acceptance:
-    name: Python + Pad API acceptance
+    name: Python API and Pad UI acceptance
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -24,66 +24,91 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Set up Python
-        run: uv python install 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
       - name: Sync dependencies
-        run: uv sync --all-extras || uv sync
+        run: uv sync --group dev
 
       - name: PR11 Pad conversational UI tests
         run: uv run pytest tests/test_pad_conversational_ui.py -v
 
-      - name: PR10 intake and inspection execution tests
+      - name: PR10 standard lifecycle and inspection execution tests
         run: uv run pytest tests/test_standard_lifecycle.py tests/test_qc_intake_execution_api.py -v
 
-      - name: Full non-integration suite
+      - name: Full non-integration test suite
         run: uv run pytest tests/ --ignore=tests/integration --ignore=tests/test_cloud_qwen_dev_provider.py -v
 
-      - name: Start API server and smoke test routes
+      - name: API server smoke test
+        env:
+          QC_DB_URL: sqlite:////tmp/giraffe_qc_acceptance.db
+          SESSION_SECRET: ci-acceptance-session-secret
         run: |
           set -euo pipefail
+          rm -f /tmp/giraffe_qc_acceptance.db /tmp/qc_model_uvicorn.log /tmp/pad_session.json
           nohup uv run uvicorn src.api.main:app --host 127.0.0.1 --port 8080 > /tmp/qc_model_uvicorn.log 2>&1 &
           server_pid=$!
           echo "SERVER_PID=${server_pid}"
 
-          for i in {1..20}; do
-            if curl -fsS http://127.0.0.1:8080/health >/tmp/qc_health.out 2>/tmp/qc_health.err; then
-              break
-            fi
-            sleep 1
-          done
+          cleanup() {
+            kill "${server_pid}" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          python3 - <<'PY'
+          import time
+          import urllib.request
+
+          deadline = time.time() + 30
+          last_error = None
+          while time.time() < deadline:
+              try:
+                  with urllib.request.urlopen("http://127.0.0.1:8080/health", timeout=2) as response:
+                      body = response.read().decode("utf-8", errors="replace")
+                      if response.status == 200 and '"status":"ok"' in body.replace(" ", ""):
+                          print("health ok")
+                          raise SystemExit(0)
+              except Exception as exc:  # noqa: BLE001
+                  last_error = exc
+                  time.sleep(1)
+          print("server did not become healthy", repr(last_error))
+          raise SystemExit(1)
+          PY
 
           echo "---- /health ----"
-          cat /tmp/qc_health.out 2>/dev/null || true
-          cat /tmp/qc_health.err 2>/dev/null || true
-          curl -i http://127.0.0.1:8080/health || true
+          curl -fsS http://127.0.0.1:8080/health
+          echo
 
           echo "---- /pad/login ----"
-          curl -i http://127.0.0.1:8080/pad/login || true
+          curl -fsSI http://127.0.0.1:8080/pad/login
 
-          echo "---- /api/v1/pad/session ----"
-          curl -i http://127.0.0.1:8080/api/v1/pad/session || true
+          echo "---- /api/v1/pad/session unauthenticated should be 401 ----"
+          session_status=$(curl -sS -o /tmp/pad_session.json -w "%{http_code}" http://127.0.0.1:8080/api/v1/pad/session)
+          cat /tmp/pad_session.json
+          echo
+          test "${session_status}" = "401"
 
           echo "---- uvicorn log tail ----"
-          tail -n 160 /tmp/qc_model_uvicorn.log || true
+          tail -n 120 /tmp/qc_model_uvicorn.log
 
-          kill "${server_pid}" 2>/dev/null || true
-
-  qwen-smoke:
-    name: Optional Qwen smoke test
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    if: ${{ github.event_name == 'workflow_dispatch' && secrets.QWEN_API_KEY != '' }}
-
-    steps:
-      - name: Qwen compatible-mode API smoke test
+      - name: Optional Qwen smoke test
         env:
           QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import os, json, urllib.request, urllib.error
+          if [ -z "${QWEN_API_KEY}" ]; then
+            echo "SKIP_QWEN: QWEN_API_KEY secret is not configured."
+            exit 0
+          fi
 
-          key = os.environ.get("QWEN_API_KEY", "")
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          key = os.environ["QWEN_API_KEY"]
           url = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
           payload = {
               "model": "qwen-plus",
@@ -94,8 +119,7 @@ jobs:
               "max_tokens": 16,
               "temperature": 0,
           }
-
-          req = urllib.request.Request(
+          request = urllib.request.Request(
               url,
               data=json.dumps(payload).encode("utf-8"),
               headers={
@@ -104,12 +128,13 @@ jobs:
               },
               method="POST",
           )
-
           try:
-              with urllib.request.urlopen(req, timeout=30) as resp:
-                  body = resp.read().decode("utf-8", errors="replace")
-                  print("QWEN_HTTP_STATUS:", resp.status)
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  body = response.read().decode("utf-8", errors="replace")
+                  print("QWEN_HTTP_STATUS:", response.status)
                   print("QWEN_RESPONSE_HEAD:", body[:1000])
+                  if response.status != 200 or "QC_OK" not in body:
+                      raise SystemExit("Qwen smoke test returned an unexpected response")
           except urllib.error.HTTPError as exc:
               body = exc.read().decode("utf-8", errors="replace")
               print("QWEN_HTTP_ERROR:", exc.code)
