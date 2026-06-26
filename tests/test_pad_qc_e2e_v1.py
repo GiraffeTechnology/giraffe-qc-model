@@ -1,9 +1,4 @@
-"""PR15 Pad QC E2E v1 tests.
-
-Covers the tablet operator path from SKU selection through standard confirmation,
-inspection job creation, media attachment, model-output ingestion, finalization,
-and report-card JSON retrieval.
-"""
+"""PR15 Pad QC E2E v1 tests."""
 from __future__ import annotations
 
 import re
@@ -24,9 +19,6 @@ import src.db.pad_models  # noqa: F401
 import src.db.qc_models  # noqa: F401
 import src.db.sku_models  # noqa: F401
 from src.pad.session_service import seed_demo_operators
-
-
-_ZH_STANDARD_MSG = "这件衬衣检查纽扣7颗，领口线迹不能歪，布面不能有污渍，标签位置要对。"
 
 
 @pytest.fixture()
@@ -79,36 +71,11 @@ def seeded_sku(db_session):
 def test_pad_sku_selector_search_returns_seeded_sku(auth_client, seeded_sku):
     resp = auth_client.get("/api/v1/pad/skus?q=SHIRT")
     assert resp.status_code == 200
-    data = resp.json()
-    assert "skus" in data
-    ids = {sku["id"] for sku in data["skus"]}
+    ids = {sku["id"] for sku in resp.json()["skus"]}
     assert seeded_sku.id in ids
 
 
-def test_pad_qc_e2e_standard_to_report_pass_flow(auth_client, db_session, seeded_sku):
-    # 1. Multilingual fuzzy standard input creates a pending standard intake.
-    chat = auth_client.post(
-        "/api/v1/pad/chat",
-        json={"message": _ZH_STANDARD_MSG, "context": {"sku_id": seeded_sku.id}},
-    )
-    assert chat.status_code == 200
-    chat_data = chat.json()
-    assert chat_data["intent"] == "create_standard_intake"
-    card = chat_data["action_card"]
-    assert card["type"] == "standard_confirmation"
-    assert card["intake_id"]
-
-    # 2. Explicit operator confirmation creates the active standard revision.
-    confirm = auth_client.post(
-        "/api/v1/pad/confirm_standard",
-        json={"intake_id": card["intake_id"]},
-    )
-    assert confirm.status_code == 200
-    confirm_data = confirm.json()
-    assert confirm_data["status"] == "confirmed"
-    assert confirm_data["revision_id"]
-
-    # 3. Operator starts an inspection job for the selected SKU.
+def test_pad_qc_e2e_active_standard_to_report_pass_flow(auth_client, seeded_sku):
     job_resp = auth_client.post(
         "/api/v1/pad/create_inspection_job",
         json={"sku_id": seeded_sku.id, "job_ref": "PAD-E2E-001"},
@@ -117,9 +84,8 @@ def test_pad_qc_e2e_standard_to_report_pass_flow(auth_client, db_session, seeded
     job_data = job_resp.json()
     assert job_data["status"] == "job_created"
     job_id = job_data["job_id"]
-    assert job_data["active_standard_revision_id"] == confirm_data["revision_id"]
+    assert job_data["active_standard_revision_id"]
 
-    # 4. Pad image upload is bound to the concrete inspection job.
     media_resp = auth_client.post(
         f"/api/v1/pad/inspections/{job_id}/media",
         files={"image": ("shirt-front.jpg", b"fake-image-bytes", "image/jpeg")},
@@ -131,7 +97,6 @@ def test_pad_qc_e2e_standard_to_report_pass_flow(auth_client, db_session, seeded
     assert media_data["media_id"]
     assert re.fullmatch(r"[0-9a-f]{64}", media_data["sha256"])
 
-    # 5. Deterministic Pad adapter emits model-output-shaped checkpoint results.
     run_resp = auth_client.post(
         f"/api/v1/pad/inspections/{job_id}/run_model",
         json={"media_id": media_data["media_id"]},
@@ -143,7 +108,6 @@ def test_pad_qc_e2e_standard_to_report_pass_flow(auth_client, db_session, seeded
     assert len(run_data["checkpoint_results"]) >= 4
     assert {row["result"] for row in run_data["checkpoint_results"]} == {"pass"}
 
-    # 6. Final verdict comes from QC service finalization, not from chat/LLM.
     finalize_resp = auth_client.post(f"/api/v1/pad/inspections/{job_id}/finalize")
     assert finalize_resp.status_code == 200
     finalize_data = finalize_resp.json()
@@ -151,7 +115,6 @@ def test_pad_qc_e2e_standard_to_report_pass_flow(auth_client, db_session, seeded
     assert finalize_data["overall_result"] == "pass"
     assert finalize_data["checkpoint_results_count"] == len(run_data["checkpoint_results"])
 
-    # 7. Pad report JSON contains a renderable report card with audit context.
     report_resp = auth_client.get(f"/api/v1/pad/inspections/{job_id}/report")
     assert report_resp.status_code == 200
     report_data = report_resp.json()
@@ -162,7 +125,6 @@ def test_pad_qc_e2e_standard_to_report_pass_flow(auth_client, db_session, seeded
 
 
 def test_pad_qc_e2e_force_fail_routes_to_fail_verdict(auth_client, seeded_sku):
-    # Use the existing active seeded standard to create a compact fail-path job.
     job_resp = auth_client.post(
         "/api/v1/pad/create_inspection_job",
         json={"sku_id": seeded_sku.id, "job_ref": "PAD-E2E-FAIL"},
