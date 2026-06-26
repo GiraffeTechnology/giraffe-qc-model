@@ -2,10 +2,10 @@ name: QC Model Full Acceptance
 
 on:
   workflow_dispatch:
-  pull_request:
   push:
     branches:
       - main
+  pull_request:
 
 permissions:
   contents: read
@@ -24,95 +24,126 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Set up Python
-        run: uv python install 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
       - name: Sync dependencies
-        run: uv sync --all-extras || uv sync
+        run: uv sync --group dev
 
-      - name: PR11 Pad conversational UI tests
+      - name: Pad conversational UI tests
         run: uv run pytest tests/test_pad_conversational_ui.py -v
 
-      - name: PR10 intake and inspection execution tests
+      - name: Intake and inspection execution tests
         run: uv run pytest tests/test_standard_lifecycle.py tests/test_qc_intake_execution_api.py -v
 
-      - name: Full non-integration suite
+      - name: Full non-integration test suite
         run: uv run pytest tests/ --ignore=tests/integration --ignore=tests/test_cloud_qwen_dev_provider.py -v
 
-      - name: Start API server and smoke test routes
+      - name: API server smoke test
         run: |
           set -euo pipefail
           nohup uv run uvicorn src.api.main:app --host 127.0.0.1 --port 8080 > /tmp/qc_model_uvicorn.log 2>&1 &
           server_pid=$!
-          echo "SERVER_PID=${server_pid}"
+          cleanup() {
+            kill "$server_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
 
           for i in {1..20}; do
-            if curl -fsS http://127.0.0.1:8080/health >/tmp/qc_health.out 2>/tmp/qc_health.err; then
+            if curl -fsS http://127.0.0.1:8080/health >/tmp/qc_health.json; then
               break
             fi
             sleep 1
           done
 
           echo "---- /health ----"
-          cat /tmp/qc_health.out 2>/dev/null || true
-          cat /tmp/qc_health.err 2>/dev/null || true
-          curl -i http://127.0.0.1:8080/health || true
+          cat /tmp/qc_health.json
+          grep -q '"status":"ok"' /tmp/qc_health.json
 
-          echo "---- /pad/login ----"
-          curl -i http://127.0.0.1:8080/pad/login || true
+          echo "---- /openapi.json ----"
+          curl -fsS http://127.0.0.1:8080/openapi.json >/tmp/qc_openapi.json
+          python - <<'PY'
+          import json
+          data = json.load(open('/tmp/qc_openapi.json'))
+          paths = data.get('paths', {})
+          required = [
+              '/api/v1/qc/intakes',
+              '/api/v1/qc/inspection-jobs',
+              '/api/v1/pad/chat',
+              '/api/v1/pad/confirm_standard',
+              '/pad/login',
+              '/pad',
+          ]
+          missing = [p for p in required if p not in paths]
+          if missing:
+              raise SystemExit(f'Missing required routes: {missing}')
+          print('Required routes present:', ', '.join(required))
+          PY
 
-          echo "---- /api/v1/pad/session ----"
-          curl -i http://127.0.0.1:8080/api/v1/pad/session || true
+          echo "---- Pad login/session smoke ----"
+          curl -fsS -c /tmp/qc_cookies.txt \
+            -d 'username=operator_en' \
+            -d 'password=operator_en' \
+            -d 'tenant_id=demo' \
+            -X POST http://127.0.0.1:8080/pad/login \
+            -o /tmp/qc_login.html \
+            -w 'login_http_status=%{http_code}\n'
+          curl -fsS -b /tmp/qc_cookies.txt http://127.0.0.1:8080/api/v1/pad/session >/tmp/qc_session.json
+          cat /tmp/qc_session.json
+          python - <<'PY'
+          import json
+          data = json.load(open('/tmp/qc_session.json'))
+          assert data['tenant_id'] == 'demo'
+          assert data['preferred_language'] == 'en'
+          assert data['session_status'] == 'active'
+          print('Pad session OK')
+          PY
 
           echo "---- uvicorn log tail ----"
-          tail -n 160 /tmp/qc_model_uvicorn.log || true
+          tail -n 120 /tmp/qc_model_uvicorn.log
 
-          kill "${server_pid}" 2>/dev/null || true
-
-  qwen-smoke:
-    name: Optional Qwen smoke test
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    if: ${{ github.event_name == 'workflow_dispatch' && secrets.QWEN_API_KEY != '' }}
-
-    steps:
-      - name: Qwen compatible-mode API smoke test
+      - name: Optional Qwen smoke test
         env:
           QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
+          if [ -z "${QWEN_API_KEY:-}" ]; then
+            echo "SKIP_QWEN: QWEN_API_KEY secret is not configured."
+            exit 0
+          fi
+
+          python - <<'PY'
           import os, json, urllib.request, urllib.error
 
-          key = os.environ.get("QWEN_API_KEY", "")
-          url = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+          key = os.environ.get('QWEN_API_KEY', '')
+          url = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
           payload = {
-              "model": "qwen-plus",
-              "messages": [
-                  {"role": "system", "content": "Reply with exactly QC_OK."},
-                  {"role": "user", "content": "Return QC_OK."},
+              'model': 'qwen-plus',
+              'messages': [
+                  {'role': 'system', 'content': 'Reply with exactly QC_OK.'},
+                  {'role': 'user', 'content': 'Return QC_OK.'},
               ],
-              "max_tokens": 16,
-              "temperature": 0,
+              'max_tokens': 16,
+              'temperature': 0,
           }
-
           req = urllib.request.Request(
               url,
-              data=json.dumps(payload).encode("utf-8"),
+              data=json.dumps(payload).encode('utf-8'),
               headers={
-                  "Authorization": "Bearer " + key,
-                  "Content-Type": "application/json",
+                  'Authorization': 'Bearer ' + key,
+                  'Content-Type': 'application/json',
               },
-              method="POST",
+              method='POST',
           )
-
           try:
               with urllib.request.urlopen(req, timeout=30) as resp:
-                  body = resp.read().decode("utf-8", errors="replace")
-                  print("QWEN_HTTP_STATUS:", resp.status)
-                  print("QWEN_RESPONSE_HEAD:", body[:1000])
+                  body = resp.read().decode('utf-8', errors='replace')
+                  print('QWEN_HTTP_STATUS:', resp.status)
+                  print('QWEN_RESPONSE_HEAD:', body[:1000])
           except urllib.error.HTTPError as exc:
-              body = exc.read().decode("utf-8", errors="replace")
-              print("QWEN_HTTP_ERROR:", exc.code)
-              print("QWEN_ERROR_BODY:", body[:1000])
+              body = exc.read().decode('utf-8', errors='replace')
+              print('QWEN_HTTP_ERROR:', exc.code)
+              print('QWEN_ERROR_BODY:', body[:1000])
               raise
           PY
