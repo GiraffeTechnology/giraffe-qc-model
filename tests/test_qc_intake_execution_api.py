@@ -332,7 +332,7 @@ def test_create_inspection_job_snapshots_active_revision(client, seeded_skus):
     assert body["active_standard_revision_id"] is not None
 
     # GET the job
-    get_resp = client.get(f"/api/v1/qc/inspection-jobs/{body['id']}")
+    get_resp = client.get(f"/api/v1/qc/inspection-jobs/{body['id']}", params={"tenant_id": "default"})
     assert get_resp.status_code == 200
     assert get_resp.json()["id"] == body["id"]
 
@@ -352,6 +352,7 @@ def test_ingest_model_output_creates_checkpoint_results(client, seeded_skus):
     model_resp = client.post(
         f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
         json={
+            "tenant_id": "default",
             "provider": "anthropic",
             "model_name": "claude-sonnet-4-6",
             "raw_output": {
@@ -388,6 +389,7 @@ def test_finalize_inspection_job_produces_pass_report(client, seeded_skus):
     client.post(
         f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
         json={
+            "tenant_id": "default",
             "provider": "anthropic",
             "model_name": "claude-sonnet-4-6",
             "raw_output": {
@@ -402,7 +404,7 @@ def test_finalize_inspection_job_produces_pass_report(client, seeded_skus):
         },
     )
 
-    finalize_resp = client.post(f"/api/v1/qc/inspection-jobs/{job_id}/finalize")
+    finalize_resp = client.post(f"/api/v1/qc/inspection-jobs/{job_id}/finalize", json={"tenant_id": "default"})
     assert finalize_resp.status_code == 200, finalize_resp.text
     body = finalize_resp.json()
     assert body["overall_result"] == "pass"
@@ -410,7 +412,7 @@ def test_finalize_inspection_job_produces_pass_report(client, seeded_skus):
     assert body["findings_count"] == 0
 
     # GET report
-    report_resp = client.get(f"/api/v1/qc/inspection-jobs/{job_id}/report")
+    report_resp = client.get(f"/api/v1/qc/inspection-jobs/{job_id}/report", params={"tenant_id": "default"})
     assert report_resp.status_code == 200
     assert report_resp.json()["overall_result"] == "pass"
 
@@ -430,6 +432,7 @@ def test_ingest_model_output_rejects_unknown_point_code(client, seeded_skus):
     model_resp = client.post(
         f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
         json={
+            "tenant_id": "default",
             "provider": "anthropic",
             "model_name": "claude-sonnet-4-6",
             "raw_output": {
@@ -605,6 +608,7 @@ def test_model_output_creates_checkpoint_results(client, seeded_skus):
     model_resp = client.post(
         f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
         json={
+            "tenant_id": "default",
             "provider": "anthropic",
             "model_name": "claude-sonnet-4-6",
             "raw_output": {
@@ -625,6 +629,7 @@ def test_model_output_rejects_unknown_point_code(client, seeded_skus):
     model_resp = client.post(
         f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
         json={
+            "tenant_id": "default",
             "provider": "anthropic",
             "model_name": "claude-sonnet-4-6",
             "raw_output": {
@@ -646,6 +651,7 @@ def test_model_output_rejects_duplicate_point_code_atomically(client, seeded_sku
     bad_resp = client.post(
         f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
         json={
+            "tenant_id": "default",
             "provider": "anthropic",
             "model_name": "claude-sonnet-4-6",
             "raw_output": {
@@ -663,7 +669,7 @@ def test_model_output_rejects_duplicate_point_code_atomically(client, seeded_sku
     assert "STAMEN_CENTERING" in detail or "duplicate" in detail.lower()
 
     # Job should still be pending (no partial commit)
-    get_resp = client.get(f"/api/v1/qc/inspection-jobs/{job_id}")
+    get_resp = client.get(f"/api/v1/qc/inspection-jobs/{job_id}", params={"tenant_id": "default"})
     assert get_resp.status_code == 200
     assert get_resp.json()["status"] == "pending"
 
@@ -671,6 +677,7 @@ def test_model_output_rejects_duplicate_point_code_atomically(client, seeded_sku
     good_resp = client.post(
         f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
         json={
+            "tenant_id": "default",
             "provider": "anthropic",
             "model_name": "claude-sonnet-4-6",
             "raw_output": _BROOCH_FULL_PASS,
@@ -687,6 +694,7 @@ def test_model_output_rejects_existing_checkpoint_result_atomically(client, seed
     first_resp = client.post(
         f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
         json={
+            "tenant_id": "default",
             "provider": "anthropic",
             "model_name": "claude-sonnet-4-6",
             "raw_output": _BROOCH_FULL_PASS,
@@ -698,6 +706,7 @@ def test_model_output_rejects_existing_checkpoint_result_atomically(client, seed
     second_resp = client.post(
         f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
         json={
+            "tenant_id": "default",
             "provider": "anthropic",
             "model_name": "claude-sonnet-4-6",
             "raw_output": {
@@ -735,7 +744,7 @@ def test_model_output_rejects_wrong_media_id_atomically(client, seeded_skus):
     # Attach media to job2
     media_resp = client.post(
         f"/api/v1/qc/inspection-jobs/{job2_id}/media",
-        json={"image_url": "http://example.com/img.jpg"},
+        json={"tenant_id": "default", "image_url": "http://example.com/img.jpg"},
     )
     assert media_resp.status_code == 201, media_resp.text
     media_id = media_resp.json()["id"]
@@ -744,6 +753,7 @@ def test_model_output_rejects_wrong_media_id_atomically(client, seeded_skus):
     bad_resp = client.post(
         f"/api/v1/qc/inspection-jobs/{job1_id}/model-results",
         json={
+            "tenant_id": "default",
             "provider": "anthropic",
             "model_name": "claude-sonnet-4-6",
             "media_id": media_id,
@@ -757,6 +767,7 @@ def test_model_output_rejects_wrong_media_id_atomically(client, seeded_skus):
     good_resp = client.post(
         f"/api/v1/qc/inspection-jobs/{job1_id}/model-results",
         json={
+            "tenant_id": "default",
             "provider": "anthropic",
             "model_name": "claude-sonnet-4-6",
             "raw_output": _BROOCH_FULL_PASS,
@@ -773,6 +784,7 @@ def test_finalize_with_missing_checkpoint_returns_review_required(client, seeded
     client.post(
         f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
         json={
+            "tenant_id": "default",
             "provider": "anthropic",
             "model_name": "claude-sonnet-4-6",
             "raw_output": {
@@ -784,7 +796,7 @@ def test_finalize_with_missing_checkpoint_returns_review_required(client, seeded
         },
     )
 
-    finalize_resp = client.post(f"/api/v1/qc/inspection-jobs/{job_id}/finalize")
+    finalize_resp = client.post(f"/api/v1/qc/inspection-jobs/{job_id}/finalize", json={"tenant_id": "default"})
     assert finalize_resp.status_code == 200, finalize_resp.text
     assert finalize_resp.json()["overall_result"] == "review_required"
 
@@ -796,6 +808,7 @@ def test_finalize_with_explicit_checkpoint_fail_returns_fail(client, seeded_skus
     client.post(
         f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
         json={
+            "tenant_id": "default",
             "provider": "anthropic",
             "model_name": "claude-sonnet-4-6",
             "raw_output": {
@@ -810,7 +823,7 @@ def test_finalize_with_explicit_checkpoint_fail_returns_fail(client, seeded_skus
         },
     )
 
-    finalize_resp = client.post(f"/api/v1/qc/inspection-jobs/{job_id}/finalize")
+    finalize_resp = client.post(f"/api/v1/qc/inspection-jobs/{job_id}/finalize", json={"tenant_id": "default"})
     assert finalize_resp.status_code == 200, finalize_resp.text
     assert finalize_resp.json()["overall_result"] == "fail"
 
@@ -823,6 +836,7 @@ def test_major_incidental_finding_returns_review_required(client, seeded_skus):
     client.post(
         f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
         json={
+            "tenant_id": "default",
             "provider": "anthropic",
             "model_name": "claude-sonnet-4-6",
             "raw_output": {
@@ -839,7 +853,7 @@ def test_major_incidental_finding_returns_review_required(client, seeded_skus):
         },
     )
 
-    finalize_resp = client.post(f"/api/v1/qc/inspection-jobs/{job_id}/finalize")
+    finalize_resp = client.post(f"/api/v1/qc/inspection-jobs/{job_id}/finalize", json={"tenant_id": "default"})
     assert finalize_resp.status_code == 200, finalize_resp.text
     assert finalize_resp.json()["overall_result"] == "review_required"
 
@@ -877,6 +891,7 @@ def test_model_output_cannot_submit_checkpoint_from_other_sku(client, seeded_sku
     model_resp = client.post(
         f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
         json={
+            "tenant_id": "default",
             "provider": "anthropic",
             "model_name": "claude-sonnet-4-6",
             "raw_output": {
@@ -898,6 +913,7 @@ def test_finalize_api_is_idempotent(client, seeded_skus):
     model_resp = client.post(
         f"/api/v1/qc/inspection-jobs/{job_id}/model-results",
         json={
+            "tenant_id": "default",
             "provider": "anthropic",
             "model_name": "claude-sonnet-4-6",
             "raw_output": _BROOCH_FULL_PASS,
@@ -906,11 +922,11 @@ def test_finalize_api_is_idempotent(client, seeded_skus):
     assert model_resp.status_code == 201, model_resp.text
 
     # First finalize
-    finalize1 = client.post(f"/api/v1/qc/inspection-jobs/{job_id}/finalize")
+    finalize1 = client.post(f"/api/v1/qc/inspection-jobs/{job_id}/finalize", json={"tenant_id": "default"})
     assert finalize1.status_code == 200, finalize1.text
     assert finalize1.json()["overall_result"] == "pass"
 
     # Second finalize — must be idempotent
-    finalize2 = client.post(f"/api/v1/qc/inspection-jobs/{job_id}/finalize")
+    finalize2 = client.post(f"/api/v1/qc/inspection-jobs/{job_id}/finalize", json={"tenant_id": "default"})
     assert finalize2.status_code == 200, finalize2.text
     assert finalize2.json()["overall_result"] == "pass"

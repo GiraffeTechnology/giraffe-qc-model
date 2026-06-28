@@ -6,8 +6,8 @@ AI-native quality control inference system for industrial procurement, with two 
 
 |Target            |Model                   |Inference                                                |Network                       |
 |------------------|------------------------|---------------------------------------------------------|------------------------------|
-|Android Tablet App|Qwen3-VL-2B-Instruct-MNN|Local, via MNN runtime                                   |Fully offline                 |
-|QC Model (Server) |Qwen3-VL-8B             |Local inference, with API fallback on capability overflow|Local-first, network on demand|
+|Android Tablet App|Qwen3-VL-2B-Instruct-MNN|Local MNN path, pending real JNI inference wiring        |Fully offline                 |
+|QC Model (Server) |DashScope/Qwen provider |Configured backend/cloud provider, fail-closed by default|Network only when explicitly configured|
 
 ## Pad vs Server Edition
 
@@ -24,7 +24,7 @@ API/cloud inference is permitted.
 | Standard Photos | Shared | Shared |
 | Inspection Requirements | Shared | Shared |
 | Detection Points | Shared | Shared |
-| Qwen Model | Qwen3-VL-2B-Instruct-MNN | Qwen3-VL-8B |
+| Qwen Model | Qwen3-VL-2B-Instruct-MNN | Configured Qwen provider |
 | Qwen API | Disabled | Allowed if configured |
 | Cloud Inference | Disabled | Allowed if configured |
 | Version suffix | `*-padLocal` | `*-server` |
@@ -45,11 +45,12 @@ Edition is selected by the `QC_RUNTIME_EDITION` environment variable
 
 ### QC Model (Server)
 
-Configured with **Qwen3-VL-8B** as the primary inference model.
+Production-safe server behavior is fail-closed by default.
 
-- Runs locally by default.
-- When local model confidence/capability is insufficient ("capability overflow") for a given case, the server falls back to a cloud API call to supplement the result.
-- Cloud calls are a fallback path only — not the default inference route.
+- If no real provider is configured and enabled, inspection returns `review_required`.
+- `QC_ENGINE_MODE=fake` is accepted only in explicit test harness mode (`APP_ENV=test` or `QC_ALLOW_TEST_ADAPTER=true`).
+- `cloud_qwen_dev` and `backend_proxy` require real-call and cloud/image guards plus a valid API key. Disabled cloud, provider init failure, unreadable photos, or incomplete provider output returns `review_required`.
+- A `pass` result requires all required detection points to be evaluated against valid standard/reference inputs.
 
 ### QC Sample DB & Admin Page
 
@@ -82,9 +83,10 @@ QC point checklist) — not open-domain visual reasoning.
 
 ## Core Principles
 
-- **No fake results.** The system never fabricates a pass/fail outcome.
-- **No silent cloud fallback.** Cloud inference is only invoked on local capability overflow, and is never the default path.
+- **No fake production results.** Fake providers are test-only and are blocked in default runtime.
+- **No silent cloud fallback.** Cloud inference is only invoked when explicitly configured, and is never the default path.
 - **No silent degradation.** If the Tablet app's MNN runtime is unavailable, the result must be explicitly marked `MNN pending` / `review_required` rather than defaulting to any pass/fail value.
+- **No pass without full evidence.** Missing standard photos, missing detection points, parser inconsistency, disabled cloud, provider failure, or incomplete model output must produce `review_required`, never `pass`.
 
 ## Architecture
 
@@ -179,8 +181,7 @@ than letting it drift.
 - [x] Inspection router implemented with the on-device-first / fail-closed
   policy, including the `on_device_fail_is_final` guard (§4.5.4),
   exercised against mock on-device and cloud providers.
-- [x] Cloud fallback (DashScope) integration implemented and
-  end-to-end tested against a real DashScope API key.
+- [x] DashScope provider integration implemented with explicit cloud/image/API-key guards. Real API tests are opt-in and skipped unless a real key and guard environment are supplied.
 - [x] `scripts/benchmark_mnn.sh` written: ADB-based on-device latency
   benchmark targeting Snapdragon 8 Gen / 8 GB RAM device, reporting
   p50/p95 against the 10-second-per-image budget.
@@ -200,9 +201,7 @@ than letting it drift.
   data.
 - [x] Never-convert-failure-to-pass invariant verified across all
   failure modes via parametrized tests.
-- [x] Full Python test suite: **203 tests pass 5× consecutively**, 6
-  Qwen integration tests skipped by default (require
-  `RUN_QWEN_INTEGRATION=1` + real key).
+- [x] Production-safety tests cover no fake provider in default runtime, fail-closed cloud-disabled/provider-error paths, deterministic parser verdict recomputation, missing standard photos, zero detection points, and tenant-scoped inspection job APIs.
 - [x] Android unit tests: `AutoCaptureControllerTest` (10 tests),
   `TaskSelectionControllerTest` (6 tests), `PreviewBoxCalculationsTest`
   (5 tests) — all pass with `./gradlew :app:testPadLocalDebugUnitTest`.
@@ -311,7 +310,9 @@ A few project-wide rules worth knowing before contributing:
   fake providers/inspectors (`FakeOnDeviceQwenInspector`,
   `TimeoutOnDeviceQwenInspector`, `InvalidJsonOnDeviceQwenInspector`,
   `NotProvisionedOnDeviceQwenInspector`, and their Python-side
-  equivalents for the cloud provider). All fakes live in `src/test`.
+  equivalents for the cloud provider). Android fakes live in `src/test`;
+  Python fake providers are guarded and may be used only under
+  `APP_ENV=test` or `QC_ALLOW_TEST_ADAPTER=true`.
 - **A failing test is a defect, not something to retry past.** The test
   suite is run 5 consecutive times before a change is considered done;
   a failure on any run stops the loop and gets reported, not silently

@@ -219,6 +219,19 @@ def test_all_checkpoints_pass_no_findings_yields_pass(db):
     assert report.findings_count == 0
 
 
+def test_finalize_job_with_zero_detection_points_never_passes(db):
+    sku = _make_sku(db)
+    rev = create_standard_revision(db, sku.id, "t1")
+    confirm_standard_revision(db, rev.id, "alice", "t1")
+
+    job = create_inspection_job(db, sku.id, "t1")
+
+    report = finalize_job(db, job.id)
+    assert report.overall_result == "review_required"
+    assert report.checkpoint_results_count == 0
+    assert "No active detection points" in (report.summary_text or "")
+
+
 # ── Test 8 ────────────────────────────────────────────────────────────────────
 
 def test_missing_checkpoint_result_yields_review_required(db):

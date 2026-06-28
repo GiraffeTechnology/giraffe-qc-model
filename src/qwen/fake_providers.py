@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 from typing import List
 
+from src.config import fake_provider_allowed
 from src.qwen.base import QwenQCProvider
 from src.qwen.schema import (
     CapturePhotoInput,
@@ -37,6 +38,7 @@ class FakeCloudQwenProvider(QwenQCProvider):
         qc_points: List[QcPointInput],
         context: InspectionContext,
     ) -> QwenInspectionOutput:
+        _ensure_fake_provider_allowed()
         items = [
             InspectionItemResult(
                 qc_point_id=p.qc_point_id,
@@ -74,6 +76,7 @@ class FailingQwenProvider(QwenQCProvider):
         qc_points: List[QcPointInput],
         context: InspectionContext,
     ) -> QwenInspectionOutput:
+        _ensure_fake_provider_allowed()
         raise RuntimeError("FailingQwenProvider: intentional failure for testing")
 
 
@@ -91,6 +94,7 @@ class TimeoutQwenProvider(QwenQCProvider):
         qc_points: List[QcPointInput],
         context: InspectionContext,
     ) -> QwenInspectionOutput:
+        _ensure_fake_provider_allowed()
         raise TimeoutError("TimeoutQwenProvider: intentional timeout for testing")
 
 
@@ -108,6 +112,7 @@ class FakeFailCloudQwenProvider(QwenQCProvider):
         qc_points: List[QcPointInput],
         context: InspectionContext,
     ) -> QwenInspectionOutput:
+        _ensure_fake_provider_allowed()
         items = [
             InspectionItemResult(
                 qc_point_id=p.qc_point_id,
@@ -145,6 +150,7 @@ class NotProvisionedQwenProvider(QwenQCProvider):
         qc_points: List[QcPointInput],
         context: InspectionContext,
     ) -> QwenInspectionOutput:
+        _ensure_fake_provider_allowed()
         raise UnsupportedOperationError("on_device_model_not_provisioned")
 
 
@@ -166,9 +172,18 @@ class InvalidJsonQwenProvider(QwenQCProvider):
         qc_points: List[QcPointInput],
         context: InspectionContext,
     ) -> QwenInspectionOutput:
+        _ensure_fake_provider_allowed()
         from src.qwen.parser import parse_qwen_output
         return parse_qwen_output(
             "not json at all",
             [p.qc_point_id for p in qc_points],
             "invalid_json_qwen",
+        )
+
+
+def _ensure_fake_provider_allowed() -> None:
+    if not fake_provider_allowed():
+        raise RuntimeError(
+            "Fake QWEN providers are disabled outside APP_ENV=test or "
+            "QC_ALLOW_TEST_ADAPTER=true."
         )

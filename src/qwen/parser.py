@@ -46,6 +46,19 @@ def _make_fail_closed(engine: str, reason: str = "parse_error") -> QwenInspectio
     )
 
 
+def _deterministic_overall(items: list[InspectionItemResult], expected_count: int) -> str:
+    if expected_count == 0:
+        return "review_required"
+    item_results = [item.result for item in items]
+    if any(result == "fail" for result in item_results):
+        return "fail"
+    if any(result == "review_required" for result in item_results):
+        return "review_required"
+    if len(items) == expected_count and all(result == "pass" for result in item_results):
+        return "pass"
+    return "review_required"
+
+
 def parse_qwen_output(
     raw: str,
     expected_qc_point_ids: List[str],
@@ -68,6 +81,9 @@ def parse_qwen_output(
     Returns:
         QwenInspectionOutput (may be fail-closed if parsing fails)
     """
+    if not expected_qc_point_ids:
+        return _make_fail_closed(engine, reason="no_expected_qc_points")
+
     if not raw or not raw.strip():
         return _make_fail_closed(engine, reason="empty_response")
 
@@ -80,10 +96,7 @@ def parse_qwen_output(
     if not isinstance(data, dict):
         return _make_fail_closed(engine, reason="response_not_dict")
 
-    # Extract and validate required top-level keys
-    overall_result = data.get("overall_result")
-    if overall_result not in ("pass", "fail", "review_required"):
-        return _make_fail_closed(engine, reason=f"invalid_overall_result: {overall_result!r}")
+    model_overall_result = data.get("overall_result")
 
     raw_confidence = data.get("confidence", 0.0)
     try:
@@ -160,6 +173,13 @@ def parse_qwen_output(
         )
     else:
         fallback = FallbackInfo(used=False)
+
+    overall_result = _deterministic_overall(items_list, len(expected_qc_point_ids))
+    if model_overall_result not in ("pass", "fail", "review_required"):
+        fallback = FallbackInfo(
+            used=True,
+            reason=f"invalid_model_overall_result: {model_overall_result!r}",
+        )
 
     return QwenInspectionOutput(
         overall_result=overall_result,

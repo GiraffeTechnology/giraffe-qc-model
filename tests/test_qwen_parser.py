@@ -130,6 +130,7 @@ class TestMissingQcPoints:
         assert len(qp_003_items) == 1
         assert qp_003_items[0].result == "review_required"
         assert qp_003_items[0].confidence == 0.0
+        assert result.overall_result == "review_required"
 
     def test_all_items_present_when_some_missing(self):
         items = []
@@ -138,6 +139,13 @@ class TestMissingQcPoints:
         assert len(result.items) == len(EXPECTED_IDS)
         for item in result.items:
             assert item.result == "review_required"
+
+    def test_no_expected_qc_points_returns_review_required_with_no_items(self):
+        raw = _make_valid_json()
+        result = parse_qwen_output(raw, [], "cloud_qwen")
+        assert result.overall_result == "review_required"
+        assert result.items == []
+        assert result.fallback.used is True
 
 
 class TestHallucinatedQcPoints:
@@ -225,6 +233,82 @@ class TestInvalidJsonFailClosed:
         result = parse_qwen_output(raw, EXPECTED_IDS, "cloud_qwen")
         assert result.overall_result == "review_required"
 
+
+class TestDeterministicOverallResult:
+    def test_model_says_pass_but_one_item_fails_final_fail(self):
+        raw = _make_valid_json(
+            overall_result="pass",
+            items=[
+                {
+                    "qc_point_id": "qp_001",
+                    "qc_point_code": "COLOR_CHECK",
+                    "name": "Color Check",
+                    "result": "pass",
+                    "confidence": 0.9,
+                    "reason": "OK",
+                },
+                {
+                    "qc_point_id": "qp_002",
+                    "qc_point_code": "LABEL_CHECK",
+                    "name": "Label Check",
+                    "result": "fail",
+                    "confidence": 0.9,
+                    "reason": "Wrong label",
+                },
+                {
+                    "qc_point_id": "qp_003",
+                    "qc_point_code": "STITCH_CHECK",
+                    "name": "Stitch Check",
+                    "result": "pass",
+                    "confidence": 0.9,
+                    "reason": "OK",
+                },
+            ],
+        )
+        result = parse_qwen_output(raw, EXPECTED_IDS, "cloud_qwen")
+        assert result.overall_result == "fail"
+
+    def test_model_says_pass_but_one_expected_item_missing_final_review_required(self):
+        raw = _make_valid_json(
+            overall_result="pass",
+            items=[
+                {
+                    "qc_point_id": "qp_001",
+                    "qc_point_code": "COLOR_CHECK",
+                    "name": "Color Check",
+                    "result": "pass",
+                    "confidence": 0.9,
+                    "reason": "OK",
+                },
+                {
+                    "qc_point_id": "qp_002",
+                    "qc_point_code": "LABEL_CHECK",
+                    "name": "Label Check",
+                    "result": "pass",
+                    "confidence": 0.9,
+                    "reason": "OK",
+                },
+            ],
+        )
+        result = parse_qwen_output(raw, EXPECTED_IDS, "cloud_qwen")
+        assert result.overall_result == "review_required"
+
+    def test_model_says_fail_but_all_expected_items_pass_final_pass(self):
+        raw = _make_valid_json(overall_result="fail")
+        result = parse_qwen_output(raw, EXPECTED_IDS, "cloud_qwen")
+        assert result.overall_result == "pass"
+
+    def test_invalid_or_missing_items_do_not_pass(self):
+        raw = json.dumps({
+            "overall_result": "pass",
+            "confidence": 0.9,
+            "model_name": "test",
+            "items": "not-a-list",
+        })
+        result = parse_qwen_output(raw, EXPECTED_IDS, "cloud_qwen")
+        assert result.overall_result == "review_required"
+        assert all(item.result == "review_required" for item in result.items)
+
     def test_fail_closed_has_fallback_set(self):
         result = parse_qwen_output("garbage", EXPECTED_IDS, "test_engine")
         assert result.fallback.used is True
@@ -243,7 +327,7 @@ class TestConfidenceClamping:
             "model_name": "test",
             "items": [],
         })
-        result = parse_qwen_output(raw, [], "cloud_qwen")
+        result = parse_qwen_output(raw, ["qp_001"], "cloud_qwen")
         assert result.confidence == 1.0
 
     def test_confidence_below_0_clamped_to_0(self):
@@ -253,7 +337,7 @@ class TestConfidenceClamping:
             "model_name": "test",
             "items": [],
         })
-        result = parse_qwen_output(raw, [], "cloud_qwen")
+        result = parse_qwen_output(raw, ["qp_001"], "cloud_qwen")
         assert result.confidence == 0.0
 
     def test_item_confidence_clamped(self):

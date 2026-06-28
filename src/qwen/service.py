@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-from src.config import llm_real_calls_enabled, qc_engine_mode
+from src.config import fake_provider_allowed, llm_real_calls_enabled, qc_engine_mode
 from src.qwen.base import QwenQCProvider
 from src.qwen.router import QwenRouter
 from src.qwen.schema import (
@@ -22,10 +22,10 @@ class QwenQCService:
     """Service wrapper around QwenRouter for use in FastAPI routes.
 
     Provider selection is driven by QC_ENGINE_MODE:
-      fake            → FakeCloudQwenProvider (default; CI-safe)
+      fake            → FakeCloudQwenProvider only when test harness guard is enabled
       cloud_qwen_dev  → DashScopeQwenProvider when LLM_ENABLE_REAL_CALLS=true;
-                        falls back to FakeCloudQwenProvider when false
-      on_device_first → FakeCloudQwenProvider until Android device is available
+                        otherwise review_required through router
+      on_device_first → no server-side provider until real on-device/backend path exists
       backend_proxy   → DashScopeQwenProvider if LLM_ENABLE_REAL_CALLS=true
 
     An explicit cloud_provider constructor argument overrides mode selection.
@@ -55,14 +55,20 @@ class QwenQCService:
                     logger.debug("QC engine mode=%s, provider=DashScope, key=%s", mode, masked)
                     return provider
                 except Exception as exc:
-                    logger.warning("DashScope provider unavailable (%s) — falling back to fake", exc)
-                    return self._fake_provider()
+                    logger.warning("DashScope provider unavailable (%s) — deferring inspection", exc)
+                    return None
             else:
-                logger.debug("QC engine mode=%s but LLM_ENABLE_REAL_CALLS=false — using fake", mode)
-                return self._fake_provider()
+                logger.debug("QC engine mode=%s but LLM_ENABLE_REAL_CALLS=false — deferring inspection", mode)
+                return None
 
-        # on_device_first, fake, or unknown — safe default
-        return self._fake_provider()
+        if mode == "fake":
+            if fake_provider_allowed():
+                return self._fake_provider()
+            logger.warning("QC_ENGINE_MODE=fake ignored outside explicit test harness mode")
+            return None
+
+        # on_device_first, unknown, or default — safe server behavior.
+        return None
 
     @staticmethod
     def _fake_provider() -> QwenQCProvider:

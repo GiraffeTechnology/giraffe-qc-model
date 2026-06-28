@@ -37,47 +37,58 @@ def inspection_inputs():
 
 
 class TestDefaultMode:
-    def test_default_mode_is_fake_not_cloud(self, monkeypatch, inspection_inputs):
-        """By default (no QC_ENGINE_MODE set) the service uses the fake provider."""
+    def test_default_mode_has_no_provider_in_production(self, monkeypatch, inspection_inputs):
+        """By default production runtime must not select the fake provider."""
         monkeypatch.delenv("QC_ENGINE_MODE", raising=False)
+        monkeypatch.delenv("APP_ENV", raising=False)
+        monkeypatch.delenv("QC_ALLOW_TEST_ADAPTER", raising=False)
         monkeypatch.delenv("QWEN_CLOUD_ENABLED", raising=False)
         monkeypatch.delenv("LLM_ENABLE_REAL_CALLS", raising=False)
         monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
 
         svc = QwenQCService()
         provider = svc._get_provider()
-        assert isinstance(provider, FakeCloudQwenProvider)
+        assert provider is None
 
-    def test_default_mode_does_not_call_real_api(self, monkeypatch, inspection_inputs):
+    def test_default_mode_returns_review_required_not_fake_pass(self, monkeypatch, inspection_inputs):
         monkeypatch.delenv("QC_ENGINE_MODE", raising=False)
+        monkeypatch.delenv("APP_ENV", raising=False)
+        monkeypatch.delenv("QC_ALLOW_TEST_ADAPTER", raising=False)
         monkeypatch.delenv("LLM_ENABLE_REAL_CALLS", raising=False)
         monkeypatch.setenv("QWEN_CLOUD_ENABLED", "false")
 
         svc = QwenQCService()
-        # Should not raise even without a real API key
         result = svc.run_inspection(**inspection_inputs)
-        assert result.overall_result in ("pass", "fail", "review_required")
+        assert result.overall_result == "review_required"
+        assert result.engine == "router"
+        assert result.engine != "fake_cloud_qwen"
 
     def test_engine_never_local_qwen_mnn_from_service(self, monkeypatch, inspection_inputs):
         """Cloud or fake path must never mark engine as local_qwen_mnn."""
+        monkeypatch.setenv("APP_ENV", "test")
         monkeypatch.setenv("QC_ENGINE_MODE", "fake")
+        monkeypatch.setenv("QWEN_CLOUD_ENABLED", "true")
         svc = QwenQCService()
         result = svc.run_inspection(**inspection_inputs)
         assert result.engine != "local_qwen_mnn"
 
 
 class TestCloudQwenDevMode:
-    def test_cloud_qwen_dev_without_real_calls_uses_fake(self, monkeypatch):
-        """cloud_qwen_dev mode without LLM_ENABLE_REAL_CALLS=true must use fake."""
+    def test_cloud_qwen_dev_without_real_calls_returns_review_required(self, monkeypatch, inspection_inputs):
+        """cloud_qwen_dev without LLM_ENABLE_REAL_CALLS=true must not use fake."""
         monkeypatch.setenv("QC_ENGINE_MODE", "cloud_qwen_dev")
         monkeypatch.setenv("LLM_ENABLE_REAL_CALLS", "false")
+        monkeypatch.setenv("QWEN_CLOUD_ENABLED", "true")
 
         svc = QwenQCService()
         provider = svc._get_provider()
-        assert isinstance(provider, FakeCloudQwenProvider)
+        assert provider is None
+        result = svc.run_inspection(**inspection_inputs)
+        assert result.overall_result == "review_required"
+        assert result.engine != "fake_cloud_qwen"
 
-    def test_cloud_qwen_dev_without_key_uses_fake(self, monkeypatch):
-        """cloud_qwen_dev with real calls enabled but no key falls back to fake."""
+    def test_cloud_qwen_dev_without_key_uses_real_provider_error_path(self, monkeypatch):
+        """cloud_qwen_dev with real calls enabled but no key never falls back to fake."""
         monkeypatch.setenv("QC_ENGINE_MODE", "cloud_qwen_dev")
         monkeypatch.setenv("LLM_ENABLE_REAL_CALLS", "true")
         monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
@@ -87,23 +98,21 @@ class TestCloudQwenDevMode:
         monkeypatch.setenv("ALLOW_SEND_IMAGES_TO_CLOUD_QWEN", "true")
 
         svc = QwenQCService()
-        # Without key, DashScope provider will fail to inspect → service falls back
+        # Without key, DashScope provider is selected but inspection fails closed.
         provider = svc._get_provider()
-        # Provider may be DashScope (key=None) or Fake depending on impl;
-        # what matters is that running inspection doesn't silently return pass
-        # We just check it returns a valid QwenQCProvider without crashing
         assert provider is not None
 
-    def test_on_device_first_mode_uses_fake(self, monkeypatch):
-        """on_device_first mode uses fake provider until real MNN is available."""
+    def test_on_device_first_mode_has_no_server_fake(self, monkeypatch):
+        """on_device_first mode does not use a server-side fake provider."""
         monkeypatch.setenv("QC_ENGINE_MODE", "on_device_first")
         monkeypatch.setenv("LLM_ENABLE_REAL_CALLS", "false")
 
         svc = QwenQCService()
         provider = svc._get_provider()
-        assert isinstance(provider, FakeCloudQwenProvider)
+        assert provider is None
 
-    def test_fake_mode_always_uses_fake(self, monkeypatch):
+    def test_fake_mode_uses_fake_only_in_test_harness(self, monkeypatch):
+        monkeypatch.setenv("APP_ENV", "test")
         monkeypatch.setenv("QC_ENGINE_MODE", "fake")
         monkeypatch.setenv("LLM_ENABLE_REAL_CALLS", "true")
 
@@ -111,11 +120,19 @@ class TestCloudQwenDevMode:
         provider = svc._get_provider()
         assert isinstance(provider, FakeCloudQwenProvider)
 
-    def test_unknown_mode_falls_back_to_fake(self, monkeypatch):
+    def test_fake_mode_rejected_in_production(self, monkeypatch):
+        monkeypatch.delenv("APP_ENV", raising=False)
+        monkeypatch.delenv("QC_ALLOW_TEST_ADAPTER", raising=False)
+        monkeypatch.setenv("QC_ENGINE_MODE", "fake")
+
+        svc = QwenQCService()
+        assert svc._get_provider() is None
+
+    def test_unknown_mode_defers_inspection(self, monkeypatch):
         monkeypatch.setenv("QC_ENGINE_MODE", "some_unknown_future_mode")
         svc = QwenQCService()
         provider = svc._get_provider()
-        assert isinstance(provider, FakeCloudQwenProvider)
+        assert provider is None
 
 
 class TestDashScopeProviderGuards:

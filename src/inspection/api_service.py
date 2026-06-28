@@ -26,7 +26,8 @@ from src.inspection.service import (
     submit_incidental_finding,
 )
 
-_VALID_RESULTS = {"pass", "fail", "not_visible", "low_confidence", "unsupported"}
+_VALID_RESULTS = {"pass", "fail", "not_visible", "low_confidence", "unsupported", "missing"}
+_VALID_SEVERITIES = {"minor", "major", "critical"}
 
 
 def _uid() -> str:
@@ -73,7 +74,10 @@ def attach_inspection_media(
 ):
     """Attach media to an existing inspection job."""
     from src.db.execution_models import QCInspectionMedia
-    job = db.query(QCInspectionJob).filter_by(id=job_id).one()
+    job_filters = {"id": job_id}
+    if tenant_id is not None:
+        job_filters["tenant_id"] = tenant_id
+    job = db.query(QCInspectionJob).filter_by(**job_filters).one()
     tid = tenant_id or job.tenant_id
 
     media = QCInspectionMedia(
@@ -127,7 +131,10 @@ def ingest_model_output(
     """
     from src.db.execution_models import QCInspectionMedia
 
-    job = db.query(QCInspectionJob).filter_by(id=job_id).one()
+    job_filters = {"id": job_id}
+    if tenant_id is not None:
+        job_filters["tenant_id"] = tenant_id
+    job = db.query(QCInspectionJob).filter_by(**job_filters).one()
     tid = tenant_id or job.tenant_id
 
     # Check 6: tenant_id mismatch
@@ -140,7 +147,7 @@ def ingest_model_output(
     if media_id is not None:
         media_row = (
             db.query(QCInspectionMedia)
-            .filter_by(id=media_id, job_id=job_id)
+            .filter_by(id=media_id, job_id=job_id, tenant_id=job.tenant_id)
             .first()
         )
         if media_row is None:
@@ -150,7 +157,7 @@ def ingest_model_output(
             )
 
     # Build point_code → detection_point lookup for this job's revision
-    points = get_active_detection_points_for_job(db, job_id)
+    points = get_active_detection_points_for_job(db, job_id, tenant_id=job.tenant_id)
     code_to_point: dict[str, QCDetectionPoint] = {p.point_code: p for p in points}
 
     checkpoint_results = raw_output.get("checkpoint_results", [])
@@ -180,6 +187,14 @@ def ingest_model_output(
             raise ValueError(
                 f"Invalid checkpoint result {result_val!r} for {code!r}. "
                 f"Allowed: {sorted(_VALID_RESULTS)}"
+            )
+
+    for finding in incidental_findings:
+        severity = finding.get("severity", "minor")
+        if severity not in _VALID_SEVERITIES:
+            raise ValueError(
+                f"Invalid incidental finding severity {severity!r}. "
+                f"Allowed: {sorted(_VALID_SEVERITIES)}"
             )
 
     # Check 4: no QCCheckpointResult already exists for any of these detection points in this job
@@ -252,20 +267,23 @@ def ingest_model_output(
 # ── Finalization ──────────────────────────────────────────────────────────────
 
 
-def finalize_inspection_job(db: Session, job_id: str) -> QCFinalReport:
+def finalize_inspection_job(db: Session, job_id: str, tenant_id: Optional[str] = None) -> QCFinalReport:
     """Apply no-guess policy and write final report.  Delegates to domain service."""
-    return finalize_job(db, job_id)
+    return finalize_job(db, job_id, tenant_id=tenant_id)
 
 
 # ── Report retrieval ──────────────────────────────────────────────────────────
 
 
-def get_inspection_report(db: Session, job_id: str) -> QCFinalReport:
+def get_inspection_report(db: Session, job_id: str, tenant_id: Optional[str] = None) -> QCFinalReport:
     """Return the final report for a completed job.
 
     Raises ValueError if no report exists (job not yet finalized).
     """
-    report = db.query(QCFinalReport).filter_by(job_id=job_id).first()
+    report_filters = {"job_id": job_id}
+    if tenant_id is not None:
+        report_filters["tenant_id"] = tenant_id
+    report = db.query(QCFinalReport).filter_by(**report_filters).first()
     if report is None:
         raise ValueError(f"No final report for job {job_id!r}. Call finalize first.")
     return report

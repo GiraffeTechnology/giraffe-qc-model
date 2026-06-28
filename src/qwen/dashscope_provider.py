@@ -43,6 +43,19 @@ def _encode_image_base64(path: str) -> str:
         return base64.b64encode(f.read()).decode("utf-8")
 
 
+def _require_readable_image(path: str, label: str) -> None:
+    if not path:
+        raise RuntimeError(f"{label} local_path is required")
+    image_path = Path(path)
+    if not image_path.is_file():
+        raise RuntimeError(f"{label} is missing or not a file: {path}")
+    try:
+        with image_path.open("rb") as f:
+            f.read(1)
+    except OSError as exc:
+        raise RuntimeError(f"{label} is unreadable: {path}") from exc
+
+
 class DashScopeQwenProvider(QwenQCProvider):
     """QC provider that calls the DashScope QWEN-VL cloud API.
 
@@ -92,6 +105,14 @@ class DashScopeQwenProvider(QwenQCProvider):
         """Run QC inspection via DashScope QWEN-VL API."""
         self._check_guards()
 
+        if not standard_photos:
+            raise RuntimeError("No standard photos supplied; inspection requires reference inputs")
+        if not qc_points:
+            raise RuntimeError("No QC detection points supplied; inspection requires detection points")
+        for photo in standard_photos:
+            _require_readable_image(photo.local_path, f"Standard photo {photo.photo_id}")
+        _require_readable_image(captured_photo.local_path, f"Capture photo {captured_photo.photo_id}")
+
         expected_ids = [p.qc_point_id for p in qc_points]
 
         # Build output schema for the prompt
@@ -120,25 +141,19 @@ class DashScopeQwenProvider(QwenQCProvider):
 
         # Add standard photos as images
         for photo in standard_photos:
-            try:
-                img_b64 = _encode_image_base64(photo.local_path)
-                # Detect MIME type from extension
-                ext = Path(photo.local_path).suffix.lower()
-                mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
-                content.append({
-                    "image": f"data:{mime};base64,{img_b64}"
-                })
-            except (FileNotFoundError, IOError):
-                pass  # Skip missing images; model will work with what's available
+            img_b64 = _encode_image_base64(photo.local_path)
+            # Detect MIME type from extension
+            ext = Path(photo.local_path).suffix.lower()
+            mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
+            content.append({
+                "image": f"data:{mime};base64,{img_b64}"
+            })
 
         # Add capture photo
-        try:
-            cap_b64 = _encode_image_base64(captured_photo.local_path)
-            ext = Path(captured_photo.local_path).suffix.lower()
-            mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
-            content.append({"image": f"data:{mime};base64,{cap_b64}"})
-        except (FileNotFoundError, IOError) as e:
-            raise RuntimeError(f"Cannot read capture photo: {e}") from e
+        cap_b64 = _encode_image_base64(captured_photo.local_path)
+        ext = Path(captured_photo.local_path).suffix.lower()
+        mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
+        content.append({"image": f"data:{mime};base64,{cap_b64}"})
 
         content.append({"text": prompt_text})
 
