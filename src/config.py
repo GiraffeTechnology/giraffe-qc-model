@@ -37,12 +37,20 @@ def qc_engine_mode() -> str:
                         requires LLM_ENABLE_REAL_CALLS=true + DASHSCOPE_API_KEY
       on_device_first — final production mode (Android MNN primary, cloud fallback)
       backend_proxy   — cloud API is the primary path (explicit override)
-      fake            — always use deterministic fake provider (CI / unit tests)
+      fake            — deterministic fake provider; test harness only
 
-    Default: "fake" (safe default; never hits real model or API without opt-in)
+    Default: "on_device_first" (production-safe; never returns fake pass)
     """
-    return os.getenv("QC_ENGINE_MODE", "fake").lower()
+    return os.getenv("QC_ENGINE_MODE", "on_device_first").lower()
 
 
 def llm_real_calls_enabled() -> bool:
     return os.getenv("LLM_ENABLE_REAL_CALLS", "false").lower() == "true"
+
+
+def app_env() -> str:
+    return os.getenv("APP_ENV", "production").lower()
+
+
+def fake_provider_allowed() -> bool:
+    return app_env() == "test" or os.getenv("QC_ALLOW_TEST_ADAPTER", "false").lower() == "true"

@@ -20,8 +20,11 @@ from src.db.qc_models import (  # noqa: F401 — registers new tables
     QCPoint,
     StandardPhoto,
 )
+import src.db.sku_models  # noqa: F401
+import src.db.execution_models  # noqa: F401
 from src.api.main import app
 from src.api.deps import get_db_dep
+from src.db.seed_data import seed_flower_brooch
 
 
 @pytest.fixture(scope="module")
@@ -237,3 +240,82 @@ class TestInspectionTenantIsolation:
             params={"tenant_id": TENANT_B}
         )
         assert resp.status_code == 404
+
+
+class TestInspectionJobTenantIsolation:
+    @pytest.fixture(autouse=True)
+    def setup_job(self, client, db_session_factory):
+        session = db_session_factory()
+        try:
+            sku = seed_flower_brooch(session, tenant_id=TENANT_A)
+            self.sku_id = sku.id
+        finally:
+            session.close()
+
+        job_resp = client.post(
+            "/api/v1/qc/inspection-jobs",
+            json={"tenant_id": TENANT_A, "sku_id": self.sku_id, "job_ref": "TENANT-A-JOB"},
+        )
+        assert job_resp.status_code == 201, job_resp.text
+        self.job_id = job_resp.json()["id"]
+
+    def test_get_job_cross_tenant_returns_404(self, client):
+        resp = client.get(
+            f"/api/v1/qc/inspection-jobs/{self.job_id}",
+            params={"tenant_id": TENANT_B},
+        )
+        assert resp.status_code == 404
+
+    def test_add_media_cross_tenant_returns_404(self, client):
+        resp = client.post(
+            f"/api/v1/qc/inspection-jobs/{self.job_id}/media",
+            json={"tenant_id": TENANT_B, "image_url": "http://example.invalid/capture.jpg"},
+        )
+        assert resp.status_code == 404
+
+    def test_model_results_cross_tenant_returns_404(self, client):
+        resp = client.post(
+            f"/api/v1/qc/inspection-jobs/{self.job_id}/model-results",
+            json={
+                "tenant_id": TENANT_B,
+                "provider": "test",
+                "model_name": "test-model",
+                "raw_output": {"checkpoint_results": [], "incidental_findings": []},
+            },
+        )
+        assert resp.status_code == 404
+
+    def test_checkpoint_results_cross_tenant_returns_404(self, client):
+        resp = client.post(
+            f"/api/v1/qc/inspection-jobs/{self.job_id}/checkpoint-results",
+            json={"tenant_id": TENANT_B, "detection_point_id": "does-not-matter", "result": "pass"},
+        )
+        assert resp.status_code == 404
+
+    def test_incidental_findings_cross_tenant_returns_404(self, client):
+        resp = client.post(
+            f"/api/v1/qc/inspection-jobs/{self.job_id}/incidental-findings",
+            json={"tenant_id": TENANT_B, "description": "cross-tenant probe", "severity": "minor"},
+        )
+        assert resp.status_code == 404
+
+    def test_finalize_cross_tenant_returns_404(self, client):
+        resp = client.post(
+            f"/api/v1/qc/inspection-jobs/{self.job_id}/finalize",
+            json={"tenant_id": TENANT_B},
+        )
+        assert resp.status_code == 404
+
+    def test_report_cross_tenant_returns_404(self, client):
+        resp = client.get(
+            f"/api/v1/qc/inspection-jobs/{self.job_id}/report",
+            params={"tenant_id": TENANT_B},
+        )
+        assert resp.status_code == 404
+
+    def test_create_job_missing_tenant_id_returns_422(self, client):
+        resp = client.post(
+            "/api/v1/qc/inspection-jobs",
+            json={"sku_id": self.sku_id, "job_ref": "MISSING-TENANT"},
+        )
+        assert resp.status_code == 422

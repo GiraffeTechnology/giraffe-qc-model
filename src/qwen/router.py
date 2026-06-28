@@ -23,6 +23,9 @@ from src.qwen.schema import (
 )
 
 
+_FINAL_RESULTS = ("pass", "fail", "review_required")
+
+
 def _cloud_enabled() -> bool:
     return os.getenv("QWEN_CLOUD_ENABLED", "false").lower() == "true"
 
@@ -85,6 +88,62 @@ def _make_fail(
     )
 
 
+def _normalize_provider_output(
+    result: QwenInspectionOutput,
+    qc_points: List[QcPointInput],
+) -> QwenInspectionOutput:
+    expected_ids = [p.qc_point_id for p in qc_points]
+    expected_id_set = set(expected_ids)
+    by_id: dict[str, InspectionItemResult] = {}
+
+    for item in result.items:
+        if item.qc_point_id not in expected_id_set:
+            continue
+        item_result = item.result if item.result in _FINAL_RESULTS else "review_required"
+        by_id[item.qc_point_id] = item.model_copy(update={"result": item_result})
+
+    missing_ids = []
+    for point in qc_points:
+        if point.qc_point_id not in by_id:
+            missing_ids.append(point.qc_point_id)
+            by_id[point.qc_point_id] = InspectionItemResult(
+                qc_point_id=point.qc_point_id,
+                qc_point_code=point.qc_point_code,
+                name=point.name,
+                result="review_required",
+                confidence=0.0,
+                reason="QC point result not provided by provider",
+                evidence={},
+            )
+
+    items = [by_id[point.qc_point_id] for point in qc_points]
+    item_results = [item.result for item in items]
+    if any(item_result == "fail" for item_result in item_results):
+        overall = "fail"
+    elif any(item_result == "review_required" for item_result in item_results):
+        overall = "review_required"
+    elif len(items) == len(qc_points) and all(item_result == "pass" for item_result in item_results):
+        overall = "pass"
+    else:
+        overall = "review_required"
+
+    fallback = result.fallback
+    summary = result.summary
+    if missing_ids and overall == "review_required":
+        reason = "provider_output_missing_qc_points"
+        fallback = FallbackInfo(used=True, reason=reason)
+        summary = summary or "Inspection deferred: provider output was incomplete"
+
+    return result.model_copy(
+        update={
+            "overall_result": overall,
+            "items": items,
+            "fallback": fallback,
+            "summary": summary,
+        }
+    )
+
+
 class QwenRouter:
     """Routes QC inspection requests to available providers.
 
@@ -123,6 +182,13 @@ class QwenRouter:
         Returns:
             QwenInspectionOutput
         """
+        if not qc_points:
+            return _make_review_required(
+                qc_points,
+                reason="no_detection_points_defined",
+                engine="router",
+            )
+
         # §4.5.4: on-device FAIL is final — never escalate to cloud to produce a pass
         if simulated_on_device_result == "fail" and self.on_device_fail_is_final:
             return _make_fail(qc_points, reason="on_device_fail_is_final", engine="router")
@@ -148,7 +214,7 @@ class QwenRouter:
                 qc_points=qc_points,
                 context=context,
             )
-            return result
+            return _normalize_provider_output(result, qc_points)
         except (RuntimeError, TimeoutError, Exception) as e:
             return _make_review_required(
                 qc_points,

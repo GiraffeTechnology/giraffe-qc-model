@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_db_dep
@@ -19,11 +19,20 @@ from src.inspection.api_service import (
 router = APIRouter(prefix="/api/v1/qc/inspection-jobs", tags=["qc-inspection"])
 
 
+def _get_job_or_404(db: Session, job_id: str, tenant_id: str):
+    from src.db.execution_models import QCInspectionJob
+
+    job = db.query(QCInspectionJob).filter_by(id=job_id, tenant_id=tenant_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Inspection job not found")
+    return job
+
+
 # ── Request / Response schemas ────────────────────────────────────────────────
 
 
 class CreateJobRequest(BaseModel):
-    tenant_id: str = "default"
+    tenant_id: str = Field(min_length=1)
     sku_id: str
     job_ref: Optional[str] = None
     created_by: Optional[str] = None
@@ -31,7 +40,7 @@ class CreateJobRequest(BaseModel):
 
 
 class AttachMediaRequest(BaseModel):
-    tenant_id: Optional[str] = None
+    tenant_id: str = Field(min_length=1)
     image_url: Optional[str] = None
     local_path: Optional[str] = None
     angle: Optional[str] = None
@@ -58,17 +67,17 @@ class IncidentalFindingInput(BaseModel):
 
 
 class ModelOutputRequest(BaseModel):
+    tenant_id: str = Field(min_length=1)
     provider: str
     model_name: str
     raw_output: Dict[str, Any]
     media_id: Optional[str] = None
     http_status: Optional[int] = None
     elapsed_ms: Optional[int] = None
-    tenant_id: Optional[str] = None
 
 
 class SubmitCheckpointRequest(BaseModel):
-    tenant_id: Optional[str] = None
+    tenant_id: str = Field(min_length=1)
     detection_point_id: str
     result: str
     observed_value: Optional[str] = None
@@ -77,7 +86,7 @@ class SubmitCheckpointRequest(BaseModel):
 
 
 class SubmitFindingRequest(BaseModel):
-    tenant_id: Optional[str] = None
+    tenant_id: str = Field(min_length=1)
     description: str
     severity: str = "minor"
     location_hint: Optional[str] = None
@@ -101,6 +110,10 @@ class ReportResponse(BaseModel):
     checkpoint_results_count: int
     findings_count: int
     summary_text: Optional[str]
+
+
+class TenantRequest(BaseModel):
+    tenant_id: str = Field(min_length=1)
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -136,12 +149,10 @@ def create_job(
 @router.get("/{job_id}")
 def get_job(
     job_id: str,
+    tenant_id: str = Query(min_length=1),
     db: Session = Depends(get_db_dep),
 ) -> JobResponse:
-    from src.db.execution_models import QCInspectionJob
-    job = db.query(QCInspectionJob).filter_by(id=job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Inspection job not found")
+    job = _get_job_or_404(db, job_id, tenant_id)
     return JobResponse(
         id=job.id,
         tenant_id=job.tenant_id,
@@ -159,6 +170,7 @@ def add_job_media(
     body: AttachMediaRequest,
     db: Session = Depends(get_db_dep),
 ) -> dict:
+    _get_job_or_404(db, job_id, body.tenant_id)
     try:
         media = attach_inspection_media(
             db,
@@ -184,6 +196,7 @@ def ingest_model_results(
     body: ModelOutputRequest,
     db: Session = Depends(get_db_dep),
 ) -> dict:
+    _get_job_or_404(db, job_id, body.tenant_id)
     try:
         model_result = ingest_model_output(
             db,
@@ -208,6 +221,7 @@ def submit_checkpoint(
     db: Session = Depends(get_db_dep),
 ) -> dict:
     from src.inspection.service import submit_checkpoint_result
+    _get_job_or_404(db, job_id, body.tenant_id)
     try:
         cr = submit_checkpoint_result(
             db,
@@ -231,6 +245,7 @@ def submit_finding(
     db: Session = Depends(get_db_dep),
 ) -> dict:
     from src.inspection.service import submit_incidental_finding
+    _get_job_or_404(db, job_id, body.tenant_id)
     try:
         finding = submit_incidental_finding(
             db,
@@ -249,14 +264,12 @@ def submit_finding(
 @router.post("/{job_id}/finalize")
 def finalize_job_endpoint(
     job_id: str,
+    body: TenantRequest,
     db: Session = Depends(get_db_dep),
 ) -> ReportResponse:
-    from src.db.execution_models import QCInspectionJob
-    job = db.query(QCInspectionJob).filter_by(id=job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Inspection job not found")
+    _get_job_or_404(db, job_id, body.tenant_id)
     try:
-        report = finalize_inspection_job(db, job_id)
+        report = finalize_inspection_job(db, job_id, tenant_id=body.tenant_id)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return ReportResponse(
@@ -272,10 +285,12 @@ def finalize_job_endpoint(
 @router.get("/{job_id}/report")
 def get_report(
     job_id: str,
+    tenant_id: str = Query(min_length=1),
     db: Session = Depends(get_db_dep),
 ) -> ReportResponse:
+    _get_job_or_404(db, job_id, tenant_id)
     try:
-        report = get_inspection_report(db, job_id)
+        report = get_inspection_report(db, job_id, tenant_id=tenant_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return ReportResponse(

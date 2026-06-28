@@ -16,6 +16,8 @@ from src.db.execution_models import (
 
 # Results that require human review (cannot observe, but not proved wrong)
 _REVIEW_REQUIRED_RESULTS = {"missing", "not_visible", "low_confidence", "unsupported"}
+_VALID_CHECKPOINT_RESULTS = {"pass", "fail", "missing", "not_visible", "low_confidence", "unsupported"}
+_VALID_FINDING_SEVERITIES = {"minor", "major", "critical"}
 
 
 def _uid() -> str:
@@ -91,7 +93,7 @@ def confirm_standard_revision(
     tenant_id: str,
 ) -> QCSkuStandardRevision:
     """Activate a draft/pending_confirmation revision, archiving the prior active one."""
-    revision = db.query(QCSkuStandardRevision).filter_by(id=revision_id).one()
+    revision = db.query(QCSkuStandardRevision).filter_by(id=revision_id, tenant_id=tenant_id).one()
 
     # Archive the previously active revision
     prior = (
@@ -111,6 +113,7 @@ def confirm_standard_revision(
             actor=confirmed_by,
             details_json={"superseded_by": revision.revision_no},
         ))
+        db.flush()
 
     revision.status = "active"
     revision.confirmed_by = confirmed_by
@@ -177,10 +180,13 @@ def create_inspection_job(
 
 
 def get_active_detection_points_for_job(
-    db: Session, job_id: str
+    db: Session, job_id: str, tenant_id: Optional[str] = None
 ) -> list[QCDetectionPoint]:
     """Return active detection points for the job's snapshotted standard revision."""
-    job = db.query(QCInspectionJob).filter_by(id=job_id).one()
+    filters = {"id": job_id}
+    if tenant_id is not None:
+        filters["tenant_id"] = tenant_id
+    job = db.query(QCInspectionJob).filter_by(**filters).one()
     return (
         db.query(QCDetectionPoint)
         .filter_by(
@@ -210,7 +216,13 @@ def submit_checkpoint_result(
     - the detection point does not belong to the job's snapshotted revision/SKU/tenant
     - a result for this (job_id, detection_point_id) pair already exists
     """
-    job = db.query(QCInspectionJob).filter_by(id=job_id).one()
+    if result not in _VALID_CHECKPOINT_RESULTS:
+        raise ValueError(f"Invalid checkpoint result {result!r}. Allowed: {sorted(_VALID_CHECKPOINT_RESULTS)}")
+
+    job_filters = {"id": job_id}
+    if tenant_id is not None:
+        job_filters["tenant_id"] = tenant_id
+    job = db.query(QCInspectionJob).filter_by(**job_filters).one()
     tid = tenant_id or job.tenant_id
 
     # Validate detection point belongs to this job's snapshotted revision
@@ -277,7 +289,13 @@ def submit_incidental_finding(
     tenant_id: Optional[str] = None,
 ) -> QCIncidentalFinding:
     """Record an incidental finding (defect not tied to a named checkpoint)."""
-    job = db.query(QCInspectionJob).filter_by(id=job_id).one()
+    if severity not in _VALID_FINDING_SEVERITIES:
+        raise ValueError(f"Invalid finding severity {severity!r}. Allowed: {sorted(_VALID_FINDING_SEVERITIES)}")
+
+    job_filters = {"id": job_id}
+    if tenant_id is not None:
+        job_filters["tenant_id"] = tenant_id
+    job = db.query(QCInspectionJob).filter_by(**job_filters).one()
     tid = tenant_id or job.tenant_id
 
     finding = QCIncidentalFinding(
@@ -295,7 +313,7 @@ def submit_incidental_finding(
     return finding
 
 
-def finalize_job(db: Session, job_id: str) -> QCFinalReport:
+def finalize_job(db: Session, job_id: str, tenant_id: Optional[str] = None) -> QCFinalReport:
     """Apply the no-guess QC policy and write a QCFinalReport.
 
     Policy:
@@ -308,16 +326,22 @@ def finalize_job(db: Session, job_id: str) -> QCFinalReport:
 
     Idempotent: if a final report already exists for a completed job, returns it unchanged.
     """
-    job = db.query(QCInspectionJob).filter_by(id=job_id).one()
+    job_filters = {"id": job_id}
+    if tenant_id is not None:
+        job_filters["tenant_id"] = tenant_id
+    job = db.query(QCInspectionJob).filter_by(**job_filters).one()
 
     # Idempotency: return existing report if job is already finalized
-    existing_report = db.query(QCFinalReport).filter_by(job_id=job_id).first()
+    report_filters = {"job_id": job_id}
+    if tenant_id is not None:
+        report_filters["tenant_id"] = tenant_id
+    existing_report = db.query(QCFinalReport).filter_by(**report_filters).first()
     if existing_report is not None and job.status in ("pass", "fail", "review_required"):
         return existing_report
 
-    points = get_active_detection_points_for_job(db, job_id)
+    points = get_active_detection_points_for_job(db, job_id, tenant_id=job.tenant_id)
     existing_results = (
-        db.query(QCCheckpointResult).filter_by(job_id=job_id).all()
+        db.query(QCCheckpointResult).filter_by(job_id=job_id, tenant_id=job.tenant_id).all()
     )
     result_by_point = {cr.detection_point_id: cr for cr in existing_results}
 
@@ -342,10 +366,12 @@ def finalize_job(db: Session, job_id: str) -> QCFinalReport:
         result_by_point[pt.id].result in _REVIEW_REQUIRED_RESULTS for pt in points
     )
 
-    findings = db.query(QCIncidentalFinding).filter_by(job_id=job_id).all()
+    findings = db.query(QCIncidentalFinding).filter_by(job_id=job_id, tenant_id=job.tenant_id).all()
     has_serious_finding = any(f.severity in ("major", "critical") for f in findings)
 
-    if has_fail:
+    if not points:
+        verdict = "review_required"
+    elif has_fail:
         verdict = "fail"
     elif has_review_required or has_serious_finding:
         verdict = "review_required"
@@ -380,6 +406,8 @@ def finalize_job(db: Session, job_id: str) -> QCFinalReport:
 
 def _build_summary(points, result_by_point, findings, verdict: str) -> str:
     lines = [f"Verdict: {verdict}"]
+    if not points:
+        lines.append("No active detection points are defined for this job's standard revision.")
     for pt in points:
         cr = result_by_point.get(pt.id)
         r = cr.result if cr else "missing"
