@@ -9,24 +9,39 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 
-/** Stub MnnRuntimeLoader that cannot actually be constructed without Android context. */
-private class FakeRuntimeLoader(isReady: Boolean) {
-    val runtimeState: StateFlow<MnnRuntimeState> =
-        MutableStateFlow(if (isReady) MnnRuntimeState.Ready else MnnRuntimeState.NotReady)
+/**
+ * Fake runtime so the REAL PadInspectionCoordinator can be exercised without an
+ * Android Context (MnnRuntimeLoader requires one). This is what makes the
+ * MnnRuntime seam valuable: the coordinator's fail-closed logic is tested
+ * directly, not via a re-implemented copy.
+ */
+private class FakeMnnRuntime(state: MnnRuntimeState) : MnnRuntime {
+    override val runtimeState: StateFlow<MnnRuntimeState> = MutableStateFlow(state)
 }
 
-private class FakeQwenInspector(
+/** Records the inputs it was called with so tests can assert real data was passed. */
+private class RecordingQwenInspector(
     private val output: QwenInspectionOutput? = null,
 ) : QwenInspector {
     override val engineName = "fake_local"
     override val modelName  = "Qwen3-VL-2B-Instruct-MNN"
+    var lastStandardPhotos: List<StandardPhotoInput>? = null
+    var lastQcPoints: List<QcPointInput>? = null
+    var lastContext: InspectionContext? = null
+    var called = false
+
     override suspend fun inspect(
         standardPhotos: List<StandardPhotoInput>,
         capturedPhoto: CapturePhotoInput,
         qcPoints: List<QcPointInput>,
         context: InspectionContext,
-    ): QwenInspectionOutput = output
-        ?: throw UnsupportedOperationException("not provisioned")
+    ): QwenInspectionOutput {
+        called = true
+        lastStandardPhotos = standardPhotos
+        lastQcPoints = qcPoints
+        lastContext = context
+        return output ?: throw UnsupportedOperationException("not provisioned")
+    }
 }
 
 private fun makeOutput(result: String) = QwenInspectionOutput(
@@ -39,10 +54,35 @@ private fun makeOutput(result: String) = QwenInspectionOutput(
     summary       = "Test summary",
 )
 
-private fun makeTask() = QcTask(
-    sku            = Sku("sku-1", "ITEM-001", "Widget"),
-    confirmedByUser = true,
-    resolvedBy     = SkuResolutionMethod.MANUAL_ITEM_NUMBER,
+private fun makeStandardPhotos() =
+    listOf(StandardPhotoInput(photoId = "std-1", localPath = "/factory/std-1.jpg", angle = "front"))
+
+private fun makeQcPoints() = listOf(
+    QcPointInput(
+        qcPointId   = "p1",
+        qcPointCode = "COLOR",
+        name        = "Color",
+        description = "Color must match standard",
+    ),
+)
+
+private fun makeTask(
+    standardPhotos: List<StandardPhotoInput> = makeStandardPhotos(),
+    qcPoints: List<QcPointInput> = makeQcPoints(),
+) = QcTask(
+    sku = Sku(
+        id          = "sku-1",
+        itemNumber  = "ITEM-001",
+        name        = "Widget",
+        standardPhotos = standardPhotos,
+        detectionPoints = qcPoints,
+    ),
+    confirmedByUser          = true,
+    resolvedBy               = SkuResolutionMethod.MANUAL_ITEM_NUMBER,
+    tenantId                 = "pad-tenant",
+    activeStandardRevisionId = "rev-99",
+    standardPhotos           = standardPhotos,
+    qcPoints                 = qcPoints,
 )
 
 private fun makePhoto() = CapturedPhoto(
@@ -53,131 +93,90 @@ private fun makePhoto() = CapturedPhoto(
     boundingBox  = NormalizedBox(0.5f, 0.5f, 0.4f, 0.3f),
 )
 
-/**
- * Uses a reflective stub because MnnRuntimeLoader requires Android Context.
- * Tests the coordinator logic by calling inspect() directly with fakes.
- */
 class PadInspectionCoordinatorTest {
 
-    // Helper: build coordinator using the FakeQwenInspector but a REAL
-    // MnnRuntimeLoader state flow. We test the coordinator logic by wiring
-    // a fake inspector + stubbing the runtimeState via FakeRuntimeLoader fields.
-    // Because MnnRuntimeLoader cannot be constructed without Context, we test
-    // PadInspectionCoordinator behaviour indirectly through its business logic.
-
     @Test fun `MNN not ready returns MNN_PENDING`() = runTest {
-        // Use a thin wrapper that mimics coordinator behaviour without real MnnRuntimeLoader.
-        val coord = object {
-            private val runtimeState: MnnRuntimeState = MnnRuntimeState.NotReady
-            suspend fun inspect(task: QcTask, photo: CapturedPhoto): PadInspectionResult {
-                if (runtimeState !is MnnRuntimeState.Ready) {
-                    return PadInspectionResult(
-                        overallResult     = "MNN_PENDING",
-                        reason            = "Local MNN runtime not ready",
-                        modelName         = "Qwen3-VL-2B-Instruct-MNN",
-                        localOnly         = true,
-                        cloudInferenceUsed = false,
-                        capturedImagePath = photo.rawImagePath,
-                    )
-                }
-                return PadInspectionResult(
-                    overallResult     = "ACCEPTED",
-                    reason            = "",
-                    modelName         = "Qwen3-VL-2B-Instruct-MNN",
-                    localOnly         = true,
-                    cloudInferenceUsed = false,
-                    capturedImagePath = photo.rawImagePath,
-                )
-            }
-        }
+        val inspector = RecordingQwenInspector(makeOutput("pass"))
+        val coord = PadInspectionCoordinator(inspector, FakeMnnRuntime(MnnRuntimeState.NotReady))
         val result = coord.inspect(makeTask(), makePhoto())
         assertEquals("MNN_PENDING", result.overallResult)
         assertFalse(result.cloudInferenceUsed)
         assertTrue(result.localOnly)
+        assertFalse("inspector must not run when runtime is not ready", inspector.called)
     }
 
     @Test fun `inspector pass returns ACCEPTED`() = runTest {
-        val inspector = FakeQwenInspector(makeOutput("pass"))
-        val result = inspectWith(inspector, MnnRuntimeState.Ready)
+        val inspector = RecordingQwenInspector(makeOutput("pass"))
+        val coord = PadInspectionCoordinator(inspector, FakeMnnRuntime(MnnRuntimeState.Ready))
+        val result = coord.inspect(makeTask(), makePhoto())
         assertEquals("ACCEPTED", result.overallResult)
         assertFalse(result.cloudInferenceUsed)
         assertTrue(result.localOnly)
     }
 
     @Test fun `inspector fail returns NOT_ACCEPTED`() = runTest {
-        val inspector = FakeQwenInspector(makeOutput("fail"))
-        val result = inspectWith(inspector, MnnRuntimeState.Ready)
-        assertEquals("NOT_ACCEPTED", result.overallResult)
+        val inspector = RecordingQwenInspector(makeOutput("fail"))
+        val coord = PadInspectionCoordinator(inspector, FakeMnnRuntime(MnnRuntimeState.Ready))
+        assertEquals("NOT_ACCEPTED", coord.inspect(makeTask(), makePhoto()).overallResult)
     }
 
     @Test fun `inspector review_required returns review_required`() = runTest {
-        val inspector = FakeQwenInspector(makeOutput("review_required"))
-        val result = inspectWith(inspector, MnnRuntimeState.Ready)
-        assertEquals("review_required", result.overallResult)
+        val inspector = RecordingQwenInspector(makeOutput("review_required"))
+        val coord = PadInspectionCoordinator(inspector, FakeMnnRuntime(MnnRuntimeState.Ready))
+        assertEquals("review_required", coord.inspect(makeTask(), makePhoto()).overallResult)
     }
 
     @Test fun `inspector throws returns review_required, not ACCEPTED`() = runTest {
-        val inspector = FakeQwenInspector(null) // throws
-        val result = inspectWith(inspector, MnnRuntimeState.Ready)
+        val inspector = RecordingQwenInspector(null) // throws
+        val coord = PadInspectionCoordinator(inspector, FakeMnnRuntime(MnnRuntimeState.Ready))
+        val result = coord.inspect(makeTask(), makePhoto())
         assertEquals("review_required", result.overallResult)
         assertNotEquals("ACCEPTED", result.overallResult)
     }
 
     @Test fun `cloudInferenceUsed is always false`() = runTest {
         for (state in listOf(MnnRuntimeState.NotReady, MnnRuntimeState.Ready)) {
-            val result = inspectWith(FakeQwenInspector(makeOutput("pass")), state)
+            val inspector = RecordingQwenInspector(makeOutput("pass"))
+            val coord = PadInspectionCoordinator(inspector, FakeMnnRuntime(state))
+            val result = coord.inspect(makeTask(), makePhoto())
             assertFalse("cloudInferenceUsed must be false", result.cloudInferenceUsed)
         }
     }
 
-    /**
-     * Exercises the coordinator logic directly, bypassing MnnRuntimeLoader construction.
-     * The logic mirrors PadInspectionCoordinator.inspect() exactly.
-     */
-    private suspend fun inspectWith(
-        inspector: QwenInspector,
-        runtimeState: MnnRuntimeState,
-    ): PadInspectionResult {
-        val task  = makeTask()
-        val photo = makePhoto()
-        if (runtimeState !is MnnRuntimeState.Ready) {
-            return PadInspectionResult(
-                overallResult     = "MNN_PENDING",
-                reason            = "Local MNN runtime not ready",
-                modelName         = "Qwen3-VL-2B-Instruct-MNN",
-                localOnly         = true,
-                cloudInferenceUsed = false,
-                capturedImagePath = photo.rawImagePath,
-            )
-        }
-        return runCatching {
-            val output = inspector.inspect(
-                standardPhotos = emptyList(),
-                capturedPhoto  = CapturePhotoInput(photo.captureId, photo.rawImagePath),
-                qcPoints       = emptyList(),
-                context        = InspectionContext("pad", task.sku.id, task.sku.id, photo.captureId),
-            )
-            PadInspectionResult(
-                overallResult = when (output.overallResult.lowercase()) {
-                    "pass" -> "ACCEPTED"
-                    "fail" -> "NOT_ACCEPTED"
-                    else   -> "review_required"
-                },
-                reason            = output.summary,
-                modelName         = output.modelName,
-                localOnly         = true,
-                cloudInferenceUsed = false,
-                capturedImagePath = photo.rawImagePath,
-            )
-        }.getOrElse { e ->
-            PadInspectionResult(
-                overallResult     = "review_required",
-                reason            = "Inspection error: ${e.message}",
-                modelName         = "Qwen3-VL-2B-Instruct-MNN",
-                localOnly         = true,
-                cloudInferenceUsed = false,
-                capturedImagePath = photo.rawImagePath,
-            )
-        }
+    // ── Fail-closed: empty inputs can never produce ACCEPTED ──────────────────
+
+    @Test fun `empty standard photos never returns ACCEPTED`() = runTest {
+        val inspector = RecordingQwenInspector(makeOutput("pass"))
+        val coord = PadInspectionCoordinator(inspector, FakeMnnRuntime(MnnRuntimeState.Ready))
+        val result = coord.inspect(makeTask(standardPhotos = emptyList()), makePhoto())
+        assertEquals("review_required", result.overallResult)
+        assertNotEquals("ACCEPTED", result.overallResult)
+        assertFalse("inspector must not run without a standard", inspector.called)
+    }
+
+    @Test fun `empty detection points never returns ACCEPTED`() = runTest {
+        val inspector = RecordingQwenInspector(makeOutput("pass"))
+        val coord = PadInspectionCoordinator(inspector, FakeMnnRuntime(MnnRuntimeState.Ready))
+        val result = coord.inspect(makeTask(qcPoints = emptyList()), makePhoto())
+        assertEquals("review_required", result.overallResult)
+        assertNotEquals("ACCEPTED", result.overallResult)
+        assertFalse("inspector must not run without detection points", inspector.called)
+    }
+
+    @Test fun `passes non-empty standard photos and detection points from task into inspector`() = runTest {
+        val inspector = RecordingQwenInspector(makeOutput("pass"))
+        val coord = PadInspectionCoordinator(inspector, FakeMnnRuntime(MnnRuntimeState.Ready))
+        val task = makeTask()
+        coord.inspect(task, makePhoto())
+
+        assertTrue(inspector.called)
+        assertEquals(task.standardPhotos, inspector.lastStandardPhotos)
+        assertEquals(task.qcPoints, inspector.lastQcPoints)
+        assertTrue(inspector.lastStandardPhotos!!.isNotEmpty())
+        assertTrue(inspector.lastQcPoints!!.isNotEmpty())
+        // Context carries the task's tenant + snapshotted standard revision.
+        assertEquals("pad-tenant", inspector.lastContext!!.tenantId)
+        assertEquals("rev-99", inspector.lastContext!!.standardId)
+        assertEquals("sku-1", inspector.lastContext!!.skuId)
     }
 }

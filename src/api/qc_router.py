@@ -30,8 +30,11 @@ from src.events.qc_events import (
 )
 from src.qwen.schema import (
     CapturePhotoInput,
+    FallbackInfo,
     InspectionContext,
+    InspectionItemResult,
     QcPointInput,
+    QwenInspectionOutput,
     StandardPhotoInput,
 )
 from src.qwen.service import QwenQCService
@@ -278,6 +281,39 @@ def _new_id() -> str:
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _forced_review_required(
+    qc_point_inputs: List[QcPointInput],
+    reason: str,
+) -> QwenInspectionOutput:
+    """Build a review_required output without consulting any provider.
+
+    Used by the legacy /inspect route to fail closed when required inputs are
+    missing — a provider must never get the chance to return a pass with no
+    standard photos or no detection points.
+    """
+    items = [
+        InspectionItemResult(
+            qc_point_id=p.qc_point_id,
+            qc_point_code=p.qc_point_code,
+            name=p.name,
+            result="review_required",
+            confidence=0.0,
+            reason=reason,
+            evidence={},
+        )
+        for p in qc_point_inputs
+    ]
+    return QwenInspectionOutput(
+        overall_result="review_required",
+        engine="router",
+        model_name="none",
+        confidence=0.0,
+        items=items,
+        fallback=FallbackInfo(used=True, reason=reason),
+        summary=f"Inspection deferred: {reason}",
+    )
 
 
 # ─── Standards ────────────────────────────────────────────────────────────────
@@ -532,6 +568,7 @@ def get_capture(
     "/inspect",
     response_model=InspectionCompletedEvent,
     status_code=status.HTTP_201_CREATED,
+    deprecated=True,
 )
 def run_inspection(
     body: RunInspectionRequest,
@@ -570,6 +607,19 @@ def run_inspection(
     )
     if not capture:
         raise HTTPException(status_code=404, detail="Capture photo not found")
+
+    # Legacy-route guards (Option B): the standard and capture must both belong to
+    # the requested SKU, otherwise the inspection compares mismatched products.
+    if std.sku_id != body.sku_id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"standard.sku_id {std.sku_id!r} does not match request.sku_id {body.sku_id!r}",
+        )
+    if capture.sku_id != body.sku_id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"capture.sku_id {capture.sku_id!r} does not match request.sku_id {body.sku_id!r}",
+        )
 
     # Load standard photos
     std_photos = (
@@ -637,14 +687,23 @@ def run_inspection(
     db.add(run)
     db.flush()  # get id without committing
 
-    # 4. Run inspection
-    service = QwenQCService()
-    qwen_output = service.run_inspection(
-        standard_photos=standard_photo_inputs,
-        captured_photo=capture_photo_input,
-        qc_points=qc_point_inputs,
-        context=context,
-    )
+    # 4. Run inspection.
+    # Fail closed: without standard photos or without detection points there is
+    # nothing a provider could legitimately pass, so never invoke one — force
+    # review_required regardless of QC_ENGINE_MODE / cloud configuration.
+    if not standard_photo_inputs or not qc_point_inputs:
+        reason = (
+            "no_standard_photos" if not standard_photo_inputs else "no_detection_points_defined"
+        )
+        qwen_output = _forced_review_required(qc_point_inputs, reason=reason)
+    else:
+        service = QwenQCService()
+        qwen_output = service.run_inspection(
+            standard_photos=standard_photo_inputs,
+            captured_photo=capture_photo_input,
+            qc_points=qc_point_inputs,
+            context=context,
+        )
 
     # Update run with results
     completed_at = _utcnow()
