@@ -10,12 +10,14 @@ from src.qc_simulation.runner import (
     REQUIRED_POINT_CODES,
     final_result_from_checkpoints,
     load_jsonl,
+    required_point_codes_for,
     run_simulation,
     simulate_model_payload,
     simulate_sample,
 )
 
 
+CHAIN_DATASET_ROOT = Path("data/qc_simulation/gold_chain_link_charm")
 LABELS_PATH = DATASET_ROOT / "labels" / "expected_results.jsonl"
 SYNTHETIC_METADATA_PATH = DATASET_ROOT / "synthetic" / "synthetic_metadata.jsonl"
 SEED_METADATA_PATH = DATASET_ROOT / "seed" / "source_metadata.jsonl"
@@ -125,6 +127,58 @@ def test_real_production_center_offcenter_sample_is_labeled_fail():
     )
 
 
+def test_real_production_chain_missing_link_sample_is_labeled_fail():
+    labels = load_jsonl(CHAIN_DATASET_ROOT / "labels" / "expected_results.jsonl")
+    real_metadata = load_jsonl(CHAIN_DATASET_ROOT / "real" / "real_metadata.jsonl")
+    required_codes = required_point_codes_for(CHAIN_DATASET_ROOT)
+
+    assert required_codes == (
+        "chain_link_count",
+        "top_attachment_integrity",
+        "bottom_charm_attachment_integrity",
+        "link_alignment",
+        "surface_finish_integrity",
+        "incidental_abnormality",
+    )
+    assert len(labels) == 2
+    assert len(real_metadata) == 2
+    for row in real_metadata:
+        assert row["is_synthetic"] is False
+        assert row["license_note"] == "operator_provided_real_production_photo_internal_test_only"
+        assert Path(row["image_path"]).exists()
+
+    standard = next(
+        row for row in real_metadata
+        if row["sample_id"] == "real_production_chain_13_links_standard_001"
+    )
+    defect = next(
+        row for row in real_metadata
+        if row["sample_id"] == "real_production_chain_12_links_missing_one_001"
+    )
+    assert standard["observed_chain_link_count"] == 13
+    assert defect["observed_chain_link_count"] == 12
+    assert defect["expected_chain_link_count"] == 13
+
+    defect_label = next(
+        label for label in labels
+        if label["sample_id"] == "real_production_chain_12_links_missing_one_001"
+    )
+    assert defect_label["expected_final_result"] == "fail"
+    checkpoints = {
+        item["code"]: item["result"]
+        for item in defect_label["expected_checkpoint_results"]
+    }
+    assert checkpoints["chain_link_count"] == "fail"
+    assert all(
+        result == "pass"
+        for code, result in checkpoints.items()
+        if code != "chain_link_count"
+    )
+
+    outcome = simulate_sample(defect_label, required_point_codes=required_codes)
+    assert outcome.actual_final_result == "fail"
+
+
 def test_run_simulation_generates_required_report_schema():
     report = run_simulation(DATASET_ROOT)
     assert report["total_samples"] == 72
@@ -138,6 +192,24 @@ def test_run_simulation_generates_required_report_schema():
     assert "missed_defects" in report
     assert "unexpected_incidental_findings" in report
     assert "samples_failed_by_reason" in report
+    assert Path(report["report_path"]).exists()
+
+
+def test_run_chain_simulation_generates_required_report_schema():
+    report = run_simulation(CHAIN_DATASET_ROOT)
+    assert report["sku_standard"]["sku_id"] == "gold_chain_link_charm_001"
+    assert report["sku_standard"]["expected_chain_link_count"] == 13
+    assert report["total_samples"] == 2
+    assert report["synthetic_sample_count"] == 0
+    assert report["real_production_sample_count"] == 2
+    assert report["false_pass_count"] == 0
+    assert report["false_fail_count"] == 0
+    assert report["final_result_accuracy"] == 1.0
+    assert report["point_level_accuracy"] == 1.0
+    assert report["per_defect_type_accuracy"]["chain_link_count"] == 1.0
+    assert "real_production_chain_12_links_missing_one_001" in report["samples_failed_by_reason"][
+        "one_or_more_checkpoint_failures"
+    ]
     assert Path(report["report_path"]).exists()
 
 

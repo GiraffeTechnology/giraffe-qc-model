@@ -1,0 +1,70 @@
+{
+  "false_fail_count": 0,
+  "false_fail_samples": [],
+  "false_pass_count": 0,
+  "false_pass_samples": [],
+  "final_result_accuracy": 1.0,
+  "generated_at": "2026-06-29T00:00:00+00:00",
+  "missed_defects": [],
+  "per_defect_type_accuracy": {
+    "chain_link_count": 1.0,
+    "pass": 1.0
+  },
+  "point_level_accuracy": 1.0,
+  "real_production_sample_count": 2,
+  "report_path": "data/qc_simulation/gold_chain_link_charm/reports/simulation_report.json",
+  "review_required_count": 0,
+  "samples_failed_by_reason": {
+    "one_or_more_checkpoint_failures": [
+      "real_production_chain_12_links_missing_one_001"
+    ]
+  },
+  "seed_image_count": 0,
+  "sku_standard": {
+    "detection_points": [
+      {
+        "code": "chain_link_count",
+        "description": "The chain must contain exactly 13 visible chain links between the top connector and bottom charm connector.",
+        "name": "Chain link count",
+        "severity": "critical"
+      },
+      {
+        "code": "top_attachment_integrity",
+        "description": "The top ring, connector, and pad attachment must be present and properly attached.",
+        "name": "Top attachment integrity",
+        "severity": "major"
+      },
+      {
+        "code": "bottom_charm_attachment_integrity",
+        "description": "The bottom charm connector and pendant ring must be present and properly attached.",
+        "name": "Bottom charm attachment integrity",
+        "severity": "major"
+      },
+      {
+        "code": "link_alignment",
+        "description": "Chain links should hang in the expected sequence without abnormal twisting, bending, or misassembly.",
+        "name": "Link alignment",
+        "severity": "major"
+      },
+      {
+        "code": "surface_finish_integrity",
+        "description": "Gold-tone chain links should not show visible cracks, chips, severe scratches, or plating loss.",
+        "name": "Surface finish integrity",
+        "severity": "major"
+      },
+      {
+        "code": "incidental_abnormality",
+        "description": "Visible abnormalities should be reported even if not explicitly requested.",
+        "name": "Incidental abnormality",
+        "severity": "minor"
+      }
+    ],
+    "expected_chain_link_count": 13,
+    "sku_id": "gold_chain_link_charm_001",
+    "sku_name": "Gold chain charm accessory",
+    "standard_photo_id": "real_production_chain_13_links_standard_001"
+  },
+  "synthetic_sample_count": 0,
+  "total_samples": 2,
+  "unexpected_incidental_findings": []
+}

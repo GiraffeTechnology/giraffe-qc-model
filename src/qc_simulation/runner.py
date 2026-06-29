@@ -90,7 +90,25 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def build_sku_standard() -> dict[str, Any]:
+def load_optional_jsonl(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    return load_jsonl(path)
+
+
+def build_sku_standard(dataset_root: Path | None = None) -> dict[str, Any]:
+    if dataset_root is not None:
+        standard_path = dataset_root / "standard.json"
+        if standard_path.exists():
+            with standard_path.open("r", encoding="utf-8") as fh:
+                standard = json.load(fh)
+            if not isinstance(standard, dict):
+                raise ValueError(f"{standard_path} must contain a JSON object")
+            points = standard.get("detection_points")
+            if not isinstance(points, list) or not points:
+                raise ValueError(f"{standard_path} must define detection_points")
+            return standard
+
     return {
         "sku_id": "artificial_jewelry_flower_brooch_001",
         "sku_name": "Artificial jewelry flower brooch / hair clip",
@@ -99,7 +117,15 @@ def build_sku_standard() -> dict[str, Any]:
     }
 
 
-def validate_checkpoint_results(checkpoints: list[dict[str, Any]]) -> dict[str, str]:
+def required_point_codes_for(dataset_root: Path | None = None) -> tuple[str, ...]:
+    standard = build_sku_standard(dataset_root)
+    return tuple(point["code"] for point in standard["detection_points"])
+
+
+def validate_checkpoint_results(
+    checkpoints: list[dict[str, Any]],
+    required_point_codes: tuple[str, ...] = REQUIRED_POINT_CODES,
+) -> dict[str, str]:
     if not checkpoints:
         return {}
 
@@ -107,7 +133,7 @@ def validate_checkpoint_results(checkpoints: list[dict[str, Any]]) -> dict[str, 
     for checkpoint in checkpoints:
         code = checkpoint.get("code")
         result = checkpoint.get("result")
-        if code not in REQUIRED_POINT_CODES:
+        if code not in required_point_codes:
             raise ValueError(f"Unknown point_code: {code!r}")
         if result not in VALID_RESULTS:
             raise ValueError(f"Invalid checkpoint result for {code!r}: {result!r}")
@@ -117,15 +143,18 @@ def validate_checkpoint_results(checkpoints: list[dict[str, Any]]) -> dict[str, 
     return results
 
 
-def final_result_from_checkpoints(checkpoints: dict[str, str]) -> tuple[str, str | None]:
+def final_result_from_checkpoints(
+    checkpoints: dict[str, str],
+    required_point_codes: tuple[str, ...] = REQUIRED_POINT_CODES,
+) -> tuple[str, str | None]:
     if not checkpoints:
         return "review_required", "empty_model_output"
 
-    missing = [code for code in REQUIRED_POINT_CODES if code not in checkpoints]
+    missing = [code for code in required_point_codes if code not in checkpoints]
     if missing:
         return "review_required", f"missing_checkpoint_results:{','.join(missing)}"
 
-    unknown = [code for code in checkpoints if code not in REQUIRED_POINT_CODES]
+    unknown = [code for code in checkpoints if code not in required_point_codes]
     if unknown:
         raise ValueError(f"Unknown point_code: {unknown[0]!r}")
 
@@ -138,7 +167,10 @@ def final_result_from_checkpoints(checkpoints: dict[str, str]) -> tuple[str, str
     return "review_required", "incomplete_checkpoint_evaluation"
 
 
-def validate_label(label: dict[str, Any]) -> None:
+def validate_label(
+    label: dict[str, Any],
+    required_point_codes: tuple[str, ...] = REQUIRED_POINT_CODES,
+) -> None:
     required_fields = {
         "sample_id",
         "sku_id",
@@ -154,8 +186,8 @@ def validate_label(label: dict[str, Any]) -> None:
         raise ValueError(f"Label {label.get('sample_id', '<unknown>')} missing fields: {missing}")
     if label["expected_final_result"] not in VALID_RESULTS:
         raise ValueError(f"Invalid expected_final_result: {label['expected_final_result']!r}")
-    checkpoints = validate_checkpoint_results(label["expected_checkpoint_results"])
-    final_result, reason = final_result_from_checkpoints(checkpoints)
+    checkpoints = validate_checkpoint_results(label["expected_checkpoint_results"], required_point_codes)
+    final_result, reason = final_result_from_checkpoints(checkpoints, required_point_codes)
     if final_result != label["expected_final_result"]:
         raise ValueError(
             f"Label {label['sample_id']} expected_final_result={label['expected_final_result']!r} "
@@ -163,15 +195,19 @@ def validate_label(label: dict[str, Any]) -> None:
         )
 
 
-def simulate_sample(label: dict[str, Any], model_output: list[dict[str, Any]] | None = None) -> SimulationOutcome:
-    validate_label(label)
-    expected_checkpoints = validate_checkpoint_results(label["expected_checkpoint_results"])
+def simulate_sample(
+    label: dict[str, Any],
+    model_output: list[dict[str, Any]] | None = None,
+    required_point_codes: tuple[str, ...] = REQUIRED_POINT_CODES,
+) -> SimulationOutcome:
+    validate_label(label, required_point_codes)
+    expected_checkpoints = validate_checkpoint_results(label["expected_checkpoint_results"], required_point_codes)
     if model_output is None:
         actual_checkpoints = dict(expected_checkpoints)
     else:
-        actual_checkpoints = validate_checkpoint_results(model_output)
+        actual_checkpoints = validate_checkpoint_results(model_output, required_point_codes)
 
-    actual_final, reason = final_result_from_checkpoints(actual_checkpoints)
+    actual_final, reason = final_result_from_checkpoints(actual_checkpoints, required_point_codes)
     critical_defects = [
         defect for defect in label.get("defects", [])
         if defect.get("severity") == "critical"
@@ -190,7 +226,11 @@ def simulate_sample(label: dict[str, Any], model_output: list[dict[str, Any]] | 
     )
 
 
-def simulate_model_payload(label: dict[str, Any], payload: dict[str, Any] | None) -> SimulationOutcome:
+def simulate_model_payload(
+    label: dict[str, Any],
+    payload: dict[str, Any] | None,
+    required_point_codes: tuple[str, ...] = REQUIRED_POINT_CODES,
+) -> SimulationOutcome:
     """Evaluate a model-like payload while ignoring model-provided overall_result.
 
     This mirrors the simulation policy: final verdicts are derived only from
@@ -198,9 +238,9 @@ def simulate_model_payload(label: dict[str, Any], payload: dict[str, Any] | None
     overall_result cannot turn a failing checkpoint into a pass.
     """
     if not payload or not payload.get("items"):
-        return simulate_sample(label, model_output=[])
+        return simulate_sample(label, model_output=[], required_point_codes=required_point_codes)
     if not isinstance(payload["items"], list):
-        return simulate_sample(label, model_output=[])
+        return simulate_sample(label, model_output=[], required_point_codes=required_point_codes)
 
     model_output = []
     for item in payload["items"]:
@@ -212,14 +252,15 @@ def simulate_model_payload(label: dict[str, Any], payload: dict[str, Any] | None
                 "result": item.get("result"),
             }
         )
-    return simulate_sample(label, model_output=model_output)
+    return simulate_sample(label, model_output=model_output, required_point_codes=required_point_codes)
 
 
 def run_simulation(dataset_root: Path = DATASET_ROOT) -> dict[str, Any]:
-    seed_metadata = load_jsonl(dataset_root / "seed" / "source_metadata.jsonl")
-    synthetic_metadata = load_jsonl(dataset_root / "synthetic" / "synthetic_metadata.jsonl")
-    real_metadata_path = dataset_root / "real" / "real_metadata.jsonl"
-    real_metadata = load_jsonl(real_metadata_path) if real_metadata_path.exists() else []
+    standard = build_sku_standard(dataset_root)
+    required_point_codes = required_point_codes_for(dataset_root)
+    seed_metadata = load_optional_jsonl(dataset_root / "seed" / "source_metadata.jsonl")
+    synthetic_metadata = load_optional_jsonl(dataset_root / "synthetic" / "synthetic_metadata.jsonl")
+    real_metadata = load_optional_jsonl(dataset_root / "real" / "real_metadata.jsonl")
     labels = load_jsonl(dataset_root / "labels" / "expected_results.jsonl")
 
     metadata_by_sample = {
@@ -237,9 +278,9 @@ def run_simulation(dataset_root: Path = DATASET_ROOT) -> dict[str, Any]:
             raise ValueError(
                 f"Sample {label['sample_id']} has inconsistent is_synthetic metadata"
             )
-        outcomes.append(simulate_sample(label))
+        outcomes.append(simulate_sample(label, required_point_codes=required_point_codes))
 
-    report = build_report(outcomes, labels, seed_metadata, synthetic_metadata, real_metadata)
+    report = build_report(outcomes, labels, seed_metadata, synthetic_metadata, real_metadata, standard)
     reports_dir = dataset_root / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     report_path = reports_dir / "simulation_report.json"
@@ -256,8 +297,10 @@ def build_report(
     seed_metadata: list[dict[str, Any]],
     synthetic_metadata: list[dict[str, Any]],
     real_metadata: list[dict[str, Any]] | None = None,
+    standard: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     real_metadata = real_metadata or []
+    standard = standard or build_sku_standard()
     total = len(outcomes)
     final_matches = sum(1 for outcome in outcomes if outcome.final_result_matches)
     point_total = 0
@@ -270,6 +313,7 @@ def build_report(
 
     labels_by_sample = {label["sample_id"]: label for label in labels}
     per_defect_counts: dict[str, dict[str, int]] = {}
+    timestamp_metadata = seed_metadata or synthetic_metadata or real_metadata
 
     for outcome in outcomes:
         label = labels_by_sample[outcome.sample_id]
@@ -306,8 +350,8 @@ def build_report(
             )
 
     return {
-        "sku_standard": build_sku_standard(),
-        "generated_at": seed_metadata[0].get("captured_at") if seed_metadata else None,
+        "sku_standard": standard,
+        "generated_at": timestamp_metadata[0].get("captured_at") if timestamp_metadata else None,
         "seed_image_count": len(seed_metadata),
         "synthetic_sample_count": len(synthetic_metadata),
         "real_production_sample_count": len(real_metadata),

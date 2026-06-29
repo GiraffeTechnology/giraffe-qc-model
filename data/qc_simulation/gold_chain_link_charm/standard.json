@@ -1,0 +1,44 @@
+{
+  "sku_id": "gold_chain_link_charm_001",
+  "sku_name": "Gold chain charm accessory",
+  "standard_photo_id": "real_production_chain_13_links_standard_001",
+  "expected_chain_link_count": 13,
+  "detection_points": [
+    {
+      "code": "chain_link_count",
+      "name": "Chain link count",
+      "severity": "critical",
+      "description": "The chain must contain exactly 13 visible chain links between the top connector and bottom charm connector."
+    },
+    {
+      "code": "top_attachment_integrity",
+      "name": "Top attachment integrity",
+      "severity": "major",
+      "description": "The top ring, connector, and pad attachment must be present and properly attached."
+    },
+    {
+      "code": "bottom_charm_attachment_integrity",
+      "name": "Bottom charm attachment integrity",
+      "severity": "major",
+      "description": "The bottom charm connector and pendant ring must be present and properly attached."
+    },
+    {
+      "code": "link_alignment",
+      "name": "Link alignment",
+      "severity": "major",
+      "description": "Chain links should hang in the expected sequence without abnormal twisting, bending, or misassembly."
+    },
+    {
+      "code": "surface_finish_integrity",
+      "name": "Surface finish integrity",
+      "severity": "major",
+      "description": "Gold-tone chain links should not show visible cracks, chips, severe scratches, or plating loss."
+    },
+    {
+      "code": "incidental_abnormality",
+      "name": "Incidental abnormality",
+      "severity": "minor",
+      "description": "Visible abnormalities should be reported even if not explicitly requested."
+    }
+  ]
+}
