@@ -214,35 +214,83 @@ def line(rows, x1: int, y1: int, x2: int, y2: int, color: tuple[int, int, int], 
             blend(rows, x, y + oy, color, alpha)
 
 
+def local_noise(rows, cx: int, cy: int, index: int, radius: int = 8, strength: int = 5) -> None:
+    """Apply subtle deterministic texture so samples are visibly but gently distinct."""
+    for y in range(cy - radius, cy + radius + 1):
+        for x in range(cx - radius, cx + radius + 1):
+            if y < 0 or y >= len(rows) or x < 0 or x >= len(rows[0]):
+                continue
+            if (x - cx) ** 2 + (y - cy) ** 2 > radius ** 2:
+                continue
+            if ((x * 17 + y * 31 + index * 13) % 7) not in (0, 3):
+                continue
+            old = rows[y][x]
+            delta = ((x * 5 + y * 3 + index * 11) % (strength * 2 + 1)) - strength
+            rows[y][x] = tuple(max(0, min(255, channel + delta)) for channel in old)
+
+
 def apply_defect(rows, width: int, height: int, defect_type: str, index: int) -> None:
-    jitter = (index % 5) - 2
+    idx = index - 1
+    dx = [-6, -4, -2, 1, 3, 5, -5, -1, 2, 6][idx]
+    dy = [-3, 2, -5, 4, -1, 3, 5, -2, 1, -4][idx]
+    radius_delta = [0, 1, -1, 2, -2, 1, 0, -1, 2, -2][idx]
+    alpha_delta = [-0.03, -0.02, -0.01, 0.0, 0.01, 0.02, 0.03, -0.015, 0.015, 0.025][idx]
+    angle_delta = [-12, -8, -5, -2, 2, 5, 8, 11, -10, 7][idx]
     cx = width // 2
     cy = height // 2
     if defect_type == "pass":
-        circle(rows, int(width * 0.52) + jitter, int(height * 0.50), 4, (255, 244, 225), 0.08)
+        px = int(width * (0.49 + idx * 0.006))
+        py = int(height * (0.49 + ((idx % 4) - 1.5) * 0.006))
+        circle(rows, px, py, 3 + (idx % 3), (255, 244, 225), 0.045 + (idx % 4) * 0.01)
+        local_noise(rows, px + dx, py + dy, index, radius=5 + idx % 4, strength=2)
     elif defect_type == "center_alignment":
-        circle(rows, cx, cy, 24, (250, 235, 220), 0.16)
-        circle(rows, cx + 18 + jitter, cy - 10, 18, (174, 122, 83), 0.20)
+        circle(rows, cx + dx // 2, cy + dy // 2, 22 + radius_delta, (250, 235, 220), 0.13 + alpha_delta / 2)
+        circle(rows, cx + 14 + dx, cy - 8 + dy, 15 + (idx % 4), (174, 122, 83), 0.17 + alpha_delta)
+        local_noise(rows, cx + 14 + dx, cy - 8 + dy, index, radius=7 + idx % 5, strength=3)
     elif defect_type == "rhinestone_count":
-        circle(rows, cx + 53 + jitter, cy - 35, 10, (92, 74, 66), 0.55)
-        circle(rows, cx + 53 + jitter, cy - 35, 6, (34, 30, 28), 0.25)
+        anchors = [
+            (0.62, 0.40), (0.59, 0.36), (0.54, 0.34), (0.46, 0.38), (0.42, 0.45),
+            (0.44, 0.54), (0.50, 0.60), (0.57, 0.58), (0.64, 0.51), (0.61, 0.45),
+        ]
+        rx = int(width * anchors[idx][0]) + dx // 2
+        ry = int(height * anchors[idx][1]) + dy // 2
+        circle(rows, rx, ry, 7 + (idx % 4), (92, 74, 66), 0.45 + max(alpha_delta, -0.01))
+        circle(rows, rx, ry, 4 + (idx % 3), (34, 30, 28), 0.18 + (idx % 3) * 0.02)
+        local_noise(rows, rx, ry, index, radius=5 + idx % 4, strength=4)
     elif defect_type == "pearl_surface_integrity":
-        px = int(width * 0.57) + jitter
-        py = int(height * 0.43)
-        line(rows, px - 18, py - 6, px + 17, py + 5, (92, 82, 78), 0.55)
-        line(rows, px - 16, py - 3, px + 13, py + 8, (245, 245, 240), 0.18)
+        px = int(width * (0.50 + (idx % 5) * 0.018)) + dx // 2
+        py = int(height * (0.40 + (idx // 5) * 0.09)) + dy // 2
+        length = 22 + (idx % 5) * 3
+        rise = int((length * angle_delta) / 24)
+        line(rows, px - length // 2, py - rise // 2, px + length // 2, py + rise // 2, (92, 82, 78), 0.42 + (idx % 4) * 0.035)
+        line(rows, px - length // 2 + 2, py - rise // 2 + 2, px + length // 2 - 3, py + rise // 2 + 3, (245, 245, 240), 0.12 + (idx % 3) * 0.02)
+        local_noise(rows, px, py, index, radius=6 + idx % 4, strength=3)
     elif defect_type == "pearl_count":
-        circle(rows, int(width * 0.42) + jitter, int(height * 0.58), 18, (188, 151, 112), 0.42)
-        circle(rows, int(width * 0.42) + jitter, int(height * 0.58), 10, (105, 79, 61), 0.25)
+        anchors = [
+            (0.44, 0.48), (0.50, 0.42), (0.56, 0.48), (0.48, 0.57), (0.58, 0.57),
+            (0.43, 0.55), (0.53, 0.52), (0.61, 0.49), (0.47, 0.44), (0.55, 0.60),
+        ]
+        px = int(width * anchors[idx][0]) + dx // 3
+        py = int(height * anchors[idx][1]) + dy // 3
+        circle(rows, px, py, 13 + (idx % 5), (188, 151, 112), 0.32 + (idx % 4) * 0.025)
+        circle(rows, px, py, 7 + (idx % 4), (105, 79, 61), 0.16 + (idx % 3) * 0.025)
+        local_noise(rows, px, py, index, radius=7 + idx % 5, strength=3)
     elif defect_type == "petal_integrity":
-        px = int(width * 0.72)
-        py = int(height * 0.30) + jitter
-        circle(rows, px, py, 15, (255, 255, 255), 0.62)
-        line(rows, px - 15, py + 8, px + 16, py - 9, (210, 198, 190), 0.48)
+        anchors = [
+            (0.70, 0.31), (0.73, 0.36), (0.68, 0.66), (0.62, 0.72), (0.34, 0.68),
+            (0.30, 0.55), (0.32, 0.39), (0.41, 0.31), (0.58, 0.29), (0.76, 0.52),
+        ]
+        px = int(width * anchors[idx][0]) + dx // 2
+        py = int(height * anchors[idx][1]) + dy // 2
+        chip_radius = 9 + (idx % 5)
+        circle(rows, px, py, chip_radius, (255, 255, 255), 0.46 + (idx % 4) * 0.035)
+        line(rows, px - chip_radius, py + 5 + dy // 4, px + chip_radius + 2, py - 5 + angle_delta // 5, (210, 198, 190), 0.34 + (idx % 4) * 0.035)
+        local_noise(rows, px, py, index, radius=6 + idx % 5, strength=4)
     elif defect_type == "mixed_defects":
         apply_defect(rows, width, height, "rhinestone_count", index)
-        apply_defect(rows, width, height, "petal_integrity", index)
-        circle(rows, int(width * 0.61), int(height * 0.57), 12, (210, 184, 112), 0.28)
+        apply_defect(rows, width, height, "petal_integrity", 10 - idx)
+        circle(rows, int(width * (0.56 + idx * 0.008)), int(height * (0.53 + ((idx % 3) - 1) * 0.018)), 8 + idx % 5, (210, 184, 112), 0.18 + (idx % 4) * 0.025)
+        local_noise(rows, int(width * 0.58) + dx, int(height * 0.55) + dy, index, radius=8 + idx % 4, strength=4)
     else:
         raise ValueError(defect_type)
 

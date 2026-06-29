@@ -1,6 +1,8 @@
 """Tests for the seed-data-driven QC simulation dataset."""
 from __future__ import annotations
 
+import hashlib
+from collections import defaultdict
 from pathlib import Path
 
 import pytest
@@ -26,6 +28,10 @@ REAL_METADATA_PATH = DATASET_ROOT / "real" / "real_metadata.jsonl"
 
 def _labels() -> list[dict]:
     return load_jsonl(LABELS_PATH)
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def test_dataset_structure_and_seed_metadata_exist():
@@ -94,6 +100,33 @@ def test_dataset_covers_required_synthetic_defect_categories():
         "petal_integrity": 10,
         "mixed_defects": 10,
     }
+
+
+def test_synthetic_samples_are_unique_within_each_defect_category():
+    synthetic_metadata = load_jsonl(SYNTHETIC_METADATA_PATH)
+    hashes_by_category = defaultdict(list)
+
+    for row in synthetic_metadata:
+        image_path = Path(row["image_path"])
+        assert image_path.exists()
+        hashes_by_category[row["synthetic_defect_type"]].append(
+            sha256_file(image_path)
+        )
+
+    assert set(hashes_by_category) == {
+        "pass",
+        "center_alignment",
+        "rhinestone_count",
+        "pearl_surface_integrity",
+        "pearl_count",
+        "petal_integrity",
+        "mixed_defects",
+    }
+    for category, hashes in hashes_by_category.items():
+        assert len(hashes) == 10
+        assert len(set(hashes)) == 10, (
+            f"{category} contains duplicate synthetic images"
+        )
 
 
 def test_real_production_center_offcenter_sample_is_labeled_fail():
