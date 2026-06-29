@@ -1,0 +1,419 @@
+"""Generate the artificial jewelry flower brooch QC simulation dataset.
+
+This script uses only Python standard-library code so the generated dataset is
+not coupled to Pillow, OpenCV, Pad, MNN, DashScope, or production QC routing.
+"""
+from __future__ import annotations
+
+import json
+import shutil
+import struct
+import zlib
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+ROOT = Path("data/qc_simulation/artificial_jewelry_flower_brooch")
+SEED_IMAGE = ROOT / "seed" / "standard" / "seed_standard_001.png"
+CAPTURED_AT = datetime(2026, 6, 29, tzinfo=timezone.utc).isoformat()
+SKU_ID = "artificial_jewelry_flower_brooch_001"
+SKU_NAME = "Artificial jewelry flower brooch / hair clip"
+SOURCE_URL = "https://susangloriaboutique.com/products/blush-pearl-bloom-brooch"
+IMAGE_URL = "https://susangloriaboutique.com/cdn/shop/files/1777275268018-8mlmqbp6qz3_1024x1024.png?v=1779955515"
+LICENSE_NOTE = "public_product_page_internal_test_only"
+
+POINTS = (
+    "center_alignment",
+    "rhinestone_count",
+    "pearl_count",
+    "pearl_surface_integrity",
+    "petal_integrity",
+    "incidental_abnormality",
+)
+SYNTHETIC_MAX_DIM = 384
+
+
+def _read_chunks(path: Path):
+    data = path.read_bytes()
+    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise ValueError(f"{path} is not a PNG")
+    offset = 8
+    while offset < len(data):
+        length = struct.unpack(">I", data[offset:offset + 4])[0]
+        chunk_type = data[offset + 4:offset + 8]
+        chunk_data = data[offset + 8:offset + 8 + length]
+        yield chunk_type, chunk_data
+        offset += 12 + length
+
+
+def _paeth(a: int, b: int, c: int) -> int:
+    p = a + b - c
+    pa = abs(p - a)
+    pb = abs(p - b)
+    pc = abs(p - c)
+    if pa <= pb and pa <= pc:
+        return a
+    if pb <= pc:
+        return b
+    return c
+
+
+def read_png(path: Path) -> tuple[int, int, list[list[tuple[int, int, int]]]]:
+    width = height = bit_depth = color_type = interlace = None
+    palette: list[tuple[int, int, int]] = []
+    compressed = bytearray()
+
+    for chunk_type, chunk_data in _read_chunks(path):
+        if chunk_type == b"IHDR":
+            width, height, bit_depth, color_type, _, _, interlace = struct.unpack(">IIBBBBB", chunk_data)
+        elif chunk_type == b"PLTE":
+            palette = [
+                tuple(chunk_data[i:i + 3])  # type: ignore[arg-type]
+                for i in range(0, len(chunk_data), 3)
+            ]
+        elif chunk_type == b"IDAT":
+            compressed.extend(chunk_data)
+
+    if width is None or height is None or bit_depth is None or color_type is None or interlace is None:
+        raise ValueError(f"{path} is missing IHDR")
+    if bit_depth != 8 or interlace != 0:
+        raise ValueError(f"{path} must be an 8-bit non-interlaced PNG")
+
+    if color_type == 2:
+        channels = 3
+    elif color_type == 3:
+        channels = 1
+    elif color_type == 6:
+        channels = 4
+    else:
+        raise ValueError(f"Unsupported PNG color_type={color_type}")
+
+    raw = zlib.decompress(bytes(compressed))
+    stride = width * channels
+    rows: list[bytearray] = []
+    pos = 0
+    prev = bytearray(stride)
+    for _ in range(height):
+        filter_type = raw[pos]
+        pos += 1
+        scanline = bytearray(raw[pos:pos + stride])
+        pos += stride
+        for i in range(stride):
+            left = scanline[i - channels] if i >= channels else 0
+            up = prev[i]
+            upper_left = prev[i - channels] if i >= channels else 0
+            if filter_type == 1:
+                scanline[i] = (scanline[i] + left) & 0xFF
+            elif filter_type == 2:
+                scanline[i] = (scanline[i] + up) & 0xFF
+            elif filter_type == 3:
+                scanline[i] = (scanline[i] + ((left + up) // 2)) & 0xFF
+            elif filter_type == 4:
+                scanline[i] = (scanline[i] + _paeth(left, up, upper_left)) & 0xFF
+            elif filter_type != 0:
+                raise ValueError(f"Unsupported PNG filter={filter_type}")
+        rows.append(scanline)
+        prev = scanline
+
+    rgb_rows: list[list[tuple[int, int, int]]] = []
+    for row in rows:
+        rgb_row: list[tuple[int, int, int]] = []
+        if color_type == 3:
+            for idx in row:
+                rgb_row.append(palette[idx])
+        elif color_type == 2:
+            for i in range(0, len(row), 3):
+                rgb_row.append((row[i], row[i + 1], row[i + 2]))
+        else:
+            for i in range(0, len(row), 4):
+                alpha = row[i + 3] / 255
+                rgb_row.append((
+                    int(row[i] * alpha + 255 * (1 - alpha)),
+                    int(row[i + 1] * alpha + 255 * (1 - alpha)),
+                    int(row[i + 2] * alpha + 255 * (1 - alpha)),
+                ))
+        rgb_rows.append(rgb_row)
+    return width, height, rgb_rows
+
+
+def _chunk(chunk_type: bytes, payload: bytes) -> bytes:
+    return (
+        struct.pack(">I", len(payload))
+        + chunk_type
+        + payload
+        + struct.pack(">I", zlib.crc32(chunk_type + payload) & 0xFFFFFFFF)
+    )
+
+
+def write_png(path: Path, width: int, height: int, rows: list[list[tuple[int, int, int]]]) -> None:
+    payload = bytearray()
+    for row in rows:
+        payload.append(0)
+        for r, g, b in row:
+            payload.extend((max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b))))
+    png = bytearray(b"\x89PNG\r\n\x1a\n")
+    png.extend(_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)))
+    png.extend(_chunk(b"IDAT", zlib.compress(bytes(payload), level=6)))
+    png.extend(_chunk(b"IEND", b""))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(bytes(png))
+
+
+def copy_rows(rows: list[list[tuple[int, int, int]]]) -> list[list[tuple[int, int, int]]]:
+    return [list(row) for row in rows]
+
+
+def downsample(
+    width: int,
+    height: int,
+    rows: list[list[tuple[int, int, int]]],
+    max_dim: int,
+) -> tuple[int, int, list[list[tuple[int, int, int]]]]:
+    scale = min(max_dim / width, max_dim / height, 1.0)
+    if scale == 1.0:
+        return width, height, rows
+    new_width = max(1, int(width * scale))
+    new_height = max(1, int(height * scale))
+    sampled: list[list[tuple[int, int, int]]] = []
+    for y in range(new_height):
+        src_y = min(height - 1, int(y / scale))
+        sampled_row: list[tuple[int, int, int]] = []
+        for x in range(new_width):
+            src_x = min(width - 1, int(x / scale))
+            sampled_row.append(rows[src_y][src_x])
+        sampled.append(sampled_row)
+    return new_width, new_height, sampled
+
+
+def blend(rows, x: int, y: int, color: tuple[int, int, int], alpha: float) -> None:
+    if y < 0 or y >= len(rows) or x < 0 or x >= len(rows[0]):
+        return
+    old = rows[y][x]
+    rows[y][x] = tuple(int(old[i] * (1 - alpha) + color[i] * alpha) for i in range(3))
+
+
+def circle(rows, cx: int, cy: int, radius: int, color: tuple[int, int, int], alpha: float) -> None:
+    for y in range(cy - radius, cy + radius + 1):
+        for x in range(cx - radius, cx + radius + 1):
+            if (x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2:
+                blend(rows, x, y, color, alpha)
+
+
+def line(rows, x1: int, y1: int, x2: int, y2: int, color: tuple[int, int, int], alpha: float) -> None:
+    steps = max(abs(x2 - x1), abs(y2 - y1), 1)
+    for step in range(steps + 1):
+        t = step / steps
+        x = round(x1 + (x2 - x1) * t)
+        y = round(y1 + (y2 - y1) * t)
+        for oy in (-1, 0, 1):
+            blend(rows, x, y + oy, color, alpha)
+
+
+def apply_defect(rows, width: int, height: int, defect_type: str, index: int) -> None:
+    jitter = (index % 5) - 2
+    cx = width // 2
+    cy = height // 2
+    if defect_type == "pass":
+        circle(rows, int(width * 0.52) + jitter, int(height * 0.50), 4, (255, 244, 225), 0.08)
+    elif defect_type == "center_alignment":
+        circle(rows, cx, cy, 24, (250, 235, 220), 0.16)
+        circle(rows, cx + 18 + jitter, cy - 10, 18, (174, 122, 83), 0.20)
+    elif defect_type == "rhinestone_count":
+        circle(rows, cx + 53 + jitter, cy - 35, 10, (92, 74, 66), 0.55)
+        circle(rows, cx + 53 + jitter, cy - 35, 6, (34, 30, 28), 0.25)
+    elif defect_type == "pearl_surface_integrity":
+        px = int(width * 0.57) + jitter
+        py = int(height * 0.43)
+        line(rows, px - 18, py - 6, px + 17, py + 5, (92, 82, 78), 0.55)
+        line(rows, px - 16, py - 3, px + 13, py + 8, (245, 245, 240), 0.18)
+    elif defect_type == "pearl_count":
+        circle(rows, int(width * 0.42) + jitter, int(height * 0.58), 18, (188, 151, 112), 0.42)
+        circle(rows, int(width * 0.42) + jitter, int(height * 0.58), 10, (105, 79, 61), 0.25)
+    elif defect_type == "petal_integrity":
+        px = int(width * 0.72)
+        py = int(height * 0.30) + jitter
+        circle(rows, px, py, 15, (255, 255, 255), 0.62)
+        line(rows, px - 15, py + 8, px + 16, py - 9, (210, 198, 190), 0.48)
+    elif defect_type == "mixed_defects":
+        apply_defect(rows, width, height, "rhinestone_count", index)
+        apply_defect(rows, width, height, "petal_integrity", index)
+        circle(rows, int(width * 0.61), int(height * 0.57), 12, (210, 184, 112), 0.28)
+    else:
+        raise ValueError(defect_type)
+
+
+def checkpoint_results_for(defect_type: str) -> list[dict[str, str]]:
+    results = {point: "pass" for point in POINTS}
+    if defect_type == "center_alignment":
+        results["center_alignment"] = "fail"
+    elif defect_type == "rhinestone_count":
+        results["rhinestone_count"] = "fail"
+    elif defect_type == "pearl_surface_integrity":
+        results["pearl_surface_integrity"] = "fail"
+    elif defect_type == "pearl_count":
+        results["pearl_count"] = "fail"
+    elif defect_type == "petal_integrity":
+        results["petal_integrity"] = "fail"
+    elif defect_type == "mixed_defects":
+        results["rhinestone_count"] = "fail"
+        results["petal_integrity"] = "fail"
+        results["incidental_abnormality"] = "fail"
+    return [{"code": code, "result": result} for code, result in results.items()]
+
+
+def defects_for(defect_type: str) -> list[dict[str, str]]:
+    if defect_type == "pass":
+        return []
+    details = {
+        "center_alignment": (
+            "center_alignment",
+            "major",
+            "Central stamen cluster is subtly shifted from petal center beyond tolerance.",
+        ),
+        "rhinestone_count": (
+            "rhinestone_count",
+            "critical",
+            "One tiny rhinestone is missing, leaving a dark empty rose-gold setting.",
+        ),
+        "pearl_surface_integrity": (
+            "pearl_surface_integrity",
+            "major",
+            "One pearl contains a fine hairline crack that is visible at inspection distance.",
+        ),
+        "pearl_count": (
+            "pearl_count",
+            "critical",
+            "One pearl bead is missing from the expected cluster.",
+        ),
+        "petal_integrity": (
+            "petal_integrity",
+            "major",
+            "A petal edge contains a small chip / micro-crack.",
+        ),
+    }
+    if defect_type == "mixed_defects":
+        return [
+            {
+                "code": "rhinestone_count",
+                "expected_result": "fail",
+                "severity": "critical",
+                "description": details["rhinestone_count"][2],
+            },
+            {
+                "code": "petal_integrity",
+                "expected_result": "fail",
+                "severity": "major",
+                "description": details["petal_integrity"][2],
+            },
+            {
+                "code": "incidental_abnormality",
+                "expected_result": "fail",
+                "severity": "major",
+                "description": "Slight abnormal pearl discoloration is visible near the stamen cluster.",
+            },
+        ]
+    code, severity, description = details[defect_type]
+    return [
+        {
+            "code": code,
+            "expected_result": "fail",
+            "severity": severity,
+            "description": description,
+        }
+    ]
+
+
+def write_jsonl(path: Path, rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        for row in rows:
+            fh.write(json.dumps(row, ensure_ascii=False, sort_keys=True))
+            fh.write("\n")
+
+
+def main() -> None:
+    width, height, seed_rows = read_png(SEED_IMAGE)
+    width, height, seed_rows = downsample(width, height, seed_rows, SYNTHETIC_MAX_DIM)
+    source_rows = [
+        {
+            "sample_id": "seed_standard_001",
+            "image_path": str(SEED_IMAGE),
+            "source_url": SOURCE_URL,
+            "source_image_url": IMAGE_URL,
+            "source_platform": "Susan & Gloria Boutique Shopify product page",
+            "captured_at": CAPTURED_AT,
+            "sku_name": SKU_NAME,
+            "image_role": "standard",
+            "license_note": LICENSE_NOTE,
+        }
+    ]
+
+    seed_pass = ROOT / "seed" / "pass" / "seed_pass_001.png"
+    shutil.copyfile(SEED_IMAGE, seed_pass)
+    source_rows.append(
+        {
+            "sample_id": "seed_pass_001",
+            "image_path": str(seed_pass),
+            "source_url": SOURCE_URL,
+            "source_image_url": IMAGE_URL,
+            "source_platform": "Susan & Gloria Boutique Shopify product page",
+            "captured_at": CAPTURED_AT,
+            "sku_name": SKU_NAME,
+            "image_role": "pass_reference",
+            "license_note": LICENSE_NOTE,
+        }
+    )
+
+    categories = [
+        ("pass", "synthetic/pass", "sim_pass"),
+        ("center_alignment", "synthetic/fail_center_offcenter_subtle", "sim_center_offcenter"),
+        ("rhinestone_count", "synthetic/fail_missing_rhinestone_subtle", "sim_missing_rhinestone"),
+        ("pearl_surface_integrity", "synthetic/fail_pearl_hairline_crack", "sim_pearl_hairline_crack"),
+        ("pearl_count", "synthetic/fail_missing_pearl", "sim_missing_pearl"),
+        ("petal_integrity", "synthetic/fail_petal_micro_chip", "sim_petal_micro_chip"),
+        ("mixed_defects", "synthetic/mixed_defects", "sim_mixed_defects"),
+    ]
+
+    metadata_rows: list[dict] = []
+    label_rows: list[dict] = []
+    for defect_type, directory, prefix in categories:
+        for idx in range(1, 11):
+            sample_id = f"{prefix}_{idx:03d}"
+            output_path = ROOT / directory / f"{sample_id}.png"
+            rows = copy_rows(seed_rows)
+            apply_defect(rows, width, height, defect_type, idx)
+            write_png(output_path, width, height, rows)
+            metadata_rows.append(
+                {
+                    "sample_id": sample_id,
+                    "image_path": str(output_path),
+                    "based_on_seed": "seed_standard_001",
+                    "is_synthetic": True,
+                    "synthetic_defect_type": defect_type,
+                    "subtlety": "subtle",
+                    "generation_method": "standard-library pixel overlay on public product seed image",
+                    "source_seed_url": SOURCE_URL,
+                    "license_note": LICENSE_NOTE,
+                }
+            )
+            checkpoints = checkpoint_results_for(defect_type)
+            label_rows.append(
+                {
+                    "sample_id": sample_id,
+                    "sku_id": SKU_ID,
+                    "image_path": str(output_path),
+                    "based_on_seed": "seed_standard_001",
+                    "is_synthetic": True,
+                    "expected_final_result": "pass" if defect_type == "pass" else "fail",
+                    "defects": defects_for(defect_type),
+                    "expected_checkpoint_results": checkpoints,
+                }
+            )
+
+    write_jsonl(ROOT / "seed" / "source_metadata.jsonl", source_rows)
+    write_jsonl(ROOT / "synthetic" / "synthetic_metadata.jsonl", metadata_rows)
+    write_jsonl(ROOT / "labels" / "expected_results.jsonl", label_rows)
+
+
+if __name__ == "__main__":
+    main()

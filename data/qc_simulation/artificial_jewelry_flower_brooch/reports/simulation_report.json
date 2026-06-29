@@ -1,0 +1,132 @@
+{
+  "false_fail_count": 0,
+  "false_fail_samples": [],
+  "false_pass_count": 0,
+  "false_pass_samples": [],
+  "final_result_accuracy": 1.0,
+  "generated_at": "2026-06-29T00:00:00+00:00",
+  "missed_defects": [],
+  "per_defect_type_accuracy": {
+    "center_alignment": 1.0,
+    "incidental_abnormality": 1.0,
+    "pass": 1.0,
+    "pearl_count": 1.0,
+    "pearl_surface_integrity": 1.0,
+    "petal_integrity": 1.0,
+    "rhinestone_count": 1.0
+  },
+  "point_level_accuracy": 1.0,
+  "report_path": "data/qc_simulation/artificial_jewelry_flower_brooch/reports/simulation_report.json",
+  "review_required_count": 0,
+  "samples_failed_by_reason": {
+    "one_or_more_checkpoint_failures": [
+      "sim_center_offcenter_001",
+      "sim_center_offcenter_002",
+      "sim_center_offcenter_003",
+      "sim_center_offcenter_004",
+      "sim_center_offcenter_005",
+      "sim_center_offcenter_006",
+      "sim_center_offcenter_007",
+      "sim_center_offcenter_008",
+      "sim_center_offcenter_009",
+      "sim_center_offcenter_010",
+      "sim_missing_rhinestone_001",
+      "sim_missing_rhinestone_002",
+      "sim_missing_rhinestone_003",
+      "sim_missing_rhinestone_004",
+      "sim_missing_rhinestone_005",
+      "sim_missing_rhinestone_006",
+      "sim_missing_rhinestone_007",
+      "sim_missing_rhinestone_008",
+      "sim_missing_rhinestone_009",
+      "sim_missing_rhinestone_010",
+      "sim_pearl_hairline_crack_001",
+      "sim_pearl_hairline_crack_002",
+      "sim_pearl_hairline_crack_003",
+      "sim_pearl_hairline_crack_004",
+      "sim_pearl_hairline_crack_005",
+      "sim_pearl_hairline_crack_006",
+      "sim_pearl_hairline_crack_007",
+      "sim_pearl_hairline_crack_008",
+      "sim_pearl_hairline_crack_009",
+      "sim_pearl_hairline_crack_010",
+      "sim_missing_pearl_001",
+      "sim_missing_pearl_002",
+      "sim_missing_pearl_003",
+      "sim_missing_pearl_004",
+      "sim_missing_pearl_005",
+      "sim_missing_pearl_006",
+      "sim_missing_pearl_007",
+      "sim_missing_pearl_008",
+      "sim_missing_pearl_009",
+      "sim_missing_pearl_010",
+      "sim_petal_micro_chip_001",
+      "sim_petal_micro_chip_002",
+      "sim_petal_micro_chip_003",
+      "sim_petal_micro_chip_004",
+      "sim_petal_micro_chip_005",
+      "sim_petal_micro_chip_006",
+      "sim_petal_micro_chip_007",
+      "sim_petal_micro_chip_008",
+      "sim_petal_micro_chip_009",
+      "sim_petal_micro_chip_010",
+      "sim_mixed_defects_001",
+      "sim_mixed_defects_002",
+      "sim_mixed_defects_003",
+      "sim_mixed_defects_004",
+      "sim_mixed_defects_005",
+      "sim_mixed_defects_006",
+      "sim_mixed_defects_007",
+      "sim_mixed_defects_008",
+      "sim_mixed_defects_009",
+      "sim_mixed_defects_010"
+    ]
+  },
+  "seed_image_count": 2,
+  "sku_standard": {
+    "detection_points": [
+      {
+        "code": "center_alignment",
+        "description": "Flower heart / central stamen cluster is centered relative to the four petals.",
+        "name": "Center alignment",
+        "severity": "major"
+      },
+      {
+        "code": "rhinestone_count",
+        "description": "All required rhinestones / crystals in the stamen cluster are present.",
+        "name": "Rhinestone count",
+        "severity": "critical"
+      },
+      {
+        "code": "pearl_count",
+        "description": "Required pearl beads are present and count matches the standard image.",
+        "name": "Pearl count",
+        "severity": "critical"
+      },
+      {
+        "code": "pearl_surface_integrity",
+        "description": "Pearl beads have no visible cracks, chips, or surface fissures.",
+        "name": "Pearl surface integrity",
+        "severity": "major"
+      },
+      {
+        "code": "petal_integrity",
+        "description": "Petals have no cracks, chips, broken edges, or missing pieces.",
+        "name": "Petal integrity",
+        "severity": "major"
+      },
+      {
+        "code": "incidental_abnormality",
+        "description": "Visible abnormalities are reported even if not explicitly requested.",
+        "name": "Incidental abnormality",
+        "severity": "minor"
+      }
+    ],
+    "sku_id": "artificial_jewelry_flower_brooch_001",
+    "sku_name": "Artificial jewelry flower brooch / hair clip",
+    "standard_photo_id": "seed_standard_001"
+  },
+  "synthetic_sample_count": 70,
+  "total_samples": 70,
+  "unexpected_incidental_findings": []
+}
