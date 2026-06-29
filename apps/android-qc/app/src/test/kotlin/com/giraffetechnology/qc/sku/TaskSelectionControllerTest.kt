@@ -1,5 +1,7 @@
 package com.giraffetechnology.qc.sku
 
+import com.giraffetechnology.qc.qwen.QcPointInput
+import com.giraffetechnology.qc.qwen.StandardPhotoInput
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
@@ -24,12 +26,24 @@ private class FakeMatcher(
 class TaskSelectionControllerTest {
 
     private val testSku = Sku(id = "sku-1", itemNumber = "ITEM-001", name = "Test Widget")
+    private val detailedSku = testSku.copy(
+        activeStandardRevisionId = "rev-1",
+        standardPhotos = listOf(StandardPhotoInput("photo-1", "/tmp/std.jpg", "front")),
+        detectionPoints = listOf(
+            QcPointInput(
+                qcPointId = "point-1",
+                qcPointCode = "center_alignment",
+                name = "Center alignment",
+                description = "Flower center must be aligned",
+            )
+        ),
+    )
     private lateinit var repo: FakeSkuRepository
     private lateinit var matcher: FakeMatcher
     private lateinit var ctrl: TaskSelectionController
 
     @Before fun setUp() {
-        repo    = FakeSkuRepository(listOf(testSku))
+        repo    = FakeSkuRepository(listOf(detailedSku))
         matcher = FakeMatcher(MnnRuntimeState.NotReady)
         ctrl    = TaskSelectionController(repo, matcher)
     }
@@ -78,7 +92,7 @@ class TaskSelectionControllerTest {
     @Test fun `runMatch with MNN ready and OK status emits MatchCandidates`() = runTest {
         val expected = SkuMatchResult(
             status            = MatchStatus.OK,
-            candidates        = listOf(SkuCandidate(testSku, 0.9f, "/tmp/std.jpg")),
+            candidates        = listOf(SkuCandidate(detailedSku, 0.9f, "/tmp/std.jpg")),
             capturedImagePath = "/tmp/capture.jpg",
         )
         val readyMatcher = FakeMatcher(MnnRuntimeState.Ready, expected)
@@ -91,7 +105,7 @@ class TaskSelectionControllerTest {
 
     // 7. operator confirms candidate — emits TaskConfirmed
     @Test fun `confirmCandidate emits TaskConfirmed with MNN_PHOTO_MATCH`() {
-        val candidate = SkuCandidate(testSku, 0.9f, "/tmp/std.jpg")
+        val candidate = SkuCandidate(detailedSku, 0.9f, "/tmp/std.jpg")
         ctrl.confirmCandidate(candidate)
         val s = ctrl.state.value
         assertTrue(s is TaskSelectionState.TaskConfirmed)
@@ -127,13 +141,45 @@ class TaskSelectionControllerTest {
     }
 
     // 10. manual confirmation sets confirmedByUser = true
-    @Test fun `confirmManual sets confirmedByUser true`() {
-        ctrl.confirmManual(testSku, SkuResolutionMethod.MANUAL_ITEM_NUMBER)
+    @Test fun `confirmManual sets confirmedByUser true`() = runTest {
+        ctrl.confirmManual(detailedSku, SkuResolutionMethod.MANUAL_ITEM_NUMBER)
         val s = ctrl.state.value
         assertTrue(s is TaskSelectionState.TaskConfirmed)
         val task = (s as TaskSelectionState.TaskConfirmed).task
         assertTrue(task.confirmedByUser)
         assertEquals(SkuResolutionMethod.MANUAL_ITEM_NUMBER, task.resolvedBy)
+    }
+
+    @Test fun `confirmManual hydrates lightweight search result before confirming task`() = runTest {
+        val searchSku = testSku
+        val hydratingRepo = object : SkuRepository {
+            override suspend fun findByItemNumber(query: String): List<Sku> = listOf(searchSku)
+            override suspend fun getById(id: String): Sku? = detailedSku.takeIf { it.id == id }
+        }
+        val ctrl2 = TaskSelectionController(hydratingRepo, matcher)
+
+        ctrl2.searchByItemNumber("ITEM")
+        ctrl2.confirmManual(searchSku, SkuResolutionMethod.MANUAL_ITEM_NUMBER)
+
+        val s = ctrl2.state.value
+        assertTrue(s is TaskSelectionState.TaskConfirmed)
+        val task = (s as TaskSelectionState.TaskConfirmed).task
+        assertEquals("rev-1", task.activeStandardRevisionId)
+        assertTrue("expected hydrated standard photos", task.standardPhotos.isNotEmpty())
+        assertTrue("expected hydrated detection points", task.qcPoints.isNotEmpty())
+    }
+
+    @Test fun `confirmManual emits BackendError when lightweight SKU detail cannot be loaded`() = runTest {
+        val missingDetailRepo = object : SkuRepository {
+            override suspend fun findByItemNumber(query: String): List<Sku> = listOf(testSku)
+            override suspend fun getById(id: String): Sku? = null
+        }
+        val ctrl2 = TaskSelectionController(missingDetailRepo, matcher)
+
+        ctrl2.confirmManual(testSku, SkuResolutionMethod.MANUAL_ITEM_NUMBER)
+
+        val s = ctrl2.state.value
+        assertTrue("expected BackendError but was $s", s is TaskSelectionState.BackendError)
     }
 
     @Test fun `reset returns to Idle`() = runTest {
