@@ -197,10 +197,12 @@ fun TaskSelectionScreen(
                         is SelectedSkuSource.MnnCandidate ->
                             taskSelectionController.confirmCandidate(src.candidate)
                         is SelectedSkuSource.Manual ->
-                            taskSelectionController.confirmManual(
-                                src.sku,
-                                SkuResolutionMethod.MANUAL_ITEM_NUMBER,
-                            )
+                            scope.launch {
+                                taskSelectionController.confirmManual(
+                                    src.sku,
+                                    SkuResolutionMethod.MANUAL_ITEM_NUMBER,
+                                )
+                            }
                         null -> Unit
                     }
                 },
