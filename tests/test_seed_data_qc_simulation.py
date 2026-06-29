@@ -19,6 +19,7 @@ from src.qc_simulation.runner import (
 LABELS_PATH = DATASET_ROOT / "labels" / "expected_results.jsonl"
 SYNTHETIC_METADATA_PATH = DATASET_ROOT / "synthetic" / "synthetic_metadata.jsonl"
 SEED_METADATA_PATH = DATASET_ROOT / "seed" / "source_metadata.jsonl"
+REAL_METADATA_PATH = DATASET_ROOT / "real" / "real_metadata.jsonl"
 
 
 def _labels() -> list[dict]:
@@ -35,8 +36,11 @@ def test_dataset_structure_and_seed_metadata_exist():
     assert (DATASET_ROOT / "synthetic" / "fail_missing_pearl").is_dir()
     assert (DATASET_ROOT / "synthetic" / "fail_petal_micro_chip").is_dir()
     assert (DATASET_ROOT / "synthetic" / "mixed_defects").is_dir()
+    assert (DATASET_ROOT / "real" / "standard").is_dir()
+    assert (DATASET_ROOT / "real" / "fail_center_offcenter").is_dir()
     assert LABELS_PATH.exists()
     assert SYNTHETIC_METADATA_PATH.exists()
+    assert REAL_METADATA_PATH.exists()
     assert SEED_METADATA_PATH.exists()
 
     seed_metadata = load_jsonl(SEED_METADATA_PATH)
@@ -54,14 +58,19 @@ def test_dataset_structure_and_seed_metadata_exist():
 def test_dataset_has_at_least_70_point_labeled_samples():
     labels = _labels()
     synthetic_metadata = load_jsonl(SYNTHETIC_METADATA_PATH)
-    assert len(labels) == 70
+    real_metadata = load_jsonl(REAL_METADATA_PATH)
+    assert len(labels) == 72
     assert len(synthetic_metadata) == 70
+    assert len(real_metadata) == 2
 
-    sample_ids = {row["sample_id"] for row in synthetic_metadata}
+    metadata_by_sample = {
+        row["sample_id"]: row for row in synthetic_metadata + real_metadata
+    }
+    sample_ids = set(metadata_by_sample)
     assert {label["sample_id"] for label in labels} == sample_ids
     for label in labels:
         assert Path(label["image_path"]).exists()
-        assert label["is_synthetic"] is True
+        assert label["is_synthetic"] is metadata_by_sample[label["sample_id"]]["is_synthetic"]
         checkpoint_codes = {item["code"] for item in label["expected_checkpoint_results"]}
         assert checkpoint_codes == set(REQUIRED_POINT_CODES)
 
@@ -85,9 +94,42 @@ def test_dataset_covers_required_synthetic_defect_categories():
     }
 
 
+def test_real_production_center_offcenter_sample_is_labeled_fail():
+    labels = _labels()
+    real_metadata = load_jsonl(REAL_METADATA_PATH)
+    real_sample_ids = {row["sample_id"] for row in real_metadata}
+    assert real_sample_ids == {
+        "real_production_standard_001",
+        "real_production_center_offcenter_001",
+    }
+    for row in real_metadata:
+        assert row["is_synthetic"] is False
+        assert row["license_note"] == "operator_provided_real_production_photo_internal_test_only"
+        assert Path(row["image_path"]).exists()
+
+    defect_label = next(
+        label for label in labels
+        if label["sample_id"] == "real_production_center_offcenter_001"
+    )
+    assert defect_label["is_synthetic"] is False
+    assert defect_label["expected_final_result"] == "fail"
+    checkpoints = {
+        item["code"]: item["result"]
+        for item in defect_label["expected_checkpoint_results"]
+    }
+    assert checkpoints["center_alignment"] == "fail"
+    assert all(
+        result == "pass"
+        for code, result in checkpoints.items()
+        if code != "center_alignment"
+    )
+
+
 def test_run_simulation_generates_required_report_schema():
     report = run_simulation(DATASET_ROOT)
-    assert report["total_samples"] == 70
+    assert report["total_samples"] == 72
+    assert report["synthetic_sample_count"] == 70
+    assert report["real_production_sample_count"] == 2
     assert report["false_pass_count"] == 0
     assert report["false_fail_count"] == 0
     assert report["final_result_accuracy"] == 1.0

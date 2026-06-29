@@ -24,6 +24,15 @@ Synthetic sample categories:
 - `fail_petal_micro_chip`
 - `mixed_defects`
 
+Real production samples:
+
+- `real/standard/real_production_standard_001.jpg`
+- `real/fail_center_offcenter/real_production_center_offcenter_001.jpg`
+
+These two photos were operator-provided real production-environment samples.
+They are marked `is_synthetic: false` and use license note
+`operator_provided_real_production_photo_internal_test_only`.
+
 Required detection points:
 
 - `center_alignment`

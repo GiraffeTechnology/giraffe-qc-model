@@ -16,6 +16,7 @@
     "rhinestone_count": 1.0
   },
   "point_level_accuracy": 1.0,
+  "real_production_sample_count": 2,
   "report_path": "data/qc_simulation/artificial_jewelry_flower_brooch/reports/simulation_report.json",
   "review_required_count": 0,
   "samples_failed_by_reason": {
@@ -79,7 +80,8 @@
       "sim_mixed_defects_007",
       "sim_mixed_defects_008",
       "sim_mixed_defects_009",
-      "sim_mixed_defects_010"
+      "sim_mixed_defects_010",
+      "real_production_center_offcenter_001"
     ]
   },
   "seed_image_count": 2,
@@ -127,6 +129,6 @@
     "standard_photo_id": "seed_standard_001"
   },
   "synthetic_sample_count": 70,
-  "total_samples": 70,
+  "total_samples": 72,
   "unexpected_incidental_findings": []
 }

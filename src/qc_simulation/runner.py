@@ -218,22 +218,28 @@ def simulate_model_payload(label: dict[str, Any], payload: dict[str, Any] | None
 def run_simulation(dataset_root: Path = DATASET_ROOT) -> dict[str, Any]:
     seed_metadata = load_jsonl(dataset_root / "seed" / "source_metadata.jsonl")
     synthetic_metadata = load_jsonl(dataset_root / "synthetic" / "synthetic_metadata.jsonl")
+    real_metadata_path = dataset_root / "real" / "real_metadata.jsonl"
+    real_metadata = load_jsonl(real_metadata_path) if real_metadata_path.exists() else []
     labels = load_jsonl(dataset_root / "labels" / "expected_results.jsonl")
 
-    metadata_by_sample = {row["sample_id"]: row for row in synthetic_metadata}
+    metadata_by_sample = {
+        row["sample_id"]: row for row in synthetic_metadata + real_metadata
+    }
     outcomes: list[SimulationOutcome] = []
     for label in labels:
         metadata = metadata_by_sample.get(label["sample_id"])
         if metadata is None:
-            raise ValueError(f"Missing synthetic metadata for sample_id={label['sample_id']!r}")
+            raise ValueError(f"Missing sample metadata for sample_id={label['sample_id']!r}")
         image_path = Path(label["image_path"])
         if not image_path.exists():
             raise FileNotFoundError(image_path)
-        if metadata.get("is_synthetic") is not True:
-            raise ValueError(f"Synthetic sample {label['sample_id']} is not marked synthetic")
+        if metadata.get("is_synthetic") is not label.get("is_synthetic"):
+            raise ValueError(
+                f"Sample {label['sample_id']} has inconsistent is_synthetic metadata"
+            )
         outcomes.append(simulate_sample(label))
 
-    report = build_report(outcomes, labels, seed_metadata, synthetic_metadata)
+    report = build_report(outcomes, labels, seed_metadata, synthetic_metadata, real_metadata)
     reports_dir = dataset_root / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     report_path = reports_dir / "simulation_report.json"
@@ -249,7 +255,9 @@ def build_report(
     labels: list[dict[str, Any]],
     seed_metadata: list[dict[str, Any]],
     synthetic_metadata: list[dict[str, Any]],
+    real_metadata: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    real_metadata = real_metadata or []
     total = len(outcomes)
     final_matches = sum(1 for outcome in outcomes if outcome.final_result_matches)
     point_total = 0
@@ -302,6 +310,7 @@ def build_report(
         "generated_at": seed_metadata[0].get("captured_at") if seed_metadata else None,
         "seed_image_count": len(seed_metadata),
         "synthetic_sample_count": len(synthetic_metadata),
+        "real_production_sample_count": len(real_metadata),
         "total_samples": total,
         "final_result_accuracy": final_matches / total if total else 0.0,
         "point_level_accuracy": point_matches / point_total if point_total else 0.0,

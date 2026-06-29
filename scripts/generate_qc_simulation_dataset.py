@@ -21,6 +21,11 @@ SKU_NAME = "Artificial jewelry flower brooch / hair clip"
 SOURCE_URL = "https://susangloriaboutique.com/products/blush-pearl-bloom-brooch"
 IMAGE_URL = "https://susangloriaboutique.com/cdn/shop/files/1777275268018-8mlmqbp6qz3_1024x1024.png?v=1779955515"
 LICENSE_NOTE = "public_product_page_internal_test_only"
+OPERATOR_PROVIDED_NOTE = "operator_provided_real_production_photo_internal_test_only"
+REAL_STANDARD_IMAGE = ROOT / "real" / "standard" / "real_production_standard_001.jpg"
+REAL_CENTER_OFFCENTER_IMAGE = (
+    ROOT / "real" / "fail_center_offcenter" / "real_production_center_offcenter_001.jpg"
+)
 
 POINTS = (
     "center_alignment",
@@ -323,6 +328,72 @@ def defects_for(defect_type: str) -> list[dict[str, str]]:
     ]
 
 
+def real_production_rows() -> tuple[list[dict], list[dict]]:
+    metadata_rows: list[dict] = []
+    label_rows: list[dict] = []
+    if REAL_STANDARD_IMAGE.exists():
+        metadata_rows.append(
+            {
+                "sample_id": "real_production_standard_001",
+                "image_path": str(REAL_STANDARD_IMAGE),
+                "source_platform": "operator-provided real production photo",
+                "captured_at": CAPTURED_AT,
+                "sku_name": SKU_NAME,
+                "image_role": "real_production_standard",
+                "is_synthetic": False,
+                "license_note": OPERATOR_PROVIDED_NOTE,
+            }
+        )
+        label_rows.append(
+            {
+                "sample_id": "real_production_standard_001",
+                "sku_id": SKU_ID,
+                "image_path": str(REAL_STANDARD_IMAGE),
+                "based_on_seed": "real_production_standard_001",
+                "is_synthetic": False,
+                "expected_final_result": "pass",
+                "defects": [],
+                "expected_checkpoint_results": checkpoint_results_for("pass"),
+            }
+        )
+    if REAL_CENTER_OFFCENTER_IMAGE.exists():
+        metadata_rows.append(
+            {
+                "sample_id": "real_production_center_offcenter_001",
+                "image_path": str(REAL_CENTER_OFFCENTER_IMAGE),
+                "source_platform": "operator-provided real production photo",
+                "captured_at": CAPTURED_AT,
+                "sku_name": SKU_NAME,
+                "image_role": "real_production_fail_center_offcenter",
+                "is_synthetic": False,
+                "license_note": OPERATOR_PROVIDED_NOTE,
+            }
+        )
+        label_rows.append(
+            {
+                "sample_id": "real_production_center_offcenter_001",
+                "sku_id": SKU_ID,
+                "image_path": str(REAL_CENTER_OFFCENTER_IMAGE),
+                "based_on_seed": "real_production_standard_001",
+                "is_synthetic": False,
+                "expected_final_result": "fail",
+                "defects": [
+                    {
+                        "code": "center_alignment",
+                        "expected_result": "fail",
+                        "severity": "major",
+                        "description": (
+                            "Real production defect: the flower heart / stamen cluster is visibly "
+                            "shifted off the four-petal center."
+                        ),
+                    }
+                ],
+                "expected_checkpoint_results": checkpoint_results_for("center_alignment"),
+            }
+        )
+    return metadata_rows, label_rows
+
+
 def write_jsonl(path: Path, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:
@@ -410,8 +481,12 @@ def main() -> None:
                 }
             )
 
+    real_metadata_rows, real_label_rows = real_production_rows()
+    label_rows.extend(real_label_rows)
+
     write_jsonl(ROOT / "seed" / "source_metadata.jsonl", source_rows)
     write_jsonl(ROOT / "synthetic" / "synthetic_metadata.jsonl", metadata_rows)
+    write_jsonl(ROOT / "real" / "real_metadata.jsonl", real_metadata_rows)
     write_jsonl(ROOT / "labels" / "expected_results.jsonl", label_rows)
 
 
