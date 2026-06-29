@@ -1,8 +1,11 @@
 package com.giraffetechnology.qc.sku
 
+import com.giraffetechnology.qc.qwen.QcPointInput
+import com.giraffetechnology.qc.qwen.StandardPhotoInput
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -95,5 +98,45 @@ class ApiSkuRepository internal constructor(
         name             = obj.getString("name"),
         referenceImageUrl = obj.optString("reference_image_url").takeIf { it.isNotEmpty() },
         standardPhotoPath = obj.optString("standard_photo_path").takeIf { it.isNotEmpty() },
+        activeStandardRevisionId =
+            obj.optString("active_standard_revision_id").takeIf { it.isNotEmpty() },
+        standardPhotos   = parseStandardPhotos(obj.optJSONArray("photos")),
+        detectionPoints  = parseDetectionPoints(obj.optJSONArray("detection_points")),
     )
+
+    // SKU detail (GET /api/v1/sku/{id}) carries the inspection data contract.
+    // A usable standard photo needs a path the Pad can read (local_path preferred,
+    // image_url as fallback); entries without one are dropped so they cannot be
+    // mistaken for a valid standard.
+    private fun parseStandardPhotos(arr: JSONArray?): List<StandardPhotoInput> {
+        if (arr == null) return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val path = o.optString("local_path").takeIf { it.isNotEmpty() }
+                ?: o.optString("image_url").takeIf { it.isNotEmpty() }
+                ?: return@mapNotNull null
+            StandardPhotoInput(
+                photoId   = o.optString("id"),
+                localPath = path,
+                angle     = o.optString("angle").takeIf { it.isNotEmpty() },
+            )
+        }
+    }
+
+    private fun parseDetectionPoints(arr: JSONArray?): List<QcPointInput> {
+        if (arr == null) return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val code = o.optString("point_code").takeIf { it.isNotEmpty() }
+                ?: return@mapNotNull null
+            QcPointInput(
+                qcPointId   = o.optString("id"),
+                qcPointCode = code,
+                name        = o.optString("label"),
+                description = o.optString("description"),
+                roiJson     = o.optJSONObject("roi_json")?.toString(),
+                ruleType    = o.optString("severity").takeIf { it.isNotEmpty() },
+            )
+        }
+    }
 }

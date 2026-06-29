@@ -68,13 +68,35 @@ class TaskSelectionController(
         )
     }
 
-    /** Confirm a SKU selected manually. resolvedBy must be MANUAL_*. */
-    fun confirmManual(sku: Sku, resolvedBy: SkuResolutionMethod) {
+    /**
+     * Confirm a SKU selected manually.
+     *
+     * `/api/v1/sku/search` returns a lightweight SKU for list rendering. Before
+     * binding the task we hydrate the selected SKU through `getById`, because the
+     * detail response carries the standard photos, detection points, and active
+     * standard revision the Pad needs for inspection. Without this step a normal
+     * manual search selection would always fail closed with empty QC inputs.
+     */
+    suspend fun confirmManual(sku: Sku, resolvedBy: SkuResolutionMethod) {
+        val taskSku = if (sku.hasInspectionContract()) {
+            sku
+        } else {
+            skuRepo.getById(sku.id) ?: run {
+                _state.value = TaskSelectionState.BackendError(
+                    "SKU detail not found for ${sku.itemNumber}"
+                )
+                return
+            }
+        }
+
         _state.value = TaskSelectionState.TaskConfirmed(
-            QcTask(sku = sku, confirmedByUser = true, resolvedBy = resolvedBy)
+            QcTask(sku = taskSku, confirmedByUser = true, resolvedBy = resolvedBy)
         )
     }
 
     fun startCapturingForMatch() { _state.value = TaskSelectionState.Idle }
     fun reset() { _state.value = TaskSelectionState.Idle }
 }
+
+private fun Sku.hasInspectionContract(): Boolean =
+    standardPhotos.isNotEmpty() && detectionPoints.isNotEmpty()
