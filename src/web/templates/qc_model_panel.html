@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}QC Model — Phase 1 Visual QC{% endblock %}
+{% block content %}
+<section class="qcm-panel">
+  <h1>Visual QC Training Engine — Phase 1</h1>
+  <p class="qcm-note">
+    General-purpose, provider-compatible visual QC training &amp; execution
+    foundation. Each production digital inspector is SKU-specific,
+    workstation-specific, and bound to a confirmed Training Pack.
+  </p>
+
+  <h2>Default runtime profiles</h2>
+  <table class="qcm-table">
+    <thead><tr><th>Environment</th><th>Provider</th><th>Model</th><th>Role</th></tr></thead>
+    <tbody>
+      {% for env, profile in runtime_profiles.items() %}
+      <tr>
+        <td>{{ env }}</td>
+        <td>{{ profile.provider }}</td>
+        <td><code>{{ profile.model }}</code></td>
+        <td>{{ profile.role }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Digital inspector lifecycle</h2>
+  <p class="qcm-lifecycle">
+    {% for state in lifecycle_states %}
+      <span class="qcm-state">{{ state }}</span>{% if not loop.last %} &rarr; {% endif %}
+    {% endfor %}
+  </p>
+
+  <h2>Detection point checkpoint categories</h2>
+  <p class="qcm-note">
+    Each detection point gets a <em>proposed</em> category. AI may be the
+    primary visual judge only for a <strong>confirmed</strong>
+    <code>visual_defect</code> checkpoint. <code>physical_measurement</code>
+    checkpoints are never AI-primary.
+  </p>
+
+  {% for row in sku_rows %}
+  <div class="qcm-sku">
+    <h3>{{ row.sku.name }} <small>({{ row.sku.item_number }})</small></h3>
+    {% if row.points %}
+    <table class="qcm-table">
+      <thead>
+        <tr>
+          <th>Detection point</th><th>Severity</th>
+          <th>Proposed</th><th>Confirmed</th><th>AI role</th>
+          <th>Confirm / edit category</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in row.points %}
+        <tr class="{{ 'qcm-confirmed' if p.is_confirmed else 'qcm-unconfirmed' }}">
+          <td>{{ p.label }} <code>{{ p.point_code }}</code></td>
+          <td>{{ p.severity }}</td>
+          <td>{{ p.proposed_checkpoint_category }}</td>
+          <td>
+            {% if p.is_confirmed %}
+              {{ p.confirmed_checkpoint_category }}
+              <small>by {{ p.category_confirmed_by }}</small>
+            {% else %}
+              <span class="qcm-pending">unconfirmed</span>
+            {% endif %}
+          </td>
+          <td>{{ p.ai_role }}{% if p.ai_can_be_primary_judge %} <strong>(AI primary)</strong>{% endif %}</td>
+          <td>
+            <form method="post"
+                  action="/admin/qc-model/detection-points/{{ p.id }}/confirm-category">
+              <select name="confirmed_category">
+                {% for c in categories %}
+                <option value="{{ c }}"
+                  {% if c == (p.confirmed_checkpoint_category or p.proposed_checkpoint_category) %}selected{% endif %}>
+                  {{ c }}
+                </option>
+                {% endfor %}
+              </select>
+              <input type="hidden" name="confirmed_by" value="qc_supervisor">
+              <button type="submit" class="btn btn-primary">Confirm</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="qcm-note">No detection points yet.</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endblock %}
