@@ -68,9 +68,15 @@ class QCLearnedDetectionPointProposal(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default="default")
-    learning_job_id: Mapped[str] = mapped_column(
-        ForeignKey("qc_learning_jobs.id"), nullable=False, index=True
+    # Nullable so a proposal can originate from either a learning job (PR 20)
+    # or a rule-authoring job over a source fragment (PR 22).
+    learning_job_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("qc_learning_jobs.id"), nullable=True, index=True
     )
+    # PR 22: authoring-run + source-fragment traceability (both nullable so the
+    # PR 20 learning path is unaffected).
+    rule_authoring_job_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    source_fragment_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
     source_requirement: Mapped[Optional[str]] = mapped_column(Text)
     proposed_code: Mapped[str] = mapped_column(String(64), nullable=False)
     proposed_name: Mapped[Optional[str]] = mapped_column(String(256))
@@ -84,9 +90,14 @@ class QCLearnedDetectionPointProposal(Base):
     decision_rule: Mapped[Optional[str]] = mapped_column(Text)
     review_required_conditions_json: Mapped[Optional[list]] = mapped_column(JSON)
     evidence_required: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # PR 22: structured evidence-required list (questions_or_ambiguities uses
+    # the existing uncertainties_json column).
+    evidence_required_json: Mapped[Optional[list]] = mapped_column(JSON)
     confidence: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     uncertainties_json: Mapped[Optional[list]] = mapped_column(JSON)
-    # proposed | approved | rejected | applied
+    # PR 22 physical-measurement guard override note (supervisor-visible).
+    guard_override_note: Mapped[Optional[str]] = mapped_column(Text)
+    # proposed | approved | rejected | applied  (+ edited via approval records)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="proposed")
     approved_by: Mapped[Optional[str]] = mapped_column(String(128))
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))

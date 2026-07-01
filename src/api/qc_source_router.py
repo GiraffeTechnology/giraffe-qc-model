@@ -201,13 +201,25 @@ def _render_panel(request: Request, training_pack_id: str, tenant_id: str, db: S
         )
         grouped: dict[str, list] = {}
         if latest_job:
+            from src.api.qc_authoring_router import proposal_view
+            from src.db.qc_learning_models import QCLearnedDetectionPointProposal
+
             frags = (
                 db.query(QCSourceFragment)
                 .filter_by(extraction_job_id=latest_job.id, tenant_id=tenant_id)
                 .all()
             )
             for f in frags:
-                grouped.setdefault(f.fragment_type, []).append(_fragment_view(f))
+                fv = _fragment_view(f)
+                # Attach any authored rule proposals for this fragment (PR 22).
+                authored = (
+                    db.query(QCLearnedDetectionPointProposal)
+                    .filter_by(source_fragment_id=f.id, tenant_id=tenant_id)
+                    .order_by(QCLearnedDetectionPointProposal.created_at.desc())
+                    .all()
+                )
+                fv["proposals"] = [proposal_view(p) for p in authored]
+                grouped.setdefault(f.fragment_type, []).append(fv)
         source_rows.append(
             {
                 "source": _source_view(doc),

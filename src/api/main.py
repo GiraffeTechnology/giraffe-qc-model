@@ -15,6 +15,7 @@ from src.api.qc_intake_router import router as qc_intake_router
 from src.api.qc_inspection_router import router as qc_inspection_router
 from src.api.qc_learning_router import router as qc_learning_router
 from src.api.qc_model_router import router as qc_model_router
+from src.api.qc_authoring_router import router as qc_authoring_router
 from src.api.qc_source_router import router as qc_source_router
 from src.api.sample_admin_router import router as sample_admin_router
 from src.api.sku_router import router as sku_router
@@ -53,6 +54,7 @@ app.include_router(qc_inspection_router)
 app.include_router(qc_model_router)
 app.include_router(qc_learning_router)
 app.include_router(qc_source_router)
+app.include_router(qc_authoring_router)
 
 
 @app.get("/health")

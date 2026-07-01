@@ -85,3 +85,60 @@ natural-language requirements / process specs, registering drawing/PDF/image
 references, selecting the source type, triggering extraction, and viewing
 fragments grouped by type with detection-point vs boundary-rule badges (badges
 only — approval UI comes in PR 22).
+
+---
+
+## PR 22 — LLM rule authoring from source fragments
+
+PR 22 converts PR 21 `QCSourceFragment` rows into structured **learned rule
+proposals** (`src/qc_model/authoring/`). Proposals are **draft only** and
+**reuse PR 20's proposal table + approval workflow** (`ProposalStatus`,
+`approved_by`/`approved_at`); this PR still does **not** touch Training Pack
+activation (that arrives via PR 20's existing approval flow plus PR 24's
+readiness gate).
+
+### Proposal generation pipeline
+
+`RuleAuthoringJob` tracks one authoring run over a fragment (or an extraction
+job's fragments). The run calls a `QCRuleAuthoringProvider` (deterministic mock
+in dev/test; the `qwen3.5-vl` adapter fails closed with no real backend), then
+the **hard validator** guards and persists proposals into
+`qc_learned_detection_point_proposals` (tagged with `rule_authoring_job_id` and
+`source_fragment_id`).
+
+Endpoints (tenant-scoped):
+
+```
+POST /api/qc/source-fragments/{fragment_id}/propose-rules
+POST /api/qc/source-extraction-jobs/{job_id}/propose-rules
+GET  /api/qc/rule-authoring-jobs/{job_id}
+GET  /api/qc/rule-authoring-jobs/{job_id}/proposals
+```
+
+The PR 21 workbench page is extended to show, per fragment, the proposed
+detection point(s), checkpoint category, AI role, decision rule,
+`questions_or_ambiguities`, and Approve / Edit / Reject controls.
+
+### Physical-measurement guard (hard invariant)
+
+Enforced in `src/qc_model/authoring/validator.py`, independent of the LLM: if
+`checkpoint_category == physical_measurement`, `ai_role` is **forced** to
+`record_only` and the override is recorded in a supervisor-visible note. A
+supervisor edit that changes the category re-runs the same guard. This is
+covered by an adversarial test that feeds a hostile LLM response and asserts the
+override still holds.
+
+### Never guess missing values
+
+The system never fabricates a missing count, tolerance, required view,
+orientation, color range, measurement method, or pass/fail threshold. When any
+is missing/ambiguous it adds a `questions_or_ambiguities` entry instead. Tests
+assert a fragment missing a tolerance (or count) produces a question and no
+fabricated value.
+
+### Fail-closed
+
+Provider failure or malformed/partial LLM output → `RuleAuthoringJob.status =
+failed`, **zero** proposals persisted (never best-effort parsed into an
+approvable proposal), with the error surfaced via `GET
+/api/qc/rule-authoring-jobs/{job_id}`.
