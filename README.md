@@ -30,15 +30,15 @@ Unknown or unset `QC_VISION_RUNTIME_ENV` falls back to `server`.
 
 ## Existing Pad vs Server edition config
 
-The repository also contains an older edition switch in `src/runtime/editions.py`:
+The repository also contains the older edition switch in `src/runtime/editions.py`:
 
 ```bash
 QC_RUNTIME_EDITION=padLocal|server
 ```
 
-This remains in place for existing Pad / Server behavior. It is intentionally separate from the new Phase 1 visual QC runtime profile layer in `src/qc_model/runtime_profiles.py`.
+This remains in place for existing Pad / Server behavior. It is intentionally separate from the Phase 1 visual QC runtime profile layer in `src/qc_model/runtime_profiles.py`.
 
-Current Android / MNN code may still reference model names such as `Qwen3-VL-2B-Instruct-MNN`, while the product default tablet profile is `qwen3.5-vl-2b-mnn`. This mismatch is documented and must not be silently migrated inside server/schema-only PRs.
+Current Android / MNN code may still reference model names such as `Qwen3-VL-2B-Instruct-MNN`, while the product default tablet profile is `qwen3.5-vl-2b-mnn`. This mismatch is documented and must not be silently migrated inside server/schema-only changes.
 
 ## Overview
 
@@ -178,7 +178,7 @@ giraffe-qc-model/
     └── QC_SAMPLE_ADMIN_UI.md
 ```
 
-## Current state
+## Current state after Phase 1 foundation
 
 - [x] QC Sample DB and SKU API implemented: `qc_sku_items`, `qc_standard_photos`, `qc_inspection_requirements`, `qc_detection_points`; `/api/v1/sku/search`; `/api/v1/sku/{sku_id}`.
 - [x] Shared QC Sample Admin UI at `/admin/samples`: create SKU, upload/register photos, set primary photo, add requirements, draw ROI detection points, archive SKU.
@@ -188,24 +188,40 @@ giraffe-qc-model/
 - [x] Fake/mock Android test doubles live under test sources only, not main production sources.
 - [x] Phase 1 visual QC training engine foundation added under `src/qc_model/`: runtime profiles, provider abstraction, Training Pack schema, category confirmation, lifecycle, finalizer, feedback escalation skeleton, prompts, runner, and `/admin/qc-model` UI extension.
 - [x] Dual product-default visual QC profiles defined: `tablet_mnn → qwen3.5-vl-2b-mnn`, `server → qwen3.5-vl-8b-int4`.
+- [x] CI acceptance for the Phase 1 foundation: `tests` and `QC Model Full Acceptance` workflows pass on the Phase 1 branch.
 - [ ] Real Tablet / Pad MNN inference not yet confirmed. JNI native integration is scaffolded but physical device validation remains pending.
 - [ ] Real qwen3.5-vl visual accuracy certification is not complete. Mocked tests validate structure and safety, not production defect-detection accuracy.
-- [ ] Full Training Pack production workflow, real sample coverage, trial-shift policy, and supervisor review loop still need later iterations.
+- [ ] Full LLM/VLM automatic QC-rule learning is not implemented yet. This is the next planned iteration.
 
 ## Next milestones
 
-### 1. Fix Phase 1 foundation blockers before merge
+### 1. LLM/VLM automatic QC-rule learning
 
-PR #19 is a foundation PR and should not be merged solely because CI is green. Before merge, verify or implement:
+The next major iteration is to let the system use LLM/VLM providers to learn QC rules from operator-provided standards and labeled samples:
 
-1. `run_inspection()` must enforce confirmed / qualified Training Pack status.
-2. `request`, `TrainingPack`, and `DigitalInspector` must agree on `sku_id`, `station_id`, and `training_pack_id`.
-3. Human feedback and false-pass escalation must be reachable through API/UI, not only schema/function code.
-4. Qualification / activation must enforce that insufficient sample coverage can only enter `on_trial`, not `active`.
-5. Finalizer capture-quality precedence must match the documented policy.
-6. Runtime profile naming must remain `tablet_mnn`, not `desktop_pc_mnn`.
+1. operator requirement ingestion from natural language or speech-to-text;
+2. automatic proposal of structured detection points;
+3. automatic proposal of checkpoint categories and AI roles;
+4. learning normal visual features from standard and qualified samples;
+5. learning defect visual features from defect samples;
+6. learning pseudo-defects from boundary samples such as reflection, shadow, blur, angle, and overexposure;
+7. generating decision rules and `review_required` conditions;
+8. supervisor confirmation before any learned rule enters an active Training Pack.
 
-### 2. Validate Tablet MNN runtime
+This iteration should add a real learning workflow on top of the Phase 1 schemas. It should not treat mocked-provider tests as proof of visual accuracy.
+
+### 2. Production hardening of Phase 1 guardrails
+
+Before production use, harden the foundation around:
+
+1. strict Training Pack qualification gates in `run_inspection()`;
+2. consistency checks across `InspectionRequest`, `TrainingPack`, and `DigitalInspector` for `sku_id`, `station_id`, and `training_pack_id`;
+3. API/UI surface for human feedback and false-pass escalation;
+4. sample-coverage gates so insufficient samples can enter `on_trial` only, not `active`;
+5. finalizer propagation of incidental findings that require human review;
+6. capture-quality precedence and documented fail-closed policy.
+
+### 3. Validate Tablet MNN runtime
 
 Once a physical Snapdragon Tablet / Pad test device is available:
 
@@ -214,7 +230,7 @@ Once a physical Snapdragon Tablet / Pad test device is available:
 3. Validate the full capture-to-result flow offline.
 4. If the latency or memory budget is not met, do not silently relax the budget; choose a mitigation such as smaller quantization, reduced input resolution, or narrower per-call scope.
 
-### 3. Validate real visual QC accuracy
+### 4. Validate real visual QC accuracy
 
 Use labeled real-world sample sets:
 
