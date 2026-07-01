@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}QC Source Ingestion — Workbench{% endblock %}
+{% block content %}
+<section class="qcm-panel">
+  <h1>QC Source Ingestion Workbench</h1>
+  <p class="qcm-note">
+    Register QC source materials (natural-language requirements, process specs,
+    standards, drawing/PDF/image references) for training pack
+    <code>{{ training_pack_id }}</code> and run a <strong>deterministic mock</strong>
+    extraction into draft fragments.
+  </p>
+  <p class="qcm-note qcm-boundary">
+    ⚠ Everything here is <strong>draft only</strong>. Extracted fragments never
+    update a Training Pack and can never become active rules. The mock extractor
+    is a placeholder for the real LLM/VLM extraction (PR 22/23).
+  </p>
+
+  <h2>Register a source</h2>
+  <form method="post"
+        action="/admin/qc-model/training-packs/{{ training_pack_id }}/sources"
+        class="qcm-source-form">
+    <label>Source type
+      <select name="source_type">
+        {% for st in source_types %}
+        <option value="{{ st }}">{{ st }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Title <input type="text" name="title" placeholder="optional title"></label>
+    <label>Natural-language QC requirement / process spec
+      <textarea name="text_content" rows="4" cols="70"
+                placeholder="e.g. The flower center must be aligned. Confirm the pearl count matches the sample."></textarea>
+    </label>
+    <label>Drawing / PDF / image reference
+      <input type="text" name="file_ref" placeholder="s3://... or /path/to/reference (reuses existing storage)">
+    </label>
+    <button type="submit" class="btn btn-primary">Register source</button>
+  </form>
+
+  <h2>Registered sources</h2>
+  {% for row in source_rows %}
+  <div class="qcm-sku">
+    <h3>
+      {{ row.source.title or row.source.source_type }}
+      <span class="qcm-state">{{ row.source.source_type }}</span>
+      <span class="qcm-state">{{ row.source.status }}</span>
+    </h3>
+    {% if row.source.text_content %}
+    <p class="qcm-note">{{ row.source.text_content[:200] }}</p>
+    {% elif row.source.file_ref %}
+    <p class="qcm-note">reference: <code>{{ row.source.file_ref }}</code></p>
+    {% endif %}
+
+    <form method="post"
+          action="/admin/qc-model/training-packs/{{ training_pack_id }}/sources/{{ row.source.source_id }}/extract"
+          class="qcm-inline-form">
+      <button type="submit" class="btn btn-primary">Run extraction (mock)</button>
+    </form>
+
+    {% if row.grouped_fragments %}
+    <p class="qcm-note">
+      Extraction job <code>{{ row.latest_job.job_id[:8] }}</code>
+      — {{ row.latest_job.fragment_count }} fragments
+      (provider <code>{{ row.latest_job.provider }}</code>)
+    </p>
+    {% for ftype, frags in row.grouped_fragments.items() %}
+    <h4>{{ ftype }}</h4>
+    <table class="qcm-table">
+      <thead>
+        <tr><th>Fragment</th><th>Candidate</th><th>Rationale</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for f in frags %}
+        <tr>
+          <td>{{ f.text }}</td>
+          <td>
+            {% if f.candidate_label == 'detection_point' %}
+              <span class="qcm-badge-detection">detection point</span>
+            {% elif f.candidate_label == 'boundary_rule' %}
+              <span class="qcm-badge-boundary">boundary rule</span>
+            {% else %}
+              <span class="qcm-badge-review">review</span>
+            {% endif %}
+          </td>
+          <td>{{ f.rationale }}</td>
+          <td>{{ f.status }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endfor %}
+    {% else %}
+    <p class="qcm-note">No fragments yet — run extraction.</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endblock %}

@@ -36,6 +36,7 @@
       / <code>{{ row.job.model }}</code>{% endif %}
       {% if row.job.error_message %}| <span class="qcm-pending">{{ row.job.error_message }}</span>{% endif %}
     </p>
+    <p><a href="/admin/qc-model/training-packs/{{ row.job.training_pack_id }}/sources" class="btn">Source Ingestion Workbench →</a></p>
 
     <form method="post" action="/admin/qc-model/learning/{{ row.job.learning_job_id }}/add-requirement" class="qcm-inline-form">
       <input type="text" name="requirement_text" placeholder="Operator QC requirement text" size="60">

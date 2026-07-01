@@ -69,6 +69,10 @@ Phase 1 validates **structure and safety guardrails**. It does not certify real-
 
 Phase 2A adds the first **rule-learning** loop under `src/qc_model/learning/`, described in [`docs/QC_MODEL_PHASE2A_RULE_LEARNING.md`](docs/QC_MODEL_PHASE2A_RULE_LEARNING.md). The LLM/VLM **proposes** structured detection points, visual features, pseudo-defects, decision rules, and review-required conditions from operator requirements + Training Pack context; a supervisor must approve them before they are applied to a Training Pack. Rule learning defaults to the `server` profile (`qwen3.5-vl-8b-int4`); the `tablet_mnn` edge profile executes confirmed rules and is never used for learning. This is rule learning, **not** model fine-tuning, and it does not certify visual accuracy. Admin UI: `/admin/qc-model/learning`.
 
+### QC Source Ingestion Workbench
+
+The source ingestion workbench (`src/qc_model/ingestion/`, [`docs/qc-source-ingestion.md`](docs/qc-source-ingestion.md)) lets operators register QC source materials — natural-language requirements, process specs, standards, and drawing/PDF/image references — against a Training Pack, then run a **deterministic mock** extraction into typed **draft fragments** (possible detection point, physical measurement, boundary condition, missing tolerance/count, pseudo-defect, unclear requirement, requires-review). Everything produced is **draft-only**: extracted fragments never update a Training Pack and can never become active rules. The mock extractor is a placeholder for the real LLM/VLM extraction in a later PR. Admin UI: `/admin/qc-model/training-packs/{training_pack_id}/sources`.
+
 ## Visual QC boundary
 
 Giraffe QC Model focuses on visual signal interpretation under fixed SKU / fixed workstation conditions:
