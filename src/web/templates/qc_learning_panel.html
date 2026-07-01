@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}QC Rule Learning — Phase 2A{% endblock %}
+{% block content %}
+<section class="qcm-panel">
+  <h1>QC Rule Learning Engine — Phase 2A</h1>
+  <p class="qcm-note">
+    The LLM/VLM <strong>proposes</strong> QC rules from operator requirements and
+    Training Pack context. Rule learning defaults to the <code>server</code>
+    profile (<code>qwen3.5-vl-8b-int4</code>); the <code>tablet_mnn</code> edge
+    profile executes confirmed rules, it does not learn them.
+  </p>
+  <p class="qcm-note qcm-boundary">
+    ⚠ Proposed rules are <strong>not active</strong> until a supervisor approves
+    them and applies them to the Training Pack. This is rule learning, not model
+    fine-tuning, and it does not certify visual accuracy.
+  </p>
+
+  <h2>Create a learning job</h2>
+  <form method="post" action="/admin/qc-model/learning/create" class="qcm-inline-form">
+    <input type="text" name="training_pack_id" placeholder="training_pack_id" required>
+    <input type="text" name="sku_id" placeholder="sku_id" required>
+    <input type="text" name="station_id" placeholder="station_id" required>
+    <button type="submit" class="btn btn-primary">Create job</button>
+  </form>
+
+  {% for row in job_rows %}
+  <div class="qcm-sku">
+    <h3>
+      Learning job <code>{{ row.job.learning_job_id[:8] }}</code>
+      — SKU {{ row.job.sku_id }} @ {{ row.job.station_id }}
+      <span class="qcm-state">{{ row.job.status }}</span>
+    </h3>
+    <p class="qcm-note">
+      runtime: <code>{{ row.job.runtime_profile }}</code>
+      {% if row.job.provider %}| provider: <code>{{ row.job.provider }}</code>
+      / <code>{{ row.job.model }}</code>{% endif %}
+      {% if row.job.error_message %}| <span class="qcm-pending">{{ row.job.error_message }}</span>{% endif %}
+    </p>
+
+    <form method="post" action="/admin/qc-model/learning/{{ row.job.learning_job_id }}/add-requirement" class="qcm-inline-form">
+      <input type="text" name="requirement_text" placeholder="Operator QC requirement text" size="60">
+      <button type="submit" class="btn">Add requirement</button>
+    </form>
+    <form method="post" action="/admin/qc-model/learning/{{ row.job.learning_job_id }}/run" class="qcm-inline-form">
+      <button type="submit" class="btn btn-primary">Run learning (mock)</button>
+    </form>
+
+    {% if row.proposals %}
+    <table class="qcm-table">
+      <thead>
+        <tr>
+          <th>Proposed detection point</th><th>Category</th><th>AI role</th>
+          <th>Severity</th><th>Decision rule</th><th>Status</th><th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in row.proposals %}
+        <tr class="{{ 'qcm-confirmed' if p.status in ['approved','applied'] else 'qcm-unconfirmed' }}">
+          <td>{{ p.proposed_name }} <code>{{ p.proposed_code }}</code></td>
+          <td>
+            {{ p.proposed_checkpoint_category }}
+            {% if p.proposed_checkpoint_category == 'physical_measurement' %}
+              <br><span class="qcm-pending">physical measurement — AI record only</span>
+            {% endif %}
+          </td>
+          <td>{{ p.proposed_ai_role }}</td>
+          <td>{{ p.severity }}</td>
+          <td>{{ p.decision_rule }}</td>
+          <td>{{ p.status }}</td>
+          <td>
+            {% if p.status == 'proposed' %}
+            <form method="post" action="/admin/qc-model/learning/{{ row.job.learning_job_id }}/approve/{{ p.proposal_id }}" style="display:inline">
+              <button type="submit" class="btn btn-primary">Approve</button>
+            </form>
+            <form method="post" action="/admin/qc-model/learning/{{ row.job.learning_job_id }}/reject/{{ p.proposal_id }}" style="display:inline">
+              <button type="submit" class="btn">Reject</button>
+            </form>
+            {% elif p.status == 'approved' %}
+            <span class="qcm-pending">approved (not yet applied)</span>
+            {% elif p.status == 'applied' %}
+            applied → <code>{{ p.applied_detection_point_id[:8] }}</code>
+            {% else %}
+            {{ p.status }}
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <form method="post" action="/admin/qc-model/learning/{{ row.job.learning_job_id }}/apply" class="qcm-inline-form">
+      <button type="submit" class="btn btn-primary">Apply approved rules to Training Pack</button>
+    </form>
+    {% else %}
+    <p class="qcm-note">No proposals yet. Add a requirement and run learning.</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endblock %}

@@ -82,7 +82,7 @@ src/qc_model/
   finalizer.py                 deterministic finalizer (model pass never overrides fail)
   capture_quality.py           capture quality gate
   boundary.py                  physical-measurement boundary helpers
-  learning.py                  learning readiness skeleton
+  learning/readiness.py        learning readiness skeleton (Phase 2A moved learning.py into the learning/ package)
   exam.py                      qualification metrics + thresholds (false_pass==0)
   feedback_escalation.py       false-pass P0 escalation
   prompts.py                   system/inspection/boundary/evidence templates
