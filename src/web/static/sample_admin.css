@@ -220,3 +220,10 @@ main {
 .qcm-unconfirmed td { background: #fff7ed; }
 .qcm-confirmed td { background: #f0fdf4; }
 .qcm-pending { color: #c2410c; font-weight: 600; }
+
+/* PR21 Source Ingestion Workbench */
+.qcm-source-form label { display: block; margin: 8px 0; }
+.qcm-boundary { color: #b45309; font-weight: 600; }
+.qcm-badge-detection { background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+.qcm-badge-boundary { background: #fef9c3; color: #854d0e; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+.qcm-badge-review { background: #e0e7ff; color: #3730a3; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
