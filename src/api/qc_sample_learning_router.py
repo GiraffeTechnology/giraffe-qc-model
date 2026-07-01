@@ -176,6 +176,8 @@ def apply_memory(training_pack_id: str, body: ApplyBody, db: Session = Depends(g
         )
     except service.MemoryNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except service.MemoryPackMismatch as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except service.MemoryNotApproved as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except service.ConfirmedRuleConflict as exc:
@@ -256,6 +258,23 @@ def ui_learn(training_pack_id: str, group_id: str, db: Session = Depends(get_db_
     return RedirectResponse(url=_panel_url(training_pack_id), status_code=303)
 
 
+# NOTE: the dedicated /apply route MUST be registered before the generic
+# /{action} catch-all — FastAPI matches routes in registration order, so a
+# later /{action} route would otherwise shadow /apply and silently no-op it.
+@router.post("/admin/qc-model/training-packs/{training_pack_id}/memory/{memory_id}/apply")
+def ui_apply(training_pack_id: str, memory_id: str, db: Session = Depends(get_db_dep)):
+    try:
+        service.apply_approved_memory(db, training_pack_id, memory_id, "qc_supervisor")
+    except (
+        service.MemoryNotFound,
+        service.MemoryPackMismatch,
+        service.MemoryNotApproved,
+        service.ConfirmedRuleConflict,
+    ):
+        pass
+    return RedirectResponse(url=_panel_url(training_pack_id), status_code=303)
+
+
 @router.post("/admin/qc-model/training-packs/{training_pack_id}/memory/{memory_id}/{action}")
 def ui_review(training_pack_id: str, memory_id: str, action: str, db: Session = Depends(get_db_dep)):
     if action in ("approve", "reject"):
@@ -263,13 +282,4 @@ def ui_review(training_pack_id: str, memory_id: str, action: str, db: Session = 
             service.review_memory(db, memory_id, action, "qc_supervisor")
         except (service.MemoryNotFound, ValueError):
             pass
-    return RedirectResponse(url=_panel_url(training_pack_id), status_code=303)
-
-
-@router.post("/admin/qc-model/training-packs/{training_pack_id}/memory/{memory_id}/apply")
-def ui_apply(training_pack_id: str, memory_id: str, db: Session = Depends(get_db_dep)):
-    try:
-        service.apply_approved_memory(db, training_pack_id, memory_id, "qc_supervisor")
-    except (service.MemoryNotFound, service.MemoryNotApproved, service.ConfirmedRuleConflict):
-        pass
     return RedirectResponse(url=_panel_url(training_pack_id), status_code=303)

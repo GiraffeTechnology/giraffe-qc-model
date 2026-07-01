@@ -253,6 +253,83 @@ def test_malformed_output_fails_closed(client, dp, session_factory):
         s.close()
 
 
+def test_empty_observations_fail_closed(client, dp, session_factory):
+    from src.qc_model.sample_learning import service
+    from src.qc_model.sample_learning.provider import MockSampleLearningProvider
+
+    g = _make_group(client, dp["dp_id"], "defect", tp="tp_empty").json()
+    s = session_factory()
+    try:
+        job = service.run_sample_learning_job(s, g["sample_group_id"], provider=MockSampleLearningProvider(raw_override=[]))
+        assert job.status == "failed"
+    finally:
+        s.close()
+
+
+def test_observation_with_unknown_sample_id_fails_closed(client, dp, session_factory):
+    from src.qc_model.sample_learning import service
+    from src.qc_model.sample_learning.provider import MockSampleLearningProvider
+
+    g = _make_group(client, dp["dp_id"], "defect", tp="tp_unknown").json()
+    s = session_factory()
+    try:
+        bad = MockSampleLearningProvider(raw_override=[
+            {"source_sample_id": "not-a-real-sample", "feature_type": "defect_feature"}
+        ])
+        job = service.run_sample_learning_job(s, g["sample_group_id"], provider=bad)
+        assert job.status == "failed"
+    finally:
+        s.close()
+
+
+def test_malformed_confidence_fails_closed_not_500(client, dp, session_factory):
+    from src.qc_model.sample_learning import service
+    from src.qc_model.sample_learning.provider import MockSampleLearningProvider
+    from src.db.qc_sample_learning_models import VisualFeatureObservation
+
+    g = _make_group(client, dp["dp_id"], "defect", tp="tp_badconf").json()
+    valid_sample = g["samples"][0]["sample_id"]
+    s = session_factory()
+    try:
+        bad = MockSampleLearningProvider(raw_override=[
+            {"source_sample_id": valid_sample, "feature_type": "defect_feature", "confidence": "high"}
+        ])
+        job = service.run_sample_learning_job(s, g["sample_group_id"], provider=bad)
+        assert job.status == "failed"  # not a 500 / stuck running job
+        assert s.query(VisualFeatureObservation).filter_by(sample_learning_job_id=job.id).count() == 0
+    finally:
+        s.close()
+
+
+def test_apply_rejects_memory_from_a_different_pack(client, dp):
+    # Approve a memory under pack A; try to apply it to pack B (same tenant).
+    mid = _proposed_memory(client, dp, "pack_A")
+    client.post(f"/api/qc/visual-rule-memory/{mid}/approval", json={"action": "approve", "reviewer_id": "sup"})
+    resp = client.post(
+        "/api/qc/training-packs/pack_B/apply-approved-visual-rule-memory",
+        json={"memory_id": mid, "applied_by": "sup"},
+    )
+    assert resp.status_code == 404  # rejected: memory belongs to pack_A
+
+
+def test_ui_apply_button_actually_applies(client, dp, session_factory):
+    from src.db.qc_sample_learning_models import QCConfirmedVisualRule
+
+    tp = "tp_ui_apply"
+    mid = _proposed_memory(client, dp, tp)
+    client.post(f"/api/qc/visual-rule-memory/{mid}/approval", json={"action": "approve", "reviewer_id": "sup"})
+    # UI apply route must not be shadowed by the /{action} catch-all.
+    resp = client.post(
+        f"/admin/qc-model/training-packs/{tp}/memory/{mid}/apply", follow_redirects=False
+    )
+    assert resp.status_code == 303
+    s = session_factory()
+    try:
+        assert s.query(QCConfirmedVisualRule).filter_by(source_memory_id=mid).count() == 1
+    finally:
+        s.close()
+
+
 # ── Tenant isolation ──────────────────────────────────────────────────────
 
 

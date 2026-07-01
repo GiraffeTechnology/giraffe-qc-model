@@ -89,6 +89,10 @@ class ConfirmedRuleConflict(ValueError):
     pass
 
 
+class MemoryPackMismatch(ValueError):
+    """Approved memory belongs to a different training pack than the target."""
+
+
 # ── Sample groups ─────────────────────────────────────────────────────────
 
 
@@ -142,14 +146,30 @@ def get_sample_group(db: Session, group_id: str, tenant_id: str = "default") -> 
 # ── Run learning ──────────────────────────────────────────────────────────
 
 
-def _validate_observations(response: SampleLearningResponse) -> tuple[bool, list[str]]:
+def _validate_observations(
+    response: SampleLearningResponse, known_sample_ids: set[str]
+) -> tuple[bool, list[str]]:
     if not response.valid:
         return False, [response.error or "provider_invalid"]
+    # An empty observation list is not usable output — fail closed.
+    if not response.observations:
+        return False, ["no_observations_returned"]
     for obs in response.observations:
         if not isinstance(obs, dict):
             return False, ["observation_is_not_an_object"]
-        if not obs.get("source_sample_id") or not obs.get("feature_type"):
+        sample_id = obs.get("source_sample_id")
+        if not sample_id or not obs.get("feature_type"):
             return False, ["observation_missing_required_provenance"]
+        # Every observation must trace to a registered sample in the group,
+        # otherwise the per-sample provenance guarantee is broken.
+        if sample_id not in known_sample_ids:
+            return False, [f"observation_sample_id_not_in_group:{sample_id}"]
+        # Malformed-but-present numeric fields must not slip through to a raise
+        # during persistence; validate coercibility here.
+        try:
+            float(obs.get("confidence") or 0.0)
+        except (TypeError, ValueError):
+            return False, ["observation_confidence_not_numeric"]
     return True, []
 
 
@@ -197,7 +217,8 @@ def run_sample_learning_job(
             valid=False, error=f"{type(exc).__name__}: {exc}",
         )
 
-    ok, errors = _validate_observations(response)
+    known_sample_ids = {s["sample_id"] for s in (group.samples_json or [])}
+    ok, errors = _validate_observations(response, known_sample_ids)
     if not ok:
         job.status = "failed"
         job.error_message = "; ".join(errors)
@@ -206,6 +227,21 @@ def run_sample_learning_job(
         db.refresh(job)
         return job
 
+    try:
+        return _persist_and_aggregate(db, job, group, response)
+    except Exception as exc:  # any persistence/conversion error fails closed
+        db.rollback()
+        job = get_job(db, job.id, tenant_id)
+        job.status = "failed"
+        job.error_message = f"persistence_error: {type(exc).__name__}: {exc}"
+        job.completed_at = _now()
+        db.commit()
+        db.refresh(job)
+        return job
+
+
+def _persist_and_aggregate(db, job, group, response) -> SampleLearningJob:
+    tenant_id = job.tenant_id
     observation_ids: list[str] = []
     aggregate = {f: [] for f in _LIST_FIELDS}
     for obs in response.observations:
@@ -383,6 +419,13 @@ def apply_approved_memory(
 ) -> QCConfirmedVisualRule:
     """The ONLY Training-Pack write path. Server-side gated + no silent overwrite."""
     m = get_memory(db, memory_id, tenant_id)
+    # The memory must belong to the target training pack — otherwise pack A's
+    # learned content could be written into pack B within the same tenant.
+    if m.training_pack_id != training_pack_id:
+        raise MemoryPackMismatch(
+            f"Visual rule memory {memory_id!r} belongs to training pack "
+            f"{m.training_pack_id!r}, not {training_pack_id!r}"
+        )
     if m.status != STATUS_APPROVED:
         raise MemoryNotApproved(
             f"Visual rule memory {memory_id!r} is not approved (status={m.status})"
