@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}VLM Sample Learning{% endblock %}
+{% block content %}
+<section class="qcm-panel">
+  <h1>VLM Sample Learning</h1>
+  <p class="qcm-note">
+    Learn structured <strong>visual rule memory</strong> from grouped sample
+    images for training pack <code>{{ training_pack_id }}</code> using a
+    deterministic mock VLM.
+  </p>
+  <p class="qcm-note qcm-boundary">
+    ⚠ Two distinct steps: <strong>approve</strong> visual rule memory, then
+    <strong>apply</strong> it to the Training Pack. Nothing is applied without
+    approval, and applying never silently overwrites an existing confirmed rule.
+    Mocked learning proves workflow only, not real visual accuracy.
+  </p>
+
+  <h2>Register a sample group</h2>
+  <form method="post" action="/admin/qc-model/training-packs/{{ training_pack_id }}/sample-groups" class="qcm-source-form">
+    <label>Detection point
+      <select name="detection_point_id">
+        {% for d in detection_points %}
+        <option value="{{ d.id }}">{{ d.label }} ({{ d.code }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Sample type
+      <select name="sample_type">
+        {% for st in sample_types %}<option value="{{ st }}">{{ st }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Image references (comma-separated)
+      <input type="text" name="image_references" size="60" placeholder="s3://a.jpg, s3://b.jpg">
+    </label>
+    <button type="submit" class="btn btn-primary">Register sample group</button>
+  </form>
+
+  {% for row in group_rows %}
+  <div class="qcm-sku">
+    <h3>
+      {{ row.group.detection_point_code }}
+      <span class="qcm-state">{{ row.group.sample_type }}</span>
+      <span class="qcm-state">{{ row.group.samples|length }} sample(s)</span>
+    </h3>
+    <form method="post" action="/admin/qc-model/training-packs/{{ training_pack_id }}/sample-groups/{{ row.group.sample_group_id }}/learn" class="qcm-inline-form">
+      <button type="submit" class="btn btn-primary">Run sample learning (mock VLM)</button>
+    </form>
+
+    {% if row.observations %}
+    <h4>Visual observations (per sample)</h4>
+    <table class="qcm-table">
+      <thead><tr><th>Sample</th><th>Feature type</th><th>Observation</th><th>Confidence</th><th>Review?</th></tr></thead>
+      <tbody>
+        {% for o in row.observations %}
+        <tr>
+          <td><code>{{ o.source_sample_id[:8] }}</code><br>{{ o.image_reference }}</td>
+          <td>{{ o.feature_type }}</td>
+          <td>
+            {% if o.normal_visual_features %}normal: {{ o.normal_visual_features|join('; ') }}<br>{% endif %}
+            {% if o.defect_visual_features %}defect: {{ o.defect_visual_features|join('; ') }}<br>{% endif %}
+            {% if o.acceptable_variations %}acceptable: {{ o.acceptable_variations|join('; ') }}<br>{% endif %}
+            {% if o.known_pseudo_defects %}pseudo-defects: {{ o.known_pseudo_defects|join('; ') }}<br>{% endif %}
+            {% if o.capture_artifact_risks %}capture risks: {{ o.capture_artifact_risks|join('; ') }}{% endif %}
+          </td>
+          <td>{{ o.confidence }}</td>
+          <td>{{ o.requires_human_review }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% if row.memory %}
+    <h4>Visual rule memory (approve, then apply)</h4>
+    {% for m in row.memory %}
+    <div class="qcm-proposal">
+      <strong>{{ m.feature_type }}</strong> <span class="qcm-state">{{ m.status }}</span>
+      {% if m.known_pseudo_defects %}<div class="qcm-note">pseudo-defects: {{ m.known_pseudo_defects|join('; ') }}</div>{% endif %}
+      {% if m.capture_artifact_risks %}<div class="qcm-note">capture-artifact risks: {{ m.capture_artifact_risks|join('; ') }}</div>{% endif %}
+      {% if m.status == 'proposed' %}
+      <form method="post" action="/admin/qc-model/training-packs/{{ training_pack_id }}/memory/{{ m.memory_id }}/approve" style="display:inline"><button class="btn btn-primary">Approve</button></form>
+      <form method="post" action="/admin/qc-model/training-packs/{{ training_pack_id }}/memory/{{ m.memory_id }}/reject" style="display:inline"><button class="btn">Reject</button></form>
+      {% elif m.status == 'approved' %}
+      <form method="post" action="/admin/qc-model/training-packs/{{ training_pack_id }}/memory/{{ m.memory_id }}/apply" style="display:inline"><button class="btn btn-primary">Apply to Training Pack</button></form>
+      {% else %}
+      <em>{{ m.status }}</em>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endblock %}
