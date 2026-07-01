@@ -203,3 +203,58 @@ with no observations or memory persisted as approvable.
 UI: `/admin/qc-model/training-packs/{training_pack_id}/sample-learning` — register
 sample groups, run learning, view per-sample observations, pseudo-defect and
 capture-artifact lists, and Approve / Reject then Apply visual rule memory.
+
+---
+
+## PR 24 — Training Pack readiness & completeness gate
+
+PR 24 (`src/qc_model/readiness/`) makes `exam_ready` / `active` depend on
+**confirmed QC knowledge completeness**, not just structural checks.
+
+> **Behavioral change.** Transitions into `exam_ready` and `active` now call the
+> readiness evaluator first. Any Training Pack currently in `exam_ready` /
+> `active` may no longer satisfy the gate under the new checks. Whether to
+> backfill / re-evaluate existing packs is **flagged for supervisor decision**
+> (this PR does not silently migrate existing pack statuses).
+
+### The 10 checks (`evaluate_readiness`)
+
+1. **Source documents reviewed** — every `QCSourceDocument` is reviewed/handled (not draft).
+2. **Detection points confirmed** — no proposal left `proposed`.
+3. **Physical-measurement boundaries confirmed** — physical proposals approved/applied with a decision rule.
+4. **Rule-verification requirements confirmed** — approved or rejected.
+5. **Visual rules reviewed** — no `VisualRuleMemory` left `proposed`.
+6. **No unresolved questions/ambiguities** — open questions on resolved proposals — **waivable** (see below).
+7. **Sample coverage sufficient** — provisional default: ≥1 reviewed positive group and ≥1 reviewed defect/boundary group.
+8. **No unreviewed conflicts** — no approved memory that conflicts with an existing confirmed rule (PR 23's no-silent-overwrite).
+9. **No pending high-risk pseudo-defects** — high-risk `PseudoDefectRule` entries resolved.
+10. **No pending critical defect rules** — critical-severity defect proposals resolved.
+
+### Status behavior
+
+- Any of checks **1–6, 8–10** incomplete ⇒ **must not** enter `exam_ready`.
+- Check **7** insufficient ⇒ **may** enter `on_trial`, **must not** enter `active`.
+
+`gate_transition(db, training_pack_id, target_status)` extends status-transition
+logic to consult the evaluator for `exam_ready` / `active` / `on_trial` targets.
+
+### Waiver mechanism (ambiguities only)
+
+Only check 6 is waivable. A waiver requires an authenticated supervisor
+identity **and** a justification, is scoped to a **specific** item (no pack-level
+blanket waivers), and is appended to an audit log (`qc_readiness_waivers`, never
+mutated). Checks 1–5 and 8–10 are **non-waivable** and cannot be bypassed even
+if a waiver is submitted against them (rejected at the service layer).
+
+### API + UI
+
+```
+GET  /api/qc/training-packs/{training_pack_id}/readiness                 # per-check detail
+POST /api/qc/training-packs/{training_pack_id}/status-transition         # gated transition check
+POST /api/qc/training-packs/{training_pack_id}/readiness-waivers         # supervisor + justification + item
+GET  /api/qc/training-packs/{training_pack_id}/readiness-waivers
+```
+
+UI: `/admin/qc-model/training-packs/{training_pack_id}/readiness` — the readiness
+checklist (pass/fail + blocking items), `on_trial` vs `active` distinction, a
+per-item waive action for the ambiguity check only, and the waiver audit log.

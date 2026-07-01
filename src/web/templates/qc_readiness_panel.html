@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Training Pack Readiness{% endblock %}
+{% block content %}
+<section class="qcm-panel">
+  <h1>Training Pack Readiness Gate</h1>
+  <p class="qcm-note">
+    Readiness for training pack <code>{{ training_pack_id }}</code>. A pack must
+    not enter <code>exam_ready</code> until the QC knowledge behind it is
+    reviewed and confirmed (or, for open questions only, explicitly waived).
+  </p>
+  <p class="qcm-note qcm-boundary">
+    ⚠ Behavioral change: <code>exam_ready</code>/<code>active</code> transitions
+    now depend on these checks, not just structural completeness.
+  </p>
+
+  <table class="qcm-table">
+    <thead><tr><th>Status</th><th>Allowed?</th></tr></thead>
+    <tbody>
+      <tr><td>exam_ready</td><td>{{ '✅' if result.exam_ready_allowed else '❌' }}</td></tr>
+      <tr><td>on_trial</td><td>{{ '✅' if result.on_trial_allowed else '❌' }}</td></tr>
+      <tr><td>active</td><td>{{ '✅' if result.active_allowed else '❌' }}
+        {% if result.exam_ready_allowed and not result.active_allowed %}
+          <span class="qcm-pending">— insufficient sample coverage: on_trial only</span>
+        {% endif %}
+      </td></tr>
+    </tbody>
+  </table>
+
+  <h2>Readiness checklist</h2>
+  <table class="qcm-table">
+    <thead><tr><th>Check</th><th>Pass</th><th>Blocking items</th><th></th></tr></thead>
+    <tbody>
+      {% for c in result.checks %}
+      <tr class="{{ 'qcm-confirmed' if c.passed else 'qcm-unconfirmed' }}">
+        <td>{{ c.title }} {% if c.waivable %}<span class="qcm-state">waivable</span>{% endif %}</td>
+        <td>{{ '✅' if c.passed else '❌' }}</td>
+        <td>
+          {% for item in c.blocking_items %}
+          <div class="qcm-note">
+            {{ item.description }}
+            {% if c.waivable %}
+            <form method="post" action="/admin/qc-model/training-packs/{{ training_pack_id }}/readiness-waivers" style="display:inline">
+              <input type="hidden" name="item_key" value="{{ item.item_key }}">
+              <input type="text" name="reason" placeholder="justification (required)" size="30">
+              <button type="submit" class="btn">Waive this item</button>
+            </form>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </td>
+        <td>
+          {% if c.id == questions_check_id %}
+          {% else %}
+          {% if not c.passed %}<em>non-waivable — must be resolved</em>{% endif %}
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if waivers %}
+  <h2>Waiver audit log</h2>
+  <table class="qcm-table">
+    <thead><tr><th>Item</th><th>Supervisor</th><th>Reason</th></tr></thead>
+    <tbody>
+      {% for w in waivers %}
+      <tr><td><code>{{ w.item_key }}</code></td><td>{{ w.supervisor_id }}</td><td>{{ w.reason }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}
