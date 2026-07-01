@@ -72,12 +72,17 @@ jobs:
     name: Optional Qwen smoke test
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    if: ${{ github.event_name == 'workflow_dispatch' && secrets.QWEN_API_KEY != '' }}
+    # NOTE: the `secrets` context is NOT allowed in a job-level `if` (it causes
+    # an "Unrecognized named-value: 'secrets'" startup failure that fails the
+    # whole workflow run). Gate the job on the event only, expose the secret via
+    # job `env`, and guard the step with the `env` context instead.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    env:
+      QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
 
     steps:
       - name: Qwen compatible-mode API smoke test
-        env:
-          QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+        if: ${{ env.QWEN_API_KEY != '' }}
         run: |
           set -euo pipefail
           python3 - <<'PY'

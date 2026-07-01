@@ -202,3 +202,21 @@ main {
 
 /* Validation */
 .validation-error { color: #dc2626; font-size: 12px; }
+
+/* Phase 1 Visual QC Model panel */
+.qcm-panel h1 { margin-bottom: 4px; }
+.qcm-note { color: #64748b; font-size: 13px; margin: 4px 0 16px; }
+.qcm-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+.qcm-table th, .qcm-table td {
+  border: 1px solid #e2e8f0; padding: 7px 9px; text-align: left; font-size: 13px;
+}
+.qcm-table th { background: #f1f5f9; }
+.qcm-state {
+  display: inline-block; padding: 2px 8px; margin: 2px;
+  background: #eef2ff; border-radius: 10px; font-size: 12px;
+}
+.qcm-lifecycle { line-height: 2; }
+.qcm-sku { margin-bottom: 28px; }
+.qcm-unconfirmed td { background: #fff7ed; }
+.qcm-confirmed td { background: #f0fdf4; }
+.qcm-pending { color: #c2410c; font-weight: 600; }
