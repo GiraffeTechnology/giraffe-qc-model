@@ -1,121 +1,142 @@
 # Giraffe QC Model
 
-AI-native quality control inference system for industrial procurement, with two coordinated deployment targets: an on-device Android Tablet app and a server-side QC model. Both share a strict no-fake-result policy and a common set of field/result conventions, so outputs from both ends remain comparable and auditable.
+AI-native quality control inference system for industrial procurement. The repository contains a Tablet / Pad-side QC app, a server-side QC service, and a shared visual QC training foundation for SKU-specific inspection workflows.
 
-At its core it is a **general-purpose, provider-compatible, LLM/VLM-driven visual QC training and execution framework** — product-category agnostic at the framework level, while each *production* digital inspector is SKU-specific, workstation-specific, and bound to a confirmed Training Pack. The artificial-flower accessory is only a *seed SKU* used to validate the pipeline, not the product scope. See the Phase 1 foundation in [`docs/QC_MODEL_PHASE1_VISUAL_QC.md`](docs/QC_MODEL_PHASE1_VISUAL_QC.md) (`src/qc_model/`, admin panel at `/admin/qc-model`).
+At the product level, Giraffe QC Model is a **general-purpose, provider-compatible, LLM/VLM-driven visual QC training and execution framework**. It is product-category agnostic at the framework layer, but every production digital inspector is **SKU-specific**, **workstation-specific**, and bound to a confirmed Training Pack, Playbook, capture protocol, and qualification state.
 
-Two product-default Qwen3.5-VL runtime profiles are selected by environment — `qwen3.5-vl-2b-mnn` for Tablet / Pad MNN and `qwen3.5-vl-8b-int4` for server — but product services depend on a provider abstraction, not on Qwen-specific classes, so the backend stays swappable for mainstream LLM/VLM providers.
+The artificial-flower accessory is only a seed SKU used to validate the pipeline. It is not the product scope. The chain-link-count case is a boundary example: if a ruler, fixture, gauge, caliper, scale, or template is faster and more accurate, AI must not be the primary judge.
+
+## Product default model profiles
+
+The product has two default Qwen3.5-VL runtime profiles:
+
+| Runtime profile | Product default model | Intended runtime | Notes |
+|---|---|---|---|
+| `tablet_mnn` | `qwen3.5-vl-2b-mnn` | Tablet / Pad local MNN | Local visual QC profile for edge-side inspection. Physical Android Pad MNN migration remains separately audited. |
+| `server` | `qwen3.5-vl-8b-int4` | Server-side QC model | Larger server profile for backend visual reasoning when explicitly configured. |
+
+These are product defaults, not a Qwen ecosystem lock-in. Product services depend on a provider abstraction, not Qwen-specific classes, so mainstream LLM/VLM providers can be added through adapters.
+
+Environment selection for the Phase 1 visual QC engine:
+
+```bash
+QC_VISION_RUNTIME_ENV=tablet_mnn   # qwen3.5-vl-2b-mnn
+QC_VISION_RUNTIME_ENV=server       # qwen3.5-vl-8b-int4
+```
+
+Unknown or unset `QC_VISION_RUNTIME_ENV` falls back to `server`.
+
+> Runtime naming note: the edge profile is **tablet**, not desktop. Do not use `desktop_pc_mnn` for this product path.
+
+## Existing Pad vs Server edition config
+
+The repository also contains an older edition switch in `src/runtime/editions.py`:
+
+```bash
+QC_RUNTIME_EDITION=padLocal|server
+```
+
+This remains in place for existing Pad / Server behavior. It is intentionally separate from the new Phase 1 visual QC runtime profile layer in `src/qc_model/runtime_profiles.py`.
+
+Current Android / MNN code may still reference model names such as `Qwen3-VL-2B-Instruct-MNN`, while the product default tablet profile is `qwen3.5-vl-2b-mnn`. This mismatch is documented and must not be silently migrated inside server/schema-only PRs.
 
 ## Overview
 
-|Target            |Model                   |Inference                                                |Network                       |
-|------------------|------------------------|---------------------------------------------------------|------------------------------|
-|Android Tablet App|Qwen3-VL-2B-Instruct-MNN|Local MNN path, pending real JNI inference wiring        |Fully offline                 |
-|QC Model (Server) |DashScope/Qwen provider |Configured backend/cloud provider, fail-closed by default|Network only when explicitly configured|
+| Target | Model / profile | Inference | Network |
+|---|---|---|---|
+| Android Tablet App | Existing Android MNN runtime; product target profile `qwen3.5-vl-2b-mnn` | Local MNN path, real JNI inference wiring still pending | Fully offline |
+| QC Model Server | Product target profile `qwen3.5-vl-8b-int4` | Server provider path, fail-closed by default | Network only when explicitly configured |
+| Visual QC Training Engine | Provider abstraction + Training Pack + deterministic finalizer | Schema / orchestration foundation in Phase 1 | Provider-compatible |
 
-## Pad vs Server Edition
+## What the visual QC engine does
 
-The system has two runtime editions. Both editions share the same sample
-database, admin page, SKU API, standard photos, inspection requirements,
-and detection points. They differ only in the Qwen model and whether
-API/cloud inference is permitted.
+The Phase 1 visual QC foundation lives under `src/qc_model/` and is described in [`docs/QC_MODEL_PHASE1_VISUAL_QC.md`](docs/QC_MODEL_PHASE1_VISUAL_QC.md). It introduces:
 
-| Component | Pad Edition (`padLocal`) | Server Edition (`server`) |
-|---|---|---|
-| Sample DB | Shared | Shared |
-| Sample Admin Page | Shared | Shared |
-| SKU API | Shared | Shared |
-| Standard Photos | Shared | Shared |
-| Inspection Requirements | Shared | Shared |
-| Detection Points | Shared | Shared |
-| Qwen Model | Qwen3-VL-2B-Instruct-MNN | Configured Qwen provider |
-| Qwen API | Disabled | Allowed if configured |
-| Cloud Inference | Disabled | Allowed if configured |
-| Version suffix | `*-padLocal` | `*-server` |
+- dual default runtime profiles: `tablet_mnn` and `server`;
+- provider abstraction for Qwen3.5-VL and mainstream LLM/VLM adapters;
+- SKU Training Pack, Playbook, Capture Protocol, and Digital Inspector schemas;
+- detection point category workflow with proposed and supervisor-confirmed categories;
+- physical-measurement boundary enforcement;
+- deterministic finalizer: model-level `pass` can never override checkpoint-level `fail`;
+- capture-quality gate and fail-closed `review_required` behavior;
+- digital inspector lifecycle skeleton;
+- human feedback schema and false-pass P0 escalation skeleton;
+- existing FastAPI + Jinja2 UI extension at `/admin/qc-model`.
 
-Edition is selected by the `QC_RUNTIME_EDITION` environment variable
-(`padLocal` or `server`). See `src/runtime/editions.py`.
+Phase 1 validates **structure and safety guardrails**. It does not certify real-world Qwen3.5-VL inspection accuracy, defect recall, or production readiness. Real accuracy must be validated later with labeled real-world sample sets.
 
-## Status
+## Visual QC boundary
 
-### Android Tablet App
+Giraffe QC Model focuses on visual signal interpretation under fixed SKU / fixed workstation conditions:
 
-🔧 **In development** — MNN native inference scaffold in place; JNI wiring to MNN-android.aar is pending.
+```text
+standard image + qualified samples + defect samples + boundary samples
+→ confirmed detection points
+→ visual evidence
+→ pass / fail / review_required
+```
 
-- Target model: **Qwen3-VL-2B-Instruct-MNN** (local MNN runtime, fully offline).
-- JNI calls are scaffolded in Kotlin; `nativeRunInference()` is commented out pending AAR integration.
-- Branch: `fix/android-pad-qwen3-vl-2b-mnn-final`
-- Task spec: `CLAUDE_ANDROID_PAD_ITER4A_TASK.md`
+The model should distinguish:
 
-### QC Model (Server)
+- true quality defects;
+- normal material behavior;
+- reflection, shadow, blur, exposure, angle, or other capture artifacts;
+- uncertainty requiring human review.
 
-Production-safe server behavior is fail-closed by default.
+Examples of visual QC targets:
 
-- If no real provider is configured and enabled, inspection returns `review_required`.
-- `QC_ENGINE_MODE=fake` is accepted only in explicit test harness mode (`APP_ENV=test` or `QC_ALLOW_TEST_ADAPTER=true`).
-- `cloud_qwen_dev` and `backend_proxy` require real-call and cloud/image guards plus a valid API key. Disabled cloud, provider init failure, unreadable photos, or incomplete provider output returns `review_required`.
-- A `pass` result requires all required detection points to be evaluated against valid standard/reference inputs.
+- missing rhinestone or missing component;
+- pearl hairline crack;
+- edge chip or surface scratch;
+- color deviation or stain;
+- glue overflow;
+- deformation or assembly misalignment;
+- reflection abnormality;
+- texture or edge discontinuity;
+- incidental visible abnormality outside the requested checklist.
 
-### QC Sample DB & Admin Page
+Examples that should not be AI-primary:
 
-- SKU catalog DB with standard photos, inspection requirements, and detection points.
-- Android-compatible SKU search API at `/api/v1/sku/search`.
-- Shared admin web UI at `/admin/samples` (FastAPI + Jinja2, no React).
-- Photo upload (file) and URL/path registration both supported.
-- Visual ROI editor for detection points (canvas drag-to-draw).
-- Shared by Pad and Server editions.
+- length, width, height, thickness;
+- weight;
+- hole diameter;
+- spacing;
+- chain link count;
+- angle, hardness, tensile force;
+- chemical or laboratory test results.
 
-## Why on-device, not server-side
+For physical measurement checkpoints, AI may record evidence, guide the operator, archive measurement results, or flag missing measurement proof. It must not be the primary judge.
 
-Earlier designs for this project assumed local inference would run on
-a separate backend node calling an OpenAI-compatible endpoint. That
-assumption was replaced: the product requirement is a **single APK,
-installable by a normal user with no root and no separate server**,
-running on mainstream Snapdragon-driven phones/pads. That constraint
-rules out larger models (3B+ multimodal models take tens of seconds to
-minutes even on flagship Snapdragon hardware with a dedicated mobile
-inference engine) and points to a small (≤2B parameter), heavily
-quantized model run through **MNN** (Alibaba's open-source mobile
-inference engine), accepting that a model this size needs more
-frequent escalation to human review or cloud fallback than a
-server-grade model would.
+## Core principles
 
-This tradeoff is acceptable here because real QC inspections in this
-product are narrow, single-SKU comparisons (one captured photo vs. that
-SKU's known-good standard photo, checked against a short, predefined
-QC point checklist) — not open-domain visual reasoning.
-
-## Core Principles
-
-- **No fake production results.** Fake providers are test-only and are blocked in default runtime.
-- **No silent cloud fallback.** Cloud inference is only invoked when explicitly configured, and is never the default path.
-- **No silent degradation.** If the Tablet app's MNN runtime is unavailable, the result must be explicitly marked `MNN pending` / `review_required` rather than defaulting to any pass/fail value.
-- **No pass without full evidence.** Missing standard photos, missing detection points, parser inconsistency, disabled cloud, provider failure, or incomplete model output must produce `review_required`, never `pass`.
+- **Learn before work.** A digital inspector cannot inspect a production SKU until the Training Pack, Playbook, detection points, and qualification state are confirmed.
+- **No fake production results.** Fake providers are test-only and blocked in default production runtime.
+- **No silent cloud fallback.** Cloud/server inference is invoked only when explicitly configured.
+- **No silent degradation.** If Tablet MNN runtime is unavailable, the result must be marked `review_required` / pending, never silently passed.
+- **No pass without evidence.** Missing standard photos, missing detection points, invalid model output, missing evidence, disabled provider, or unreadable capture must return `review_required`.
+- **No AI-primary physical measurement.** Physical measurement checkpoints are record-only / operator-guidance for AI.
+- **False pass is P0.** Any human-confirmed false pass must trigger escalation, inspector downgrade/suspension, Training Pack update, and requalification.
 
 ## Architecture
 
 ```text
-Android QC App (single APK, no root, no separate server required)
-  ├── CameraX live camera, auto-capture with quality/stability gating
-  ├── Local-first photo + metadata storage (Room)
-  ├── On-device MNN runtime running Qwen3-VL-2B-Instruct-MNN
-  ├── SKU matching: on-device MNN visual similarity (when ready), with manual fallback
-  └── Result display, labeling which engine produced each result
+Android QC Tablet App
+  ├── CameraX capture and quality/stability gating
+  ├── Local-first photo + metadata storage
+  ├── Tablet / Pad MNN runtime target: qwen3.5-vl-2b-mnn
+  ├── Manual SKU/task fallback when visual matching is unavailable
+  └── Result display with explicit engine/source labeling
 
-giraffe-qc-model backend (this repo's Python service — optional for
-an individual device's inspection to work; required for fleet-level
-aggregation, reporting, and abcdYi integration)
+giraffe-qc-model backend
   ├── FastAPI
   ├── SKU / standard photo / QC point / inspection data model
-  ├── QC Sample Admin page (/admin/samples) — shared Pad + Server edition
-  ├── DashScope/Qwen cloud fallback provider
-  └── abcdYi-compatible asset registry APIs + events
+  ├── QC Sample Admin UI (/admin/samples)
+  ├── Visual QC Phase 1 admin panel (/admin/qc-model)
+  ├── Provider abstraction for Qwen3.5-VL + mainstream LLM/VLM adapters
+  ├── Training Pack / Playbook / Digital Inspector schemas
+  ├── Deterministic finalizer and fail-closed result handling
+  └── Fleet aggregation, reporting, and abcdYi integration
 ```
-
-Inference is the operative word for "on-device first": a device with
-the model already provisioned can complete a full inspection with zero
-network connectivity. The backend's role is aggregation and the cloud
-fallback leg, not running the primary inspection.
 
 ## Repository structure
 
@@ -123,39 +144,32 @@ fallback leg, not running the primary inspection.
 giraffe-qc-model/
 ├── alembic/               # DB migrations
 ├── apps/
-│   └── android-qc/        # Android app (Kotlin, Gradle)
-│       └── app/src/
-│           ├── main/kotlin/com/giraffetechnology/qc/
-│           │   ├── qwen/        # inspector interface, prompt builder,
-│           │   │                # result parser, router, MNN scaffold,
-│           │   │                # model provisioning
-│           │   ├── camera/      # CameraFrame, CameraFrameSource
-│           │   ├── capture/     # AutoCaptureController, TargetDetector,
-│           │   │                # PendingTargetDetector, AutoCaptureConfig
-│           │   ├── sku/         # TaskSelectionController, SkuMatcher,
-│           │   │                # MnnRuntimeState, QcTask, SkuMatchResult
-│           │   ├── benchmark/   # §4.3.0 ADB latency benchmark activity
-│           │   └── MainActivity.kt, PadRuntimeGraph.kt
-│           └── test/kotlin/...  # JVM unit tests (no device required)
-│                                # Fake/mock test doubles live here, not in src/main
+│   └── android-qc/        # Android Tablet app (Kotlin, Gradle)
 ├── scripts/
-│   ├── benchmark_mnn.sh             # ADB benchmark for Snapdragon / 2B model
-│   └── download_mnn_android_libs.sh # Download or stub MNN native libs
+│   ├── benchmark_mnn.sh
+│   └── download_mnn_android_libs.sh
 ├── .github/workflows/
-│   ├── tests.yml              # Python CI
-│   └── android-pad-ci.yml     # Android Pad CI (3x build+test)
+│   ├── tests.yml
+│   └── android-pad-ci.yml
 ├── src/
-│   ├── cv/                # classical CV comparator (pre-dates this effort)
+│   ├── api/               # FastAPI routers
+│   ├── cv/                # classical CV comparator
 │   ├── db/                # SQLAlchemy models, session, config
-│   ├── api/               # FastAPI routers (SKU API + admin router)
-│   ├── runtime/           # editions.py — Pad vs Server edition config
-│   ├── web/
-│   │   ├── templates/     # Jinja2 templates for admin UI
-│   │   └── static/        # CSS and vanilla JS (roi_editor.js)
-│   └── qwen/              # QWEN provider abstraction, schema, parser,
-│                          # router, DashScope cloud provider, fake providers
-├── tests/                 # Python unit tests + admin route tests
+│   ├── qc_model/          # Phase 1 visual QC training engine foundation
+│   │   ├── providers/     # provider abstraction, Qwen adapter, mainstream adapter, mocks
+│   │   ├── schemas/       # Training Pack, detection point, inspector, inspection, feedback
+│   │   ├── runtime_profiles.py
+│   │   ├── finalizer.py
+│   │   ├── lifecycle.py
+│   │   ├── runner.py
+│   │   ├── feedback_escalation.py
+│   │   └── prompts.py
+│   ├── qwen/              # existing Qwen provider/parser/router code path
+│   ├── runtime/           # existing padLocal/server edition config
+│   └── web/               # Jinja2 templates + static assets
+├── tests/
 └── docs/
+    ├── QC_MODEL_PHASE1_VISUAL_QC.md
     ├── LOCAL_FIRST_QWEN_QC.md
     ├── DEPLOYMENT_LOCAL_QWEN.md
     ├── ANDROID_QC_APP.md
@@ -164,88 +178,53 @@ giraffe-qc-model/
     └── QC_SAMPLE_ADMIN_UI.md
 ```
 
-The Android app module and its MNN integration live alongside this
-backend (see `docs/ANDROID_QC_APP.md` for the current module layout);
-check that doc for the authoritative path, since the Android side is
-being developed in parallel and its structure may be ahead of what's
-summarized here.
-
 ## Current state
 
-This section is kept honest and current — updated as phases land rather
-than letting it drift.
+- [x] QC Sample DB and SKU API implemented: `qc_sku_items`, `qc_standard_photos`, `qc_inspection_requirements`, `qc_detection_points`; `/api/v1/sku/search`; `/api/v1/sku/{sku_id}`.
+- [x] Shared QC Sample Admin UI at `/admin/samples`: create SKU, upload/register photos, set primary photo, add requirements, draw ROI detection points, archive SKU.
+- [x] Existing Pad vs Server edition config in `src/runtime/editions.py`: `QC_RUNTIME_EDITION=padLocal|server`.
+- [x] Production-safety server behavior: disabled provider, fake provider outside test mode, unreadable photos, missing standard photos, zero detection points, parser inconsistency, and incomplete model output fail closed to `review_required`.
+- [x] Android Tablet module scaffolded with CameraX, capture, SKU selection, prompt/parser/router, MNN runtime loader, model provisioning, benchmark activity, and JVM tests.
+- [x] Fake/mock Android test doubles live under test sources only, not main production sources.
+- [x] Phase 1 visual QC training engine foundation added under `src/qc_model/`: runtime profiles, provider abstraction, Training Pack schema, category confirmation, lifecycle, finalizer, feedback escalation skeleton, prompts, runner, and `/admin/qc-model` UI extension.
+- [x] Dual product-default visual QC profiles defined: `tablet_mnn → qwen3.5-vl-2b-mnn`, `server → qwen3.5-vl-8b-int4`.
+- [ ] Real Tablet / Pad MNN inference not yet confirmed. JNI native integration is scaffolded but physical device validation remains pending.
+- [ ] Real qwen3.5-vl visual accuracy certification is not complete. Mocked tests validate structure and safety, not production defect-detection accuracy.
+- [ ] Full Training Pack production workflow, real sample coverage, trial-shift policy, and supervisor review loop still need later iterations.
 
-- [x] Phase 0 — repository audit complete; known prior issues (missing
-  image paths defaulting to pass, standard photo overwrite, frozen
-  settings at import time, silent failure-to-done transitions) were
-  verified fixed in existing code.
-- [x] QWEN inference schema, prompt builder, and parser (shared
-  contract between on-device and cloud paths) implemented against
-  simulated/mock providers.
-- [x] Inspection router implemented with the on-device-first / fail-closed
-  policy, including the `on_device_fail_is_final` guard (§4.5.4),
-  exercised against mock on-device and cloud providers.
-- [x] DashScope provider integration implemented with explicit cloud/image/API-key guards. Real API tests are opt-in and skipped unless a real key and guard environment are supplied.
-- [x] `scripts/benchmark_mnn.sh` written: ADB-based on-device latency
-  benchmark targeting Snapdragon 8 Gen / 8 GB RAM device, reporting
-  p50/p95 against the 10-second-per-image budget.
-- [x] Android app module Kotlin sources complete: `QwenInspector`,
-  `QcPromptBuilder`, `QcResultParser`, `QwenInspectionRouter`,
-  `MnnQwenInspector` scaffold (JNI stub), `MnnRuntimeLoader`,
-  `ModelProvisioning`, `BenchmarkActivity`, `MainActivity`,
-  `PadRuntimeGraph`, `PendingTargetDetector`, `AutoCaptureController`,
-  `TaskSelectionController`, and SKU/camera subsystems.
-- [x] Fake/mock test doubles (`FakeInspectors`, `MockTargetDetector`,
-  `FakeSkuRepository`) live exclusively in `src/test` — no mock
-  contamination in `src/main`.
-- [x] §4.5.1–4.5.4 exhaustive branch coverage: every router decision
-  path exercised with deterministic fakes.
-- [x] Multi-tenant isolation (12 tests) verified: cross-tenant reads
-  return 404 (not 403), listing endpoints never leak other tenants'
-  data.
-- [x] Never-convert-failure-to-pass invariant verified across all
-  failure modes via parametrized tests.
-- [x] Production-safety tests cover no fake provider in default runtime, fail-closed cloud-disabled/provider-error paths, deterministic parser verdict recomputation, missing standard photos, zero detection points, and tenant-scoped inspection job APIs.
-- [x] Android unit tests: `AutoCaptureControllerTest` (10 tests),
-  `TaskSelectionControllerTest` (6 tests), `PreviewBoxCalculationsTest`
-  (5 tests) — all pass with `./gradlew :app:testPadLocalDebugUnitTest`.
-- [x] QC Sample DB + SKU API implemented: `qc_sku_items`,
-  `qc_standard_photos`, `qc_inspection_requirements`,
-  `qc_detection_points` models; `/api/v1/sku/search` and
-  `/api/v1/sku/{sku_id}` endpoints; Android-compatible response shape.
-- [x] Shared QC Sample Admin UI at `/admin/samples`: create SKU,
-  upload or register photos, set primary photo, add requirements,
-  draw ROI detection points with visual canvas editor, archive SKU.
-  Shared by Pad and Server editions.
-- [x] Pad vs Server edition config (`src/runtime/editions.py`):
-  `QC_RUNTIME_EDITION=padLocal|server` with per-edition defaults for
-  model name, Qwen API, and cloud inference.
-- [x] DB integrity: unique `(tenant_id, item_number)` constraint with
-  409 API response on duplicate; primary photo clearing filtered by
-  both `sku_id` and `tenant_id`.
-- [ ] Real on-device MNN inference not yet confirmed — JNI native
-  integration is scaffolded but `nativeRunInference()` is not yet
-  wired to the MNN AAR. Status will be updated once a physical
-  Snapdragon test device validates the JNI path.
-- [ ] Android app physical device validation pending.
+## Next milestones
 
-## Next milestone
+### 1. Fix Phase 1 foundation blockers before merge
 
-Once a physical Snapdragon test device is available (target: Snapdragon
-8 Gen, 8 GB RAM, 128 GB storage):
+PR #19 is a foundation PR and should not be merged solely because CI is green. Before merge, verify or implement:
 
-1. Provision the **Qwen3-VL-2B-Instruct-MNN** model on the device per
-   `docs/DEPLOYMENT_LOCAL_QWEN.md`.
-1. Run `./scripts/benchmark_mnn.sh` against it and record p50/p95
-   latency, cold-start time, and peak memory.
-1. If the 10-second-per-image budget is met, replace the
-   `MnnQwenInspector` stub with the real JNI-backed implementation.
-   If it is not met, do not relax the budget silently — report the
-   measured numbers and choose a mitigation (smaller/more quantized
-   model, reduced input resolution, or a narrower per-call scope)
-   before proceeding.
-1. Install the APK on the physical device and validate the full
-   capture-to-result flow end-to-end, offline.
+1. `run_inspection()` must enforce confirmed / qualified Training Pack status.
+2. `request`, `TrainingPack`, and `DigitalInspector` must agree on `sku_id`, `station_id`, and `training_pack_id`.
+3. Human feedback and false-pass escalation must be reachable through API/UI, not only schema/function code.
+4. Qualification / activation must enforce that insufficient sample coverage can only enter `on_trial`, not `active`.
+5. Finalizer capture-quality precedence must match the documented policy.
+6. Runtime profile naming must remain `tablet_mnn`, not `desktop_pc_mnn`.
+
+### 2. Validate Tablet MNN runtime
+
+Once a physical Snapdragon Tablet / Pad test device is available:
+
+1. Provision the current local MNN model according to `docs/DEPLOYMENT_LOCAL_QWEN.md`.
+2. Run `./scripts/benchmark_mnn.sh` and record p50/p95 latency, cold-start time, and peak memory.
+3. Validate the full capture-to-result flow offline.
+4. If the latency or memory budget is not met, do not silently relax the budget; choose a mitigation such as smaller quantization, reduced input resolution, or narrower per-call scope.
+
+### 3. Validate real visual QC accuracy
+
+Use labeled real-world sample sets:
+
+1. qualified samples;
+2. true defect samples;
+3. boundary / pseudo-defect samples;
+4. capture-artifact samples;
+5. human-reviewed false-pass / false-fail cases.
+
+Do not treat mocked-provider tests as proof of production QC accuracy.
 
 ## Development setup
 
@@ -258,40 +237,41 @@ make sync-dev          # or: uv sync --group dev
 # Run the full test suite once
 make test              # or: uv run pytest tests/ -v
 
-# Run 5× consecutively (required before declaring a change done)
+# Run 5× consecutively before declaring a change done
 make test5
 ```
 
-> **Do not use bare `uv sync` before running tests.** Plain `uv sync`
-> installs only runtime dependencies and will silently remove pytest
-> from the virtual environment. Always use `uv sync --group dev`
-> (or `make sync-dev`) when you need to run the test suite.
+> Do not use bare `uv sync` before running tests. Plain `uv sync` installs only runtime dependencies and may remove pytest from the virtual environment. Use `uv sync --group dev` or `make sync-dev` when running tests.
 
-### Android
+### Android Tablet
 
 ```bash
-# Create MNN stubs for CI (no real AAR needed)
+# Create MNN stubs for CI, no real AAR needed
 bash scripts/download_mnn_android_libs.sh --ci-stubs
 
 # Build padLocal debug APK + run unit tests
 cd apps/android-qc && ./gradlew :app:assemblePadLocalDebug :app:testPadLocalDebugUnitTest
 ```
 
-### QC Sample Admin UI
+### Admin UI
 
 ```bash
 uv sync --group dev
 uv run uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8080
-# Open http://127.0.0.1:8080/admin/samples
+
+# Existing sample DB admin
+# http://127.0.0.1:8080/admin/samples
+
+# Phase 1 visual QC training engine panel
+# http://127.0.0.1:8080/admin/qc-model
 ```
 
-### Qwen cloud integration tests (opt-in)
+### Qwen cloud integration tests, opt-in
 
-The Qwen real-API integration tests are **skipped by default** unless all
-of the following environment variables are set:
+The Qwen real-API integration tests are skipped by default unless all of the following environment variables are set:
 
 | Variable | Required value |
-|----------|---------------|
+|---|---|
 | `RUN_QWEN_INTEGRATION` | `1` |
 | `QC_ENGINE_MODE` | `cloud_qwen_dev` |
 | `LLM_ENABLE_REAL_CALLS` | `true` |
@@ -301,44 +281,22 @@ of the following environment variables are set:
 
 ## Development principles
 
-A few project-wide rules worth knowing before contributing:
-
-- **Never commit model weights or other large binary model artifacts**
-  into this repository's normal git history. Model provisioning is a
-  documented, scripted fetch (bundled at build time or sideloaded) —
-  see `docs/DEPLOYMENT_LOCAL_QWEN.md`.
-- **Never commit uploaded sample images.** The `data/qc_samples/`
-  directory is listed in `.gitignore`. Only metadata is stored in the DB.
-- **Mock everything expensive in tests.** Unit/CI tests must never call
-  the real MNN model or the real DashScope API. Use the deterministic
-  fake providers/inspectors (`FakeOnDeviceQwenInspector`,
-  `TimeoutOnDeviceQwenInspector`, `InvalidJsonOnDeviceQwenInspector`,
-  `NotProvisionedOnDeviceQwenInspector`, and their Python-side
-  equivalents for the cloud provider). Android fakes live in `src/test`;
-  Python fake providers are guarded and may be used only under
-  `APP_ENV=test` or `QC_ALLOW_TEST_ADAPTER=true`.
-- **A failing test is a defect, not something to retry past.** The test
-  suite is run 5 consecutive times before a change is considered done;
-  a failure on any run stops the loop and gets reported, not silently
-  re-run until it happens to pass.
-- **Multi-tenant isolation is a hard requirement,** not an
-  afterthought — any new endpoint or query touching `ProductStandard`,
-  `StandardPhoto`, `QCPoint`, `CapturePhoto`, `InspectionRun`, or
-  `QCAsset` must be covered by a cross-tenant-access-denied test.
-- **Do not call Qwen API or DashScope from the Pad QC inference path.**
-  Cloud inference is not permitted on the Pad app — all pad-side QC
-  inference must use the local MNN runtime.
-- **The sample DB and admin page are edition-agnostic.** No admin or
-  sample-catalog code may branch by `QC_RUNTIME_EDITION`. Only
-  inference behaviour may differ per edition.
+- Never commit model weights or large binary model artifacts into normal git history. Model provisioning must be scripted or sideloaded.
+- Never commit uploaded sample images. `data/qc_samples/` is ignored; only metadata should be stored in the DB.
+- Mock everything expensive in tests. Unit/CI tests must never call the real MNN model or a real cloud VLM provider unless explicitly gated.
+- Fake providers and fake inspectors are test-only. They must never produce production pass/fail results in default runtime.
+- A failing test is a defect. Do not rerun past a failure until it happens to pass.
+- Multi-tenant isolation is a hard requirement. Any endpoint or query touching tenant-scoped QC data must have cross-tenant-access-denied coverage.
+- Do not call Qwen API or DashScope from the Tablet QC inference path. Tablet-side QC inference must use local MNN runtime unless an explicit later design changes that boundary.
+- The sample DB and admin page are edition-agnostic. Only inference behavior may differ per runtime edition/profile.
+- Mocked-provider tests do not prove model visual accuracy. Accuracy must be validated with labeled real-world samples.
 
 ## Related documentation
 
-- `docs/LOCAL_FIRST_QWEN_QC.md` — full product/architecture spec
-- `docs/DEPLOYMENT_LOCAL_QWEN.md` — on-device model provisioning and
-  backend cloud-fallback configuration
-- `docs/ANDROID_QC_APP.md` — Android app module layout and capture flow
-- `docs/API_CONTRACT.md` — backend API contract for the Android app
-  and any fleet-aggregation consumers
+- `docs/QC_MODEL_PHASE1_VISUAL_QC.md` — Phase 1 visual QC training engine foundation
+- `docs/LOCAL_FIRST_QWEN_QC.md` — local-first Qwen QC product/architecture spec
+- `docs/DEPLOYMENT_LOCAL_QWEN.md` — on-device model provisioning and backend cloud-fallback configuration
+- `docs/ANDROID_QC_APP.md` — Android Tablet app module layout and capture flow
+- `docs/API_CONTRACT.md` — backend API contract for Android app and fleet aggregation consumers
 - `docs/QC_SAMPLE_DB_API.md` — QC sample catalog schema and SKU API reference
 - `docs/QC_SAMPLE_ADMIN_UI.md` — shared admin web interface for managing samples
