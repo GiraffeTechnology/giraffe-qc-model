@@ -67,7 +67,7 @@
     <h4>{{ ftype }}</h4>
     <table class="qcm-table">
       <thead>
-        <tr><th>Fragment</th><th>Candidate</th><th>Rationale</th><th>Status</th></tr>
+        <tr><th>Fragment</th><th>Candidate</th><th>Rationale</th><th>Proposed rule(s)</th><th>Action</th></tr>
       </thead>
       <tbody>
         {% for f in frags %}
@@ -83,7 +83,47 @@
             {% endif %}
           </td>
           <td>{{ f.rationale }}</td>
-          <td>{{ f.status }}</td>
+          <td>
+            {% if f.proposals %}
+              {% for p in f.proposals %}
+              <div class="qcm-proposal">
+                <strong>{{ p.proposed_name }}</strong>
+                <span class="qcm-state">{{ p.checkpoint_category or 'unresolved' }}</span>
+                <span class="qcm-state">ai_role: {{ p.ai_role or 'unresolved' }}</span>
+                <span class="qcm-state">{{ p.status }}</span>
+                {% if p.decision_rule %}<div class="qcm-note">rule: {{ p.decision_rule }}</div>{% endif %}
+                {% if p.guard_override_note %}<div class="qcm-pending">{{ p.guard_override_note }}</div>{% endif %}
+                {% if p.questions_or_ambiguities %}
+                <div class="qcm-note">questions: {{ p.questions_or_ambiguities | join('; ') }}</div>
+                {% endif %}
+                {% if p.status == 'proposed' %}
+                <form method="post" action="/admin/qc-model/training-packs/{{ training_pack_id }}/proposals/{{ p.proposal_id }}/approve" style="display:inline">
+                  <select name="checkpoint_category">
+                    <option value="">(keep {{ p.checkpoint_category or 'unresolved' }})</option>
+                    <option value="visual_defect">visual_defect</option>
+                    <option value="physical_measurement">physical_measurement</option>
+                    <option value="rule_verification">rule_verification</option>
+                    <option value="subjective_judgment">subjective_judgment</option>
+                  </select>
+                  <button type="submit" class="btn btn-primary">Approve / Edit</button>
+                </form>
+                <form method="post" action="/admin/qc-model/training-packs/{{ training_pack_id }}/proposals/{{ p.proposal_id }}/reject" style="display:inline">
+                  <button type="submit" class="btn">Reject</button>
+                </form>
+                {% else %}
+                <em>{{ p.status }} by {{ p.approved_by }}</em>
+                {% endif %}
+              </div>
+              {% endfor %}
+            {% else %}
+              <span class="qcm-note">no proposal yet</span>
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="/admin/qc-model/training-packs/{{ training_pack_id }}/fragments/{{ f.fragment_id }}/propose">
+              <button type="submit" class="btn btn-primary">Propose rules (LLM)</button>
+            </form>
+          </td>
         </tr>
         {% endfor %}
       </tbody>

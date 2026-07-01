@@ -227,3 +227,6 @@ main {
 .qcm-badge-detection { background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
 .qcm-badge-boundary { background: #fef9c3; color: #854d0e; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
 .qcm-badge-review { background: #e0e7ff; color: #3730a3; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+
+/* PR22 authored proposals */
+.qcm-proposal { border-left: 3px solid #c7d2fe; padding: 4px 8px; margin: 6px 0; background: #fbfcff; }
