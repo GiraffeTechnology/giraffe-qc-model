@@ -229,8 +229,9 @@ def sample_learning_panel(
     )
 
 
-def _panel_url(tp: str) -> str:
-    return f"/admin/qc-model/training-packs/{tp}/sample-learning"
+def _panel_url(tp: str, tenant_id: str = "default") -> str:
+    suffix = f"?tenant_id={tenant_id}" if tenant_id and tenant_id != "default" else ""
+    return f"/admin/qc-model/training-packs/{tp}/sample-learning{suffix}"
 
 
 @router.post("/admin/qc-model/training-packs/{training_pack_id}/sample-groups")
@@ -239,32 +240,45 @@ def ui_create_group(
     detection_point_id: str = Form(...),
     sample_type: str = Form(...),
     image_references: str = Form(""),
+    tenant_id: str = Form("default"),
     db: Session = Depends(get_db_dep),
 ):
     refs = [r.strip() for r in image_references.split(",") if r.strip()]
     try:
-        service.create_sample_group(db, training_pack_id, detection_point_id, sample_type, refs)
+        service.create_sample_group(
+            db, training_pack_id, detection_point_id, sample_type, refs, tenant_id=tenant_id
+        )
     except (service.InvalidSampleType, service.DetectionPointNotFound):
         pass
-    return RedirectResponse(url=_panel_url(training_pack_id), status_code=303)
+    return RedirectResponse(url=_panel_url(training_pack_id, tenant_id), status_code=303)
 
 
 @router.post("/admin/qc-model/training-packs/{training_pack_id}/sample-groups/{group_id}/learn")
-def ui_learn(training_pack_id: str, group_id: str, db: Session = Depends(get_db_dep)):
+def ui_learn(
+    training_pack_id: str,
+    group_id: str,
+    tenant_id: str = Form("default"),
+    db: Session = Depends(get_db_dep),
+):
     try:
-        service.run_sample_learning_job(db, group_id)
+        service.run_sample_learning_job(db, group_id, tenant_id)
     except service.SampleGroupNotFound:
         pass
-    return RedirectResponse(url=_panel_url(training_pack_id), status_code=303)
+    return RedirectResponse(url=_panel_url(training_pack_id, tenant_id), status_code=303)
 
 
 # NOTE: the dedicated /apply route MUST be registered before the generic
 # /{action} catch-all — FastAPI matches routes in registration order, so a
 # later /{action} route would otherwise shadow /apply and silently no-op it.
 @router.post("/admin/qc-model/training-packs/{training_pack_id}/memory/{memory_id}/apply")
-def ui_apply(training_pack_id: str, memory_id: str, db: Session = Depends(get_db_dep)):
+def ui_apply(
+    training_pack_id: str,
+    memory_id: str,
+    tenant_id: str = Form("default"),
+    db: Session = Depends(get_db_dep),
+):
     try:
-        service.apply_approved_memory(db, training_pack_id, memory_id, "qc_supervisor")
+        service.apply_approved_memory(db, training_pack_id, memory_id, "qc_supervisor", tenant_id)
     except (
         service.MemoryNotFound,
         service.MemoryPackMismatch,
@@ -272,14 +286,20 @@ def ui_apply(training_pack_id: str, memory_id: str, db: Session = Depends(get_db
         service.ConfirmedRuleConflict,
     ):
         pass
-    return RedirectResponse(url=_panel_url(training_pack_id), status_code=303)
+    return RedirectResponse(url=_panel_url(training_pack_id, tenant_id), status_code=303)
 
 
 @router.post("/admin/qc-model/training-packs/{training_pack_id}/memory/{memory_id}/{action}")
-def ui_review(training_pack_id: str, memory_id: str, action: str, db: Session = Depends(get_db_dep)):
+def ui_review(
+    training_pack_id: str,
+    memory_id: str,
+    action: str,
+    tenant_id: str = Form("default"),
+    db: Session = Depends(get_db_dep),
+):
     if action in ("approve", "reject"):
         try:
-            service.review_memory(db, memory_id, action, "qc_supervisor")
+            service.review_memory(db, memory_id, action, "qc_supervisor", tenant_id)
         except (service.MemoryNotFound, ValueError):
             pass
-    return RedirectResponse(url=_panel_url(training_pack_id), status_code=303)
+    return RedirectResponse(url=_panel_url(training_pack_id, tenant_id), status_code=303)

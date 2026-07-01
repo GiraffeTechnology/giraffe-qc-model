@@ -15,12 +15,13 @@
     is a placeholder for the real LLM/VLM extraction (PR 22/23).
   </p>
 
-  <p><a href="/admin/qc-model/training-packs/{{ training_pack_id }}/sample-learning" class="btn">VLM Sample Learning →</a></p>
+  <p><a href="/admin/qc-model/training-packs/{{ training_pack_id }}/sample-learning?tenant_id={{ tenant_id }}" class="btn">VLM Sample Learning →</a></p>
 
   <h2>Register a source</h2>
   <form method="post"
         action="/admin/qc-model/training-packs/{{ training_pack_id }}/sources"
         class="qcm-source-form">
+    <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
     <label>Source type
       <select name="source_type">
         {% for st in source_types %}
@@ -56,8 +57,26 @@
     <form method="post"
           action="/admin/qc-model/training-packs/{{ training_pack_id }}/sources/{{ row.source.source_id }}/extract"
           class="qcm-inline-form">
+      <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
       <button type="submit" class="btn btn-primary">Run extraction (mock)</button>
     </form>
+
+    {% if row.source.status == 'draft' %}
+    <form method="post"
+          action="/admin/qc-model/training-packs/{{ training_pack_id }}/sources/{{ row.source.source_id }}/review"
+          class="qcm-inline-form" style="display:inline">
+      <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+      <input type="hidden" name="decision" value="reviewed">
+      <button type="submit" class="btn">Mark reviewed</button>
+    </form>
+    <form method="post"
+          action="/admin/qc-model/training-packs/{{ training_pack_id }}/sources/{{ row.source.source_id }}/review"
+          class="qcm-inline-form" style="display:inline">
+      <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+      <input type="hidden" name="decision" value="rejected">
+      <button type="submit" class="btn">Reject source</button>
+    </form>
+    {% endif %}
 
     {% if row.grouped_fragments %}
     <p class="qcm-note">
