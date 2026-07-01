@@ -104,12 +104,30 @@ def _sample_group(db, sample_type, completed=True):
     return g
 
 
+def _approved_memory(db, code="dp", provider="qwen3.5-vl-8b-int4", status="approved", feature_type="defect_feature"):
+    """Approved/applied VisualRuleMemory backed by a production-eligible provider."""
+    job = SampleLearningJob(
+        id=_uid(), tenant_id=TENANT, training_pack_id=TP, sample_group_id=_uid(),
+        status="completed", provider=provider, model="qwen3.5-vl-8b-int4",
+    )
+    db.add(job)
+    db.flush()
+    m = VisualRuleMemory(
+        id=_uid(), tenant_id=TENANT, sample_learning_job_id=job.id, training_pack_id=TP,
+        detection_point_code=code, feature_type=feature_type, status=status,
+    )
+    db.add(m)
+    db.commit()
+    return m
+
+
 def _fully_ready(db):
-    """Set up a pack that passes all exam_ready checks + coverage."""
+    """Set up a pack that passes all exam_ready + L2 production_assisted checks."""
     _reviewed_source(db)
     _authoring_proposal(db, proposed_checkpoint_category="visual_defect", status="approved")
     _sample_group(db, "positive")
     _sample_group(db, "defect")
+    _approved_memory(db)  # approved visual memory + production-eligible provider
 
 
 def _by_id(result):
@@ -165,14 +183,16 @@ def test_pending_visual_rule_memory_blocks(db):
     assert result.exam_ready_allowed is False
 
 
-def test_insufficient_coverage_forces_on_trial_not_active(db):
+def test_insufficient_coverage_blocks_production_assisted(db):
     _reviewed_source(db)
     _authoring_proposal(db, status="approved")
-    _sample_group(db, "positive")  # no defect/boundary group
+    _approved_memory(db)             # visual memory present → exam_ready ok
+    _sample_group(db, "positive")    # no defect/boundary group
     result = evaluate_readiness(db, TP, TENANT)
     assert result.exam_ready_allowed is True
     assert result.on_trial_allowed is True
-    assert result.active_allowed is False  # coverage insufficient
+    assert result.production_assisted_allowed is False  # coverage insufficient
+    assert result.controlled_active_allowed is False
     assert _by_id(result)["sample_coverage_sufficient"].passed is False
 
 
@@ -210,11 +230,13 @@ def test_unreviewed_conflict_blocks(db):
     assert _by_id(result)["no_unreviewed_conflicts"].passed is False
 
 
-def test_fully_ready_pack_is_exam_ready_and_active(db):
+def test_fully_ready_pack_is_exam_ready_and_production_assisted(db):
     _fully_ready(db)
     result = evaluate_readiness(db, TP, TENANT)
     assert result.exam_ready_allowed is True
-    assert result.active_allowed is True
+    assert result.production_assisted_allowed is True
+    # L3 controlled active still requires a qualification report (later PR).
+    assert result.controlled_active_allowed is False
 
 
 # ── Unresolved questions + waivers ────────────────────────────────────────
@@ -303,14 +325,24 @@ def test_transition_gate_blocks_exam_ready_when_incomplete(db):
     assert decision.allowed is False
 
 
-def test_transition_gate_active_needs_coverage(db):
+def test_transition_gate_production_assisted_needs_coverage(db):
     _reviewed_source(db)
     _authoring_proposal(db, status="approved")
+    _approved_memory(db)
     _sample_group(db, "positive")  # no defect/boundary
     assert gate_transition(db, TP, "on_trial", TENANT).allowed is True
+    pa = gate_transition(db, TP, "production_assisted", TENANT)
+    assert pa.allowed is False
+    assert pa.reason == "production_prerequisites_incomplete"
+
+
+def test_transition_gate_controlled_active_requires_qualification(db):
+    _fully_ready(db)
+    # Fully L2-ready, but L3 controlled_active still fails on qualification.
+    assert gate_transition(db, TP, "production_assisted", TENANT).allowed is True
     active = gate_transition(db, TP, "active", TENANT)
     assert active.allowed is False
-    assert active.reason == "insufficient_sample_coverage_use_on_trial"
+    assert active.reason == "qualification_required_for_controlled_active"
 
 
 def test_ui_readiness_panel_smoke(client, db):
@@ -360,6 +392,7 @@ def test_source_review_action_unblocks_source_check(db):
     # A draft source blocks exam_ready and there is now a supported way to clear it.
     doc = _reviewed_source(db, status="draft")
     _authoring_proposal(db, status="approved")
+    _approved_memory(db)
     _sample_group(db, "positive"); _sample_group(db, "defect")
     assert evaluate_readiness(db, TP, TENANT).exam_ready_allowed is False
 

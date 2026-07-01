@@ -388,8 +388,13 @@ def review_memory(
                 if f in edit:
                     setattr(m, f"{f}_json", list(edit[f]))
         m.status = STATUS_APPROVED
+        # Close associated pseudo-defect / capture-artifact rules (§4.7).
+        _close_associated_rules(db, m.id, tenant_id, STATUS_APPROVED)
     elif action == "reject":
         m.status = STATUS_REJECTED
+        # A rejected memory's associated rules are resolved as rejected so they
+        # neither block readiness nor remain dangling proposed.
+        _close_associated_rules(db, m.id, tenant_id, STATUS_REJECTED)
     elif action == "edit":
         if edit:
             for f in _LIST_FIELDS:
@@ -404,6 +409,23 @@ def review_memory(
     db.commit()
     db.refresh(m)
     return m
+
+
+def _close_associated_rules(db: Session, memory_id: str, tenant_id: str, status: str) -> None:
+    """Move a memory's pseudo-defect / capture-artifact rules to ``status``.
+
+    Production Readiness §4.7: reviewing/applying VisualRuleMemory must not leave
+    its associated PseudoDefectRule / CaptureArtifactRule permanently ``proposed``
+    while readiness passes. Only still-open (proposed) rules are advanced, so an
+    already-resolved rule is never silently overwritten.
+    """
+    for model in (PseudoDefectRule, CaptureArtifactRule):
+        for rule in (
+            db.query(model)
+            .filter_by(visual_rule_memory_id=memory_id, tenant_id=tenant_id, status=STATUS_PROPOSED)
+            .all()
+        ):
+            rule.status = status
 
 
 def _memory_content(m: VisualRuleMemory) -> dict:
@@ -464,6 +486,8 @@ def apply_approved_memory(
     db.add(confirmed)
     m.status = STATUS_APPLIED
     m.applied_at = _now()
+    # Applying the memory marks its associated rules applied (§4.7).
+    _close_associated_rules(db, m.id, tenant_id, STATUS_APPLIED)
     db.commit()
     db.refresh(confirmed)
     return confirmed

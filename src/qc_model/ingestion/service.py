@@ -50,46 +50,21 @@ class InvalidReviewDecision(ValueError):
     pass
 
 
-class CrossTenantTrainingPack(ValueError):
-    """A training_pack_id already owned by another tenant."""
+# The unified ownership resolver is the single source of truth (§4.4). The
+# name is re-exported here for backward compatibility with existing callers.
+from src.qc_model.training_pack.ownership import (  # noqa: E402
+    CrossTenantTrainingPack,
+    assert_pack_accessible,
+    pack_owner_tenants as _training_pack_owners,
+)
 
 
 # ── Tenant / ownership guards ─────────────────────────────────────────────
 
 
-def _training_pack_owners(db: Session, training_pack_id: str) -> set[str]:
-    """Return the set of tenant_ids that already reference this training pack.
-
-    There is no Training Pack registry table, so ownership is derived from
-    existing rows that reference the id (learning jobs and source documents).
-    """
-    owners: set[str] = set()
-    owners.update(
-        r[0]
-        for r in db.query(QCLearningJob.tenant_id)
-        .filter(QCLearningJob.training_pack_id == training_pack_id)
-        .all()
-    )
-    owners.update(
-        r[0]
-        for r in db.query(QCSourceDocument.tenant_id)
-        .filter(QCSourceDocument.training_pack_id == training_pack_id)
-        .all()
-    )
-    return owners
-
-
 def assert_training_pack_accessible(db: Session, training_pack_id: str, tenant_id: str) -> None:
-    """Raise CrossTenantTrainingPack if the pack is owned by another tenant.
-
-    First use by a tenant binds the id to that tenant. If it is already known
-    only under other tenants, this tenant may not reference it.
-    """
-    owners = _training_pack_owners(db, training_pack_id)
-    if owners and tenant_id not in owners:
-        raise CrossTenantTrainingPack(
-            f"training_pack_id {training_pack_id!r} is not accessible for tenant {tenant_id!r}"
-        )
+    """Raise CrossTenantTrainingPack if the pack is owned by another tenant."""
+    assert_pack_accessible(db, training_pack_id, tenant_id)
 
 
 # ── Source documents ──────────────────────────────────────────────────────

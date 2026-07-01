@@ -33,8 +33,13 @@ class TransitionBody(BaseModel):
 
 
 @router.get("/api/qc/training-packs/{training_pack_id}/readiness")
-def get_readiness(training_pack_id: str, tenant_id: str = "default", db: Session = Depends(get_db_dep)):
-    return evaluate_readiness(db, training_pack_id, tenant_id).to_dict()
+def get_readiness(
+    training_pack_id: str,
+    tenant_id: str = "default",
+    target_mode: str = "production_assisted",
+    db: Session = Depends(get_db_dep),
+):
+    return evaluate_readiness(db, training_pack_id, tenant_id, target_mode=target_mode).to_dict()
 
 
 @router.post("/api/qc/training-packs/{training_pack_id}/status-transition")
@@ -82,14 +87,22 @@ def get_waivers(training_pack_id: str, tenant_id: str = "default", db: Session =
 
 
 @router.get("/admin/qc-model/training-packs/{training_pack_id}/readiness", response_class=HTMLResponse)
-def readiness_panel(request: Request, training_pack_id: str, tenant_id: str = "default", db: Session = Depends(get_db_dep)):
-    result = evaluate_readiness(db, training_pack_id, tenant_id)
+def readiness_panel(
+    request: Request,
+    training_pack_id: str,
+    tenant_id: str = "default",
+    target_mode: str = "production_assisted",
+    waiver_error: str = "",
+    db: Session = Depends(get_db_dep),
+):
+    result = evaluate_readiness(db, training_pack_id, tenant_id, target_mode=target_mode)
     from src.qc_model.readiness.evaluator import C_QUESTIONS
     return templates.TemplateResponse(
         request, "qc_readiness_panel.html",
         context={
             "training_pack_id": training_pack_id, "tenant_id": tenant_id,
             "result": result.to_dict(), "questions_check_id": C_QUESTIONS,
+            "waiver_error": waiver_error,
             "waivers": [
                 {"item_key": w.item_key, "supervisor_id": w.supervisor_id, "reason": w.reason}
                 for w in list_waivers(db, training_pack_id, tenant_id)
@@ -107,14 +120,21 @@ def ui_add_waiver(
     tenant_id: str = Form("default"),
     db: Session = Depends(get_db_dep),
 ):
+    # Waiver validation errors must be visible (§4.6): surface them via an error
+    # query param instead of silently swallowing and redirecting.
+    from urllib.parse import urlencode
+
+    params = {}
+    if tenant_id and tenant_id != "default":
+        params["tenant_id"] = tenant_id
     try:
         create_waiver(
             db, training_pack_id, item_key=item_key, reason=reason,
             supervisor_id=supervisor_id, tenant_id=tenant_id,
         )
-    except WaiverValidationError:
-        pass
-    suffix = f"?tenant_id={tenant_id}" if tenant_id and tenant_id != "default" else ""
+    except WaiverValidationError as exc:
+        params["waiver_error"] = str(exc)
+    suffix = f"?{urlencode(params)}" if params else ""
     return RedirectResponse(
         url=f"/admin/qc-model/training-packs/{training_pack_id}/readiness{suffix}", status_code=303
     )

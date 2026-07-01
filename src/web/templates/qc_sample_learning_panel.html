@@ -17,6 +17,7 @@
 
   <h2>Register a sample group</h2>
   <form method="post" action="/admin/qc-model/training-packs/{{ training_pack_id }}/sample-groups" class="qcm-source-form">
+    <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
     <label>Detection point
       <select name="detection_point_id">
         {% for d in detection_points %}
@@ -43,6 +44,7 @@
       <span class="qcm-state">{{ row.group.samples|length }} sample(s)</span>
     </h3>
     <form method="post" action="/admin/qc-model/training-packs/{{ training_pack_id }}/sample-groups/{{ row.group.sample_group_id }}/learn" class="qcm-inline-form">
+      <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
       <button type="submit" class="btn btn-primary">Run sample learning (mock VLM)</button>
     </form>
 
@@ -78,10 +80,10 @@
       {% if m.known_pseudo_defects %}<div class="qcm-note">pseudo-defects: {{ m.known_pseudo_defects|join('; ') }}</div>{% endif %}
       {% if m.capture_artifact_risks %}<div class="qcm-note">capture-artifact risks: {{ m.capture_artifact_risks|join('; ') }}</div>{% endif %}
       {% if m.status == 'proposed' %}
-      <form method="post" action="/admin/qc-model/training-packs/{{ training_pack_id }}/memory/{{ m.memory_id }}/approve" style="display:inline"><button class="btn btn-primary">Approve</button></form>
-      <form method="post" action="/admin/qc-model/training-packs/{{ training_pack_id }}/memory/{{ m.memory_id }}/reject" style="display:inline"><button class="btn">Reject</button></form>
+      <form method="post" action="/admin/qc-model/training-packs/{{ training_pack_id }}/memory/{{ m.memory_id }}/approve" style="display:inline"><input type="hidden" name="tenant_id" value="{{ tenant_id }}"><button class="btn btn-primary">Approve</button></form>
+      <form method="post" action="/admin/qc-model/training-packs/{{ training_pack_id }}/memory/{{ m.memory_id }}/reject" style="display:inline"><input type="hidden" name="tenant_id" value="{{ tenant_id }}"><button class="btn">Reject</button></form>
       {% elif m.status == 'approved' %}
-      <form method="post" action="/admin/qc-model/training-packs/{{ training_pack_id }}/memory/{{ m.memory_id }}/apply" style="display:inline"><button class="btn btn-primary">Apply to Training Pack</button></form>
+      <form method="post" action="/admin/qc-model/training-packs/{{ training_pack_id }}/memory/{{ m.memory_id }}/apply" style="display:inline"><input type="hidden" name="tenant_id" value="{{ tenant_id }}"><button class="btn btn-primary">Apply to Training Pack</button></form>
       {% else %}
       <em>{{ m.status }}</em>
       {% endif %}

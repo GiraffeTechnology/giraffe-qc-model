@@ -9,22 +9,33 @@
     reviewed and confirmed (or, for open questions only, explicitly waived).
   </p>
   <p class="qcm-note qcm-boundary">
-    ⚠ Behavioral change: <code>exam_ready</code>/<code>active</code> transitions
-    now depend on these checks, not just structural completeness.
+    ⚠ Behavioral change: production readiness now requires approved/applied
+    VisualRuleMemory and a production-eligible provider — not just structural
+    completeness. Mock/fake/stub/skeleton provider output can never satisfy
+    production readiness.
   </p>
 
+  {% if waiver_error %}
+  <p class="qcm-pending" role="alert">⚠ Waiver rejected: {{ waiver_error }}</p>
+  {% endif %}
+
   <table class="qcm-table">
-    <thead><tr><th>Status</th><th>Allowed?</th></tr></thead>
+    <thead><tr><th>Mode</th><th>Allowed?</th></tr></thead>
     <tbody>
       <tr><td>exam_ready</td><td>{{ '✅' if result.exam_ready_allowed else '❌' }}</td></tr>
-      <tr><td>on_trial</td><td>{{ '✅' if result.on_trial_allowed else '❌' }}</td></tr>
-      <tr><td>active</td><td>{{ '✅' if result.active_allowed else '❌' }}
-        {% if result.exam_ready_allowed and not result.active_allowed %}
-          <span class="qcm-pending">— insufficient sample coverage: on_trial only</span>
+      <tr><td>production_assisted (L2)</td><td>{{ '✅' if result.production_assisted_allowed else '❌' }}</td></tr>
+      <tr><td>controlled_active (L3)</td><td>{{ '✅' if result.controlled_active_allowed else '❌' }}
+        {% if result.production_assisted_allowed and not result.controlled_active_allowed %}
+          <span class="qcm-pending">— requires qualification report</span>
         {% endif %}
       </td></tr>
     </tbody>
   </table>
+
+  {% if result.blocking_checks %}
+  <p class="qcm-note">Blocking checks for <code>{{ result.target_mode }}</code>:
+    {{ result.blocking_checks | join(', ') }}</p>
+  {% endif %}
 
   <h2>Readiness checklist</h2>
   <table class="qcm-table">

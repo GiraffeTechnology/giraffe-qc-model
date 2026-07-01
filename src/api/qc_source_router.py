@@ -273,6 +273,13 @@ def sources_panel(
     return _render_panel(request, training_pack_id, tenant_id, db)
 
 
+def _sources_redirect(training_pack_id: str, tenant_id: str) -> RedirectResponse:
+    suffix = f"?tenant_id={tenant_id}" if tenant_id and tenant_id != "default" else ""
+    return RedirectResponse(
+        url=f"/admin/qc-model/training-packs/{training_pack_id}/sources{suffix}", status_code=303
+    )
+
+
 @router.post("/admin/qc-model/training-packs/{training_pack_id}/sources")
 def ui_create_source(
     training_pack_id: str,
@@ -280,6 +287,7 @@ def ui_create_source(
     title: str = Form(""),
     text_content: str = Form(""),
     file_ref: str = Form(""),
+    tenant_id: str = Form("default"),
     db: Session = Depends(get_db_dep),
 ):
     if is_valid_source_type(source_type):
@@ -288,30 +296,28 @@ def ui_create_source(
                 db,
                 training_pack_id=training_pack_id,
                 source_type=source_type,
+                tenant_id=tenant_id,
                 title=title or None,
                 text_content=text_content or None,
                 file_ref=file_ref or None,
             )
         except service.CrossTenantTrainingPack:
             pass
-    return RedirectResponse(
-        url=f"/admin/qc-model/training-packs/{training_pack_id}/sources", status_code=303
-    )
+    return _sources_redirect(training_pack_id, tenant_id)
 
 
 @router.post("/admin/qc-model/training-packs/{training_pack_id}/sources/{source_id}/extract")
 def ui_extract_source(
     training_pack_id: str,
     source_id: str,
+    tenant_id: str = Form("default"),
     db: Session = Depends(get_db_dep),
 ):
     try:
-        service.run_extraction(db, source_id)
+        service.run_extraction(db, source_id, tenant_id)
     except service.SourceNotFound:
         pass
-    return RedirectResponse(
-        url=f"/admin/qc-model/training-packs/{training_pack_id}/sources", status_code=303
-    )
+    return _sources_redirect(training_pack_id, tenant_id)
 
 
 @router.post("/admin/qc-model/training-packs/{training_pack_id}/sources/{source_id}/review")
