@@ -75,6 +75,8 @@ The source ingestion workbench (`src/qc_model/ingestion/`, [`docs/qc-source-inge
 
 **LLM rule authoring (PR 22, `src/qc_model/authoring/`):** extracted fragments are turned into structured **learned rule proposals** (checkpoint category, AI role, decision rule, review conditions, `questions_or_ambiguities`) that **reuse PR 20's proposal table and supervisor approval workflow**. Two invariants are enforced in code, not just prompts: a **physical-measurement guard** forces `record_only` for any `physical_measurement` checkpoint regardless of the LLM, and the system **never fabricates** a missing count/tolerance/view/threshold — it raises a question instead. Provider failure or malformed LLM JSON **fails the job closed** (zero proposals persisted). This PR still does **not** touch Training Pack activation. Proposals surface with Approve / Edit / Reject controls on the source workbench page.
 
+**VLM sample learning (PR 23, `src/qc_model/sample_learning/`):** learns structured **visual rule memory** from grouped sample images (`reference` / `positive` / `defect` / `boundary` / `capture_artifact`). Every observation preserves **per-sample provenance** (traceable to the exact image + optional region via an append-only evidence anchor). Approve and apply are **two distinct steps**: `apply-approved-visual-rule-memory` is the only Training-Pack writer and rejects non-approved memory (409); applying **never silently overwrites** an existing confirmed rule (conflict → 409, supervisor must resolve). VLM failure or malformed output fails closed. Admin UI: `/admin/qc-model/training-packs/{training_pack_id}/sample-learning`.
+
 ## Visual QC boundary
 
 Giraffe QC Model focuses on visual signal interpretation under fixed SKU / fixed workstation conditions:

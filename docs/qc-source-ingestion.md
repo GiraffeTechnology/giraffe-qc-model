@@ -142,3 +142,64 @@ Provider failure or malformed/partial LLM output → `RuleAuthoringJob.status =
 failed`, **zero** proposals persisted (never best-effort parsed into an
 approvable proposal), with the error surfaced via `GET
 /api/qc/rule-authoring-jobs/{job_id}`.
+
+---
+
+## PR 23 — VLM sample learning
+
+PR 23 learns structured **visual rule memory** from grouped sample images
+(`src/qc_model/sample_learning/`). It reuses the established provider pattern
+(deterministic mock in dev/test; the `qwen3.5-vl` adapter fails closed with no
+real backend) and PR 20's approve/reject shape.
+
+### Five sample types
+
+`reference`, `positive`, `defect`, `boundary`, `capture_artifact`
+(`SampleGroup.sample_type`). Invalid types are rejected 422; a detection point
+from another tenant is rejected 404.
+
+### Pipeline + per-sample provenance
+
+`SampleLearningJob` runs a VLM over a `SampleGroup`. It produces one
+`VisualFeatureObservation` per sample image (never collapsed to an aggregate),
+each preserving `source_sample_id`, `image_reference`, `detection_point_code`,
+`feature_type`, `evidence_region`/bbox (nullable), `confidence`, `uncertainty`,
+`rule_implication`, and `requires_human_review`, plus the structured lists
+(normal/acceptable/defect features, known pseudo-defects, capture-artifact
+risks, evidence-required, review-required conditions). Each observation also
+gets an append-only `SampleEvidenceAnchor` linking it to the exact sample image
++ region. Observations aggregate into a `VisualRuleMemory` (plus
+`PseudoDefectRule` / `CaptureArtifactRule` rows).
+
+### Two-step approve → apply
+
+Approval and application are **distinct**:
+
+```
+POST /api/qc/training-packs/{training_pack_id}/sample-learning-jobs
+GET  /api/qc/sample-learning-jobs/{job_id}
+GET  /api/qc/sample-learning-jobs/{job_id}/observations
+GET  /api/qc/sample-learning-jobs/{job_id}/visual-rule-memory
+POST /api/qc/visual-rule-memory/{memory_id}/approval          # approve | edit | reject
+POST /api/qc/training-packs/{training_pack_id}/apply-approved-visual-rule-memory
+```
+
+`apply-approved-visual-rule-memory` is the **only** path that writes learned
+visual rules into a Training Pack (`qc_confirmed_visual_rules`). It is gated
+server-side: applying non-`approved` memory returns **409**.
+
+### No-silent-overwrite guarantee
+
+If a confirmed visual rule already exists for the same training pack + detection
+point + feature type with **different** content, the apply call fails (**409**)
+and requires explicit supervisor resolution — it never overwrites. Identical /
+same-source re-apply is idempotent.
+
+### Fail-closed
+
+VLM failure or malformed/invalid output → `SampleLearningJob.status = failed`
+with no observations or memory persisted as approvable.
+
+UI: `/admin/qc-model/training-packs/{training_pack_id}/sample-learning` — register
+sample groups, run learning, view per-sample observations, pseudo-defect and
+capture-artifact lists, and Approve / Reject then Apply visual rule memory.
