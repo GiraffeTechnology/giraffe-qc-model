@@ -27,4 +27,21 @@ Runtime policy: rule learning defaults to the **server** profile
 (`qwen3.5-vl-8b-int4`). The `tablet_mnn` profile is for edge-side execution of
 *confirmed* rules, not for learning. The deprecated desktop edge-profile name
 must never appear; the edge profile is `tablet_mnn`.
+
+NOTE: This package supersedes the former ``src/qc_model/learning.py`` module.
+The Phase 1 Training-Pack learning-readiness API now lives in
+``src.qc_model.learning.readiness`` and is re-exported here so existing callers
+of ``src.qc_model.learning`` keep working.
 """
+
+from src.qc_model.learning.readiness import (
+    LearningReadiness,
+    advance_to_exam_ready,
+    evaluate_learning_readiness,
+)
+
+__all__ = [
+    "LearningReadiness",
+    "advance_to_exam_ready",
+    "evaluate_learning_readiness",
+]

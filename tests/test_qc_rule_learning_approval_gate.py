@@ -84,6 +84,45 @@ def test_apply_is_idempotent():
     assert len(dps) == len(ids)
 
 
+def test_category_edit_during_approval_recomputes_ai_role():
+    """Editing a proposal's category must re-derive its AI role (P1 fix).
+
+    A supervisor correcting a visual proposal to physical_measurement must not
+    leave a stale primary_visual_judge role that apply() would persist.
+    """
+    db = new_session()
+    job = _proposed_job(db)
+    visual = next(
+        p for p in service.list_detection_point_proposals(db, job.id)
+        if p.proposed_checkpoint_category == "visual_defect"
+    )
+    service.approve_proposals(
+        db, job.id, [visual.id], "sup1",
+        edits={visual.id: {"proposed_checkpoint_category": "physical_measurement"}},
+    )
+    apply.apply_approved_rules(db, job.id, "sup1")
+
+    from src.db.sku_models import QCDetectionPoint
+
+    dp = (
+        db.query(QCDetectionPoint)
+        .filter_by(sku_id="sku1", point_code=visual.proposed_code)
+        .first()
+    )
+    # Corrected to physical_measurement → AI role must be record_only.
+    assert dp.method_hint == "record_only"
+
+
+def test_apply_on_empty_job_does_not_mark_applied():
+    """Applying a job with no proposals must not falsely mark it applied (P2)."""
+    db = new_session()
+    seed_sku(db)
+    job = service.create_learning_job(db, "tp1", "sku1", "st1")
+    result = apply.apply_approved_rules(db, job.id, "sup1")
+    assert result["applied_proposal_ids"] == []
+    assert result["job_status"] != "applied"
+
+
 def test_applied_detection_point_traceability_and_category():
     db = new_session()
     job = _proposed_job(db)

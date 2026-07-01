@@ -38,6 +38,7 @@ from src.qc_model.learning.schemas import (
     QCRuleLearningResponse,
 )
 from src.qc_model.learning.validator import validate_response
+from src.qc_model.schemas.checkpoint import default_ai_role, is_supported_category
 
 
 def _uid() -> str:
@@ -399,11 +400,20 @@ def approve_proposals(
             continue
         edit = edits.get(p.id)
         if edit:
-            for key in (
-                "proposed_checkpoint_category",
-                "severity",
-                "decision_rule",
-            ):
+            # A category edit must re-derive the AI role, otherwise a
+            # supervisor correcting (e.g.) a visual proposal to
+            # physical_measurement would leave a stale primary_visual_judge
+            # role that apply() would write into the detection point, bypassing
+            # the physical-measurement boundary. Reject unsupported categories.
+            if "proposed_checkpoint_category" in edit:
+                new_category = edit["proposed_checkpoint_category"]
+                if not is_supported_category(new_category):
+                    raise ValueError(
+                        f"Unsupported checkpoint category in edit: {new_category!r}"
+                    )
+                p.proposed_checkpoint_category = new_category
+                p.proposed_ai_role = default_ai_role(new_category).value
+            for key in ("severity", "decision_rule"):
                 if key in edit:
                     setattr(p, key, edit[key])
             if "review_required_conditions" in edit:

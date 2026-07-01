@@ -24,6 +24,19 @@ def _job_with_requirement(db):
     return job
 
 
+def test_phase1_readiness_api_still_importable_from_package():
+    """The Phase 1 learning-readiness API must survive the package migration."""
+    from src.qc_model.learning import (
+        LearningReadiness,
+        advance_to_exam_ready,
+        evaluate_learning_readiness,
+    )
+
+    assert LearningReadiness is not None
+    assert callable(evaluate_learning_readiness)
+    assert callable(advance_to_exam_ready)
+
+
 def test_mock_provider_satisfies_interface():
     assert isinstance(MockRuleLearningProvider(), QCRuleLearningProvider)
 

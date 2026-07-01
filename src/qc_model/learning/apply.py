@@ -116,12 +116,14 @@ def apply_approved_rules(
         )
         applied.append(p.id)
 
-    # Move the job to applied only when every proposal is applied; otherwise it
-    # stays partially_approved. Never auto-activate any Training Pack/inspector.
+    # Move the job to applied only when there is at least one proposal and every
+    # proposal is applied; otherwise it stays as-is. An empty/draft job (no
+    # proposals) must never be marked applied. Never auto-activate any Training
+    # Pack/inspector.
     remaining = [
         pr for pr in proposals if pr.status != ProposalStatus.APPLIED.value
     ]
-    if not remaining:
+    if proposals and not remaining:
         job.status = LearningJobStatus.APPLIED.value
 
     db.commit()
