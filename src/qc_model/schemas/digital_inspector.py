@@ -31,7 +31,7 @@ class DigitalInspector(BaseModel):
     revision: str = "1"
 
     default_model_provider: str = "qwen3_5_vl"
-    # "server" | "desktop_pc_mnn"
+    # "server" | "tablet_mnn"
     default_runtime_profile: str = "server"
     # "qwen3.5-vl-8b-int4" | "qwen3.5-vl-2b-mnn"
     default_model_name: str = "qwen3.5-vl-8b-int4"

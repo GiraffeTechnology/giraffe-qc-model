@@ -4,7 +4,7 @@ AI-native quality control inference system for industrial procurement, with two 
 
 At its core it is a **general-purpose, provider-compatible, LLM/VLM-driven visual QC training and execution framework** — product-category agnostic at the framework level, while each *production* digital inspector is SKU-specific, workstation-specific, and bound to a confirmed Training Pack. The artificial-flower accessory is only a *seed SKU* used to validate the pipeline, not the product scope. See the Phase 1 foundation in [`docs/QC_MODEL_PHASE1_VISUAL_QC.md`](docs/QC_MODEL_PHASE1_VISUAL_QC.md) (`src/qc_model/`, admin panel at `/admin/qc-model`).
 
-Two product-default Qwen3.5-VL runtime profiles are selected by environment — `qwen3.5-vl-2b-mnn` for desktop/PC MNN and `qwen3.5-vl-8b-int4` for server — but product services depend on a provider abstraction, not on Qwen-specific classes, so the backend stays swappable for mainstream LLM/VLM providers.
+Two product-default Qwen3.5-VL runtime profiles are selected by environment — `qwen3.5-vl-2b-mnn` for Tablet / Pad MNN and `qwen3.5-vl-8b-int4` for server — but product services depend on a provider abstraction, not on Qwen-specific classes, so the backend stays swappable for mainstream LLM/VLM providers.
 
 ## Overview
 

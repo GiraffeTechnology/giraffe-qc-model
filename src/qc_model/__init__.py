@@ -11,7 +11,7 @@ framework itself stays product-category agnostic.
 Product defaults are two Qwen3.5-VL runtime profiles selected by execution
 environment:
 
-    desktop_pc_mnn -> qwen3.5-vl-2b-mnn
+    tablet_mnn -> qwen3.5-vl-2b-mnn
     server         -> qwen3.5-vl-8b-int4
 
 Product services depend on the abstract

@@ -33,10 +33,10 @@ def _blank_request() -> VisualInspectionRequest:
     )
 
 
-def test_desktop_pc_mnn_default_profile_is_2b_mnn():
-    profile = get_runtime_profile("desktop_pc_mnn")
+def test_tablet_mnn_default_profile_is_2b_mnn():
+    profile = get_runtime_profile("tablet_mnn")
     assert profile.model == "qwen3.5-vl-2b-mnn"
-    assert profile.environment == RuntimeEnvironment.DESKTOP_PC_MNN
+    assert profile.environment == RuntimeEnvironment.TABLET_MNN
 
 
 def test_server_default_profile_is_8b_int4():
@@ -46,7 +46,7 @@ def test_server_default_profile_is_8b_int4():
 
 
 def test_runtime_profile_selection_by_environment(monkeypatch):
-    monkeypatch.setenv("QC_VISION_RUNTIME_ENV", "desktop_pc_mnn")
+    monkeypatch.setenv("QC_VISION_RUNTIME_ENV", "tablet_mnn")
     assert get_runtime_profile().model == "qwen3.5-vl-2b-mnn"
     monkeypatch.setenv("QC_VISION_RUNTIME_ENV", "server")
     assert get_runtime_profile().model == "qwen3.5-vl-8b-int4"

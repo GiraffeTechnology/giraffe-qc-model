@@ -3,7 +3,7 @@
 The product has **two** default runtime profiles, selected by execution
 environment — not one generic ``qwen3.5-vl`` model:
 
-    desktop_pc_mnn -> qwen3.5-vl-2b-mnn   (default desktop/PC MNN profile)
+    tablet_mnn -> qwen3.5-vl-2b-mnn   (default Tablet / Pad MNN profile)
     server         -> qwen3.5-vl-8b-int4  (default server profile)
 
 Both default to the ``qwen3_5_vl`` provider, but the architecture stays
@@ -25,7 +25,7 @@ from enum import Enum
 class RuntimeEnvironment(str, Enum):
     """Execution environment that selects a runtime profile."""
 
-    DESKTOP_PC_MNN = "desktop_pc_mnn"
+    TABLET_MNN = "tablet_mnn"
     SERVER = "server"
 
 
@@ -45,11 +45,11 @@ class RuntimeProfile:
 # Product default profiles. Keyed by environment value to mirror the PRD's
 # ``default_runtime_profiles`` config block exactly.
 DEFAULT_RUNTIME_PROFILES: dict[RuntimeEnvironment, RuntimeProfile] = {
-    RuntimeEnvironment.DESKTOP_PC_MNN: RuntimeProfile(
-        environment=RuntimeEnvironment.DESKTOP_PC_MNN,
+    RuntimeEnvironment.TABLET_MNN: RuntimeProfile(
+        environment=RuntimeEnvironment.TABLET_MNN,
         provider="qwen3_5_vl",
         model="qwen3.5-vl-2b-mnn",
-        role="default_desktop_pc_mnn_visual_reasoning_profile",
+        role="default_tablet_mnn_visual_reasoning_profile",
     ),
     RuntimeEnvironment.SERVER: RuntimeProfile(
         environment=RuntimeEnvironment.SERVER,

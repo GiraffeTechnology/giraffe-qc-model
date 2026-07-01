@@ -25,10 +25,10 @@ inspector, however, is bound to:
 
 | Environment      | Provider     | Model                | Role |
 |------------------|--------------|----------------------|------|
-| `desktop_pc_mnn` | `qwen3_5_vl` | `qwen3.5-vl-2b-mnn`  | default desktop/PC MNN visual reasoning profile |
+| `tablet_mnn` | `qwen3_5_vl` | `qwen3.5-vl-2b-mnn`  | default Tablet / Pad MNN visual reasoning profile |
 | `server`         | `qwen3_5_vl` | `qwen3.5-vl-8b-int4` | default server visual reasoning profile |
 
-Selection: `QC_VISION_RUNTIME_ENV` (`desktop_pc_mnn` | `server`). Unknown/unset
+Selection: `QC_VISION_RUNTIME_ENV` (`tablet_mnn` | `server`). Unknown/unset
 falls back to `server`. See `src/qc_model/runtime_profiles.py`.
 
 The defaults are Qwen3.5-VL profiles, but product services depend only on the
@@ -48,7 +48,7 @@ model names that differ from the new product-default profile names. This PR
 
 | Location | Current model name | Product-default profile name |
 |---|---|---|
-| `apps/android-qc/**` (MNN runtime, prompt builder, provisioning, benchmark) | `Qwen3-VL-2B-Instruct-MNN` | `qwen3.5-vl-2b-mnn` (desktop_pc_mnn) |
+| `apps/android-qc/**` (MNN runtime, prompt builder, provisioning, benchmark) | `Qwen3-VL-2B-Instruct-MNN` | `qwen3.5-vl-2b-mnn` (tablet_mnn) |
 | `src/runtime/editions.py` (`server` edition) | `Qwen3-VL-8B` | `qwen3.5-vl-8b-int4` (server) |
 
 Notes:

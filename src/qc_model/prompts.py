@@ -10,8 +10,8 @@ from src.qc_model.providers.base import VisualInspectionRequest
 
 SYSTEM_PROMPT_TEMPLATE = (
     "You are a digital visual QC inspector.\n"
-    "The product default runtime profiles are qwen3.5-vl-2b-mnn for desktop/PC "
-    "MNN and qwen3.5-vl-8b-int4 for server.\n"
+    "The product default runtime profiles are qwen3.5-vl-2b-mnn for tablet / "
+    "Pad MNN and qwen3.5-vl-8b-int4 for server.\n"
     "You inspect only the confirmed SKU and confirmed detection points.\n"
     "You do not guess missing standards.\n"
     "You distinguish true defects from normal material behavior and capture "

@@ -14,16 +14,16 @@ from src.qc_model.runtime_profiles import (
 
 def test_two_default_profiles_configured():
     assert set(DEFAULT_RUNTIME_PROFILES.keys()) == {
-        RuntimeEnvironment.DESKTOP_PC_MNN,
+        RuntimeEnvironment.TABLET_MNN,
         RuntimeEnvironment.SERVER,
     }
 
 
-def test_desktop_and_server_models():
+def test_tablet_and_server_models():
     cfg = default_runtime_profiles_config()["default_runtime_profiles"]
-    assert cfg["desktop_pc_mnn"]["model"] == "qwen3.5-vl-2b-mnn"
+    assert cfg["tablet_mnn"]["model"] == "qwen3.5-vl-2b-mnn"
     assert cfg["server"]["model"] == "qwen3.5-vl-8b-int4"
-    assert cfg["desktop_pc_mnn"]["provider"] == "qwen3_5_vl"
+    assert cfg["tablet_mnn"]["provider"] == "qwen3_5_vl"
     assert cfg["server"]["provider"] == "qwen3_5_vl"
 
 
@@ -34,7 +34,7 @@ def test_config_advertises_provider_compatibility():
 
 
 def test_profiles_select_by_environment():
-    assert get_runtime_profile("desktop_pc_mnn").role == "default_desktop_pc_mnn_visual_reasoning_profile"
+    assert get_runtime_profile("tablet_mnn").role == "default_tablet_mnn_visual_reasoning_profile"
     assert get_runtime_profile("server").role == "default_server_visual_reasoning_profile"
 
 

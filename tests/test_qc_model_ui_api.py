@@ -82,7 +82,7 @@ def seeded(session_factory):
 def test_runtime_profiles_endpoint(client):
     data = client.get("/api/qc-model/runtime-profiles").json()
     profiles = data["default_runtime_profiles"]
-    assert profiles["desktop_pc_mnn"]["model"] == "qwen3.5-vl-2b-mnn"
+    assert profiles["tablet_mnn"]["model"] == "qwen3.5-vl-2b-mnn"
     assert profiles["server"]["model"] == "qwen3.5-vl-8b-int4"
     assert data["provider_compatibility"]["mainstream_llm_vlm_adapters_supported"] is True
 
