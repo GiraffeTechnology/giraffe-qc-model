@@ -65,6 +65,10 @@ The Phase 1 visual QC foundation lives under `src/qc_model/` and is described in
 
 Phase 1 validates **structure and safety guardrails**. It does not certify real-world Qwen3.5-VL inspection accuracy, defect recall, or production readiness. Real accuracy must be validated later with labeled real-world sample sets.
 
+### Phase 2A — QC rule learning engine
+
+Phase 2A adds the first **rule-learning** loop under `src/qc_model/learning/`, described in [`docs/QC_MODEL_PHASE2A_RULE_LEARNING.md`](docs/QC_MODEL_PHASE2A_RULE_LEARNING.md). The LLM/VLM **proposes** structured detection points, visual features, pseudo-defects, decision rules, and review-required conditions from operator requirements + Training Pack context; a supervisor must approve them before they are applied to a Training Pack. Rule learning defaults to the `server` profile (`qwen3.5-vl-8b-int4`); the `tablet_mnn` edge profile executes confirmed rules and is never used for learning. This is rule learning, **not** model fine-tuning, and it does not certify visual accuracy. Admin UI: `/admin/qc-model/learning`.
+
 ## Visual QC boundary
 
 Giraffe QC Model focuses on visual signal interpretation under fixed SKU / fixed workstation conditions:
