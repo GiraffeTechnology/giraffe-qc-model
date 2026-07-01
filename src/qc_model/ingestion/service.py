@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session
 
 from src.db.qc_learning_models import QCLearningJob
 from src.db.qc_source_models import (
+    SOURCE_STATUS_REJECTED,
+    SOURCE_STATUS_REVIEWED,
     QCBoundaryDraft,
     QCRequirementDraft,
     QCSourceDocument,
@@ -41,6 +43,10 @@ class ExtractionJobNotFound(ValueError):
 
 
 class InvalidSourceType(ValueError):
+    pass
+
+
+class InvalidReviewDecision(ValueError):
     pass
 
 
@@ -134,6 +140,35 @@ def get_source_document(db: Session, source_id: str, tenant_id: str = "default")
     )
     if doc is None:
         raise SourceNotFound(f"Source {source_id!r} not found")
+    return doc
+
+
+def review_source_document(
+    db: Session,
+    source_id: str,
+    decision: str,
+    tenant_id: str = "default",
+    reviewer: Optional[str] = None,
+) -> QCSourceDocument:
+    """Supervisor review of a source document (draft → reviewed | rejected).
+
+    This is the supported human action that clears a source out of the
+    readiness gate's "source documents reviewed" check. It only moves a
+    source between review states — it never activates anything.
+    """
+    if decision not in (SOURCE_STATUS_REVIEWED, SOURCE_STATUS_REJECTED):
+        raise InvalidReviewDecision(
+            f"decision must be {SOURCE_STATUS_REVIEWED!r} or {SOURCE_STATUS_REJECTED!r}, got {decision!r}"
+        )
+    doc = get_source_document(db, source_id, tenant_id)
+    doc.status = decision
+    if reviewer:
+        # Preserve the original author; record the reviewer in metadata for audit.
+        meta = dict(doc.metadata_json or {})
+        meta["reviewed_by"] = reviewer
+        doc.metadata_json = meta
+    db.commit()
+    db.refresh(doc)
     return doc
 
 

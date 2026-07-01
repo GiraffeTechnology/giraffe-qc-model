@@ -44,6 +44,10 @@ def gate_transition(
     if target_status not in GATED_TARGETS:
         return TransitionDecision(True, target_status, "target_not_readiness_gated", readiness)
 
+    if not readiness.pack_known:
+        # Fail closed: unknown pack or a pack owned by a different tenant.
+        return TransitionDecision(False, target_status, "unknown_or_cross_tenant_pack", readiness)
+
     if target_status == "exam_ready":
         allowed = readiness.exam_ready_allowed
         reason = "exam_ready_allowed" if allowed else "readiness_incomplete"

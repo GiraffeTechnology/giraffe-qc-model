@@ -45,6 +45,12 @@ class ExtractBody(BaseModel):
     tenant_id: str = "default"
 
 
+class ReviewSourceBody(BaseModel):
+    decision: str  # "reviewed" | "rejected"
+    tenant_id: str = "default"
+    reviewer: Optional[str] = None
+
+
 # ── Views ─────────────────────────────────────────────────────────────────
 
 
@@ -141,6 +147,23 @@ def get_source(
         doc = service.get_source_document(db, source_id, tenant_id)
     except service.SourceNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _source_view(doc)
+
+
+@router.post("/api/qc/sources/{source_id}/review")
+def review_source(
+    source_id: str,
+    body: ReviewSourceBody,
+    db: Session = Depends(get_db_dep),
+):
+    try:
+        doc = service.review_source_document(
+            db, source_id, decision=body.decision, tenant_id=body.tenant_id, reviewer=body.reviewer,
+        )
+    except service.SourceNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except service.InvalidReviewDecision as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _source_view(doc)
 
 
@@ -288,4 +311,25 @@ def ui_extract_source(
         pass
     return RedirectResponse(
         url=f"/admin/qc-model/training-packs/{training_pack_id}/sources", status_code=303
+    )
+
+
+@router.post("/admin/qc-model/training-packs/{training_pack_id}/sources/{source_id}/review")
+def ui_review_source(
+    training_pack_id: str,
+    source_id: str,
+    decision: str = Form(...),
+    tenant_id: str = Form("default"),
+    reviewer: str = Form("qc_supervisor"),
+    db: Session = Depends(get_db_dep),
+):
+    try:
+        service.review_source_document(
+            db, source_id, decision=decision, tenant_id=tenant_id, reviewer=reviewer,
+        )
+    except (service.SourceNotFound, service.InvalidReviewDecision):
+        pass
+    suffix = f"?tenant_id={tenant_id}" if tenant_id and tenant_id != "default" else ""
+    return RedirectResponse(
+        url=f"/admin/qc-model/training-packs/{training_pack_id}/sources{suffix}", status_code=303
     )

@@ -29,6 +29,21 @@ from src.db.qc_sample_learning_models import (
 )
 from src.db.qc_source_models import QCSourceDocument
 
+# Tenant-scoped tables that reference a training pack. A pack is "known" to a
+# tenant only if at least one of these has a row for (pack, tenant). This lets
+# the gate fail closed for unknown or cross-tenant packs, where every
+# tenant-scoped query would otherwise be vacuously empty and pass.
+_PACK_OWNED_TABLES = (
+    QCSourceDocument,
+    QCLearningJob,
+    RuleAuthoringJob,
+    SampleGroup,
+    SampleLearningJob,
+    VisualRuleMemory,
+    QCConfirmedVisualRule,
+    PseudoDefectRule,
+)
+
 # Check ids.
 C_SOURCES = "source_documents_reviewed"
 C_DETECTION_POINTS = "detection_points_confirmed"
@@ -66,10 +81,12 @@ class ReadinessResult:
     exam_ready_allowed: bool
     active_allowed: bool
     on_trial_allowed: bool
+    pack_known: bool = True
 
     def to_dict(self) -> dict:
         return {
             "training_pack_id": self.training_pack_id,
+            "pack_known": self.pack_known,
             "exam_ready_allowed": self.exam_ready_allowed,
             "active_allowed": self.active_allowed,
             "on_trial_allowed": self.on_trial_allowed,
@@ -102,7 +119,27 @@ def _min_coverage_positive() -> int:
     return int(os.getenv("QC_READINESS_MIN_POSITIVE_SAMPLES", "1"))
 
 
+def _pack_known_for_tenant(db: Session, training_pack_id: str, tenant_id: str) -> bool:
+    """True if this tenant owns any data referencing the pack.
+
+    There is no central Training Pack registry table, so ownership is derived
+    from tenant-scoped rows. An unknown pack — or one owned by another tenant —
+    has no such rows for this tenant and must fail closed rather than pass every
+    vacuous "no pending X" check.
+    """
+    for model in _PACK_OWNED_TABLES:
+        exists = (
+            db.query(model.id)
+            .filter_by(training_pack_id=training_pack_id, tenant_id=tenant_id)
+            .first()
+        )
+        if exists is not None:
+            return True
+    return False
+
+
 def evaluate_readiness(db: Session, training_pack_id: str, tenant_id: str = "default") -> ReadinessResult:
+    pack_known = _pack_known_for_tenant(db, training_pack_id, tenant_id)
     proposals = _pack_proposals(db, training_pack_id, tenant_id)
     memory = db.query(VisualRuleMemory).filter_by(training_pack_id=training_pack_id, tenant_id=tenant_id).all()
     waived_keys = {
@@ -221,12 +258,15 @@ def evaluate_readiness(db: Session, training_pack_id: str, tenant_id: str = "def
     ))
 
     by_id = {c.id: c for c in checks}
-    exam_ready_allowed = all(by_id[cid].passed for cid in _EXAM_READY_BLOCKING)
+    # Fail closed for unknown / cross-tenant packs: a pack this tenant does not
+    # own has only vacuous empty-query passes and must not be exam-ready.
+    exam_ready_allowed = pack_known and all(by_id[cid].passed for cid in _EXAM_READY_BLOCKING)
     active_allowed = exam_ready_allowed and by_id[C_COVERAGE].passed
     on_trial_allowed = exam_ready_allowed
     return ReadinessResult(
         training_pack_id=training_pack_id, checks=checks,
         exam_ready_allowed=exam_ready_allowed, active_allowed=active_allowed, on_trial_allowed=on_trial_allowed,
+        pack_known=pack_known,
     )
 
 

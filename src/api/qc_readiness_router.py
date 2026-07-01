@@ -104,12 +104,17 @@ def ui_add_waiver(
     item_key: str = Form(...),
     reason: str = Form(...),
     supervisor_id: str = Form("qc_supervisor"),
+    tenant_id: str = Form("default"),
     db: Session = Depends(get_db_dep),
 ):
     try:
-        create_waiver(db, training_pack_id, item_key=item_key, reason=reason, supervisor_id=supervisor_id)
+        create_waiver(
+            db, training_pack_id, item_key=item_key, reason=reason,
+            supervisor_id=supervisor_id, tenant_id=tenant_id,
+        )
     except WaiverValidationError:
         pass
+    suffix = f"?tenant_id={tenant_id}" if tenant_id and tenant_id != "default" else ""
     return RedirectResponse(
-        url=f"/admin/qc-model/training-packs/{training_pack_id}/readiness", status_code=303
+        url=f"/admin/qc-model/training-packs/{training_pack_id}/readiness{suffix}", status_code=303
     )

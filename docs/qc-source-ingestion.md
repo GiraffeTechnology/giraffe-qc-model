@@ -234,9 +234,27 @@ PR 24 (`src/qc_model/readiness/`) makes `exam_ready` / `active` depend on
 
 - Any of checks **1–6, 8–10** incomplete ⇒ **must not** enter `exam_ready`.
 - Check **7** insufficient ⇒ **may** enter `on_trial`, **must not** enter `active`.
+- **Unknown / cross-tenant pack fails closed.** There is no central Training Pack
+  registry table, so ownership is derived from tenant-scoped rows. A pack a
+  tenant does not own has only vacuous empty-query passes; the evaluator reports
+  `pack_known=False` and `gate_transition` rejects it with reason
+  `unknown_or_cross_tenant_pack`, so a wrong/unauthorized tenant can never obtain
+  an exam-ready approval for a pack it does not own.
 
 `gate_transition(db, training_pack_id, target_status)` extends status-transition
 logic to consult the evaluator for `exam_ready` / `active` / `on_trial` targets.
+
+### Clearing check 1 — supervisor source review
+
+Sources are registered as `draft`. A supervisor clears check 1 with an explicit
+review action (`draft → reviewed | rejected`); this never activates anything.
+
+```
+POST /api/qc/sources/{source_id}/review   # body: {decision: reviewed|rejected, tenant_id, reviewer}
+```
+
+UI: the Source Ingestion Workbench shows **Mark reviewed** / **Reject source**
+buttons on each draft source.
 
 ### Waiver mechanism (ambiguities only)
 

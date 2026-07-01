@@ -41,6 +41,7 @@
             {% if c.waivable %}
             <form method="post" action="/admin/qc-model/training-packs/{{ training_pack_id }}/readiness-waivers" style="display:inline">
               <input type="hidden" name="item_key" value="{{ item.item_key }}">
+              <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
               <input type="text" name="reason" placeholder="justification (required)" size="30">
               <button type="submit" class="btn">Waive this item</button>
             </form>

@@ -59,6 +59,23 @@
       <button type="submit" class="btn btn-primary">Run extraction (mock)</button>
     </form>
 
+    {% if row.source.status == 'draft' %}
+    <form method="post"
+          action="/admin/qc-model/training-packs/{{ training_pack_id }}/sources/{{ row.source.source_id }}/review"
+          class="qcm-inline-form" style="display:inline">
+      <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+      <input type="hidden" name="decision" value="reviewed">
+      <button type="submit" class="btn">Mark reviewed</button>
+    </form>
+    <form method="post"
+          action="/admin/qc-model/training-packs/{{ training_pack_id }}/sources/{{ row.source.source_id }}/review"
+          class="qcm-inline-form" style="display:inline">
+      <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+      <input type="hidden" name="decision" value="rejected">
+      <button type="submit" class="btn">Reject source</button>
+    </form>
+    {% endif %}
+
     {% if row.grouped_fragments %}
     <p class="qcm-note">
       Extraction job <code>{{ row.latest_job.job_id[:8] }}</code>

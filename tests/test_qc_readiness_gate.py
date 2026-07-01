@@ -319,3 +319,88 @@ def test_ui_readiness_panel_smoke(client, db):
     assert page.status_code == 200
     assert "Training Pack Readiness Gate" in page.text
     assert "Readiness checklist" in page.text
+
+
+# ── Fail closed for unknown / cross-tenant packs ──────────────────────────
+
+
+def test_unknown_pack_fails_closed(db):
+    # A pack id with no rows at all must not be exam-ready via vacuous passes.
+    result = evaluate_readiness(db, "never-seen-pack", TENANT)
+    assert result.pack_known is False
+    assert result.exam_ready_allowed is False
+    assert result.on_trial_allowed is False
+    assert result.active_allowed is False
+
+
+def test_cross_tenant_pack_fails_closed(db):
+    # Fully-ready pack owned by TENANT ("default").
+    _fully_ready(db)
+    owner = evaluate_readiness(db, TP, TENANT)
+    assert owner.exam_ready_allowed is True
+    # A different tenant asking about the same pack sees only empty queries.
+    other = evaluate_readiness(db, TP, "tenant_intruder")
+    assert other.pack_known is False
+    assert other.exam_ready_allowed is False
+    assert other.active_allowed is False
+
+
+def test_gate_rejects_cross_tenant_pack(db):
+    _fully_ready(db)
+    decision = gate_transition(db, TP, "exam_ready", "tenant_intruder")
+    assert decision.allowed is False
+    assert decision.reason == "unknown_or_cross_tenant_pack"
+
+
+# ── Supervisor source review action (unblocks the source check) ───────────
+
+
+def test_source_review_action_unblocks_source_check(db):
+    from src.qc_model.ingestion import service
+    # A draft source blocks exam_ready and there is now a supported way to clear it.
+    doc = _reviewed_source(db, status="draft")
+    _authoring_proposal(db, status="approved")
+    _sample_group(db, "positive"); _sample_group(db, "defect")
+    assert evaluate_readiness(db, TP, TENANT).exam_ready_allowed is False
+
+    service.review_source_document(db, doc.id, decision="reviewed", tenant_id=TENANT, reviewer="sup1")
+    assert evaluate_readiness(db, TP, TENANT).exam_ready_allowed is True
+
+
+def test_source_review_endpoint(client, db):
+    doc = _reviewed_source(db, status="draft")
+    resp = client.post(f"/api/qc/sources/{doc.id}/review",
+                       json={"decision": "reviewed", "tenant_id": TENANT, "reviewer": "sup1"})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "reviewed"
+
+
+def test_source_review_rejects_bad_decision(client, db):
+    doc = _reviewed_source(db, status="draft")
+    resp = client.post(f"/api/qc/sources/{doc.id}/review",
+                       json={"decision": "active", "tenant_id": TENANT})
+    assert resp.status_code == 422
+
+
+def test_source_review_is_tenant_scoped(client, db):
+    doc = _reviewed_source(db, status="draft")
+    resp = client.post(f"/api/qc/sources/{doc.id}/review",
+                       json={"decision": "reviewed", "tenant_id": "other"})
+    assert resp.status_code == 404
+
+
+# ── UI waiver preserves tenant_id ─────────────────────────────────────────
+
+
+def test_ui_waiver_preserves_tenant(client, db):
+    from src.qc_model.readiness.waiver import list_waivers
+    resp = client.post(
+        f"/admin/qc-model/training-packs/{TP}/readiness-waivers",
+        data={"item_key": "p::0", "reason": "ok for pilot", "supervisor_id": "sup1", "tenant_id": "t1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert "tenant_id=t1" in resp.headers["location"]
+    # Waiver written under t1, not default.
+    assert len(list_waivers(db, TP, "t1")) == 1
+    assert len(list_waivers(db, TP, "default")) == 0
