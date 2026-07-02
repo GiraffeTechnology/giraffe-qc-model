@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Qualification &amp; Accuracy Gate{% endblock %}
+{% block content %}
+<section class="qcm-panel">
+  <h1>Qualification &amp; Accuracy Gate (L3)</h1>
+  <p class="qcm-note qcm-boundary">
+    ⚠ L3 <code>controlled_active</code> is unlocked only by a supervisor-approved
+    qualification report that meets the false-pass / false-fail / sample
+    thresholds. False pass is critical (default max false-pass rate = 0). A
+    report is immutable once approved.
+  </p>
+
+  <p>Training pack <code>{{ training_pack_id }}</code> —
+    controlled_active qualification: {{ '✅ approved' if qualified else '❌ not qualified' }}</p>
+
+  <h2>Datasets</h2>
+  {% if datasets %}
+  <ul>{% for d in datasets %}<li><code>{{ d.dataset_id[:8] }}</code> {{ d.name or '' }} (SKU {{ d.sku_id or '—' }})</li>{% endfor %}</ul>
+  {% else %}<p class="qcm-note">No qualification datasets. Create one via the API.</p>{% endif %}
+
+  <h2>Reports</h2>
+  {% if reports %}
+  <table class="qcm-table">
+    <thead><tr><th>Report</th><th>Meets thresholds</th><th>Qualified points</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for r in reports %}
+      <tr class="{{ 'qcm-confirmed' if r.overall_meets_thresholds else 'qcm-unconfirmed' }}">
+        <td><code>{{ r.report_id[:8] }}</code></td>
+        <td>{{ '✅' if r.overall_meets_thresholds else '❌' }}</td>
+        <td>{{ (r.qualified_detection_point_codes or []) | join(', ') or '—' }}</td>
+        <td>{{ r.status }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="qcm-note">No qualification reports yet — run a dataset.</p>{% endif %}
+
+  <h2>Shadow mode (L1)</h2>
+  <p class="qcm-note">
+    Observations: {{ shadow.observations }} · disagreements: {{ shadow.disagreements }}
+    · disagreement rate: {{ '%.2f' % shadow.disagreement_rate }}.
+    Shadow mode records model vs. human decisions and never affects pass/reject.
+  </p>
+</section>
+{% endblock %}
