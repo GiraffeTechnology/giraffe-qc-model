@@ -278,6 +278,13 @@ def run_inspection(
         run.completed_at = _now()
         db.commit()
         db.refresh(run)
+        from src.qc_model import observability
+        event = (observability.EV_SCHEMA_VALIDATION_ERROR if "schema" in str(exc).lower()
+                 else observability.EV_PROVIDER_ERROR)
+        observability.record(event, tenant_id=tenant_id, run_id=run.id, provider=provider.provider_name,
+                             error=type(exc).__name__)
+        observability.record(observability.EV_PRODUCTION_INSPECTION_RUN, tenant_id=tenant_id,
+                             run_id=run.id, status="failed")
         return run
 
     for r in results:
@@ -296,6 +303,13 @@ def run_inspection(
     ))
     db.commit()
     db.refresh(run)
+    from src.qc_model import observability
+    review_n = sum(1 for r in results if r.disposition in (DISPOSITION_REVIEW, "capture_retry_required"))
+    observability.record(observability.EV_PRODUCTION_INSPECTION_RUN, tenant_id=tenant_id, run_id=run.id,
+                         status="completed", overall=run.overall_disposition,
+                         detections=run.detection_result_count, provider=provider.provider_name)
+    if review_n:
+        observability.record(observability.EV_REVIEW_REQUIRED, tenant_id=tenant_id, run_id=run.id, count=review_n)
     return run
 
 
@@ -431,6 +445,14 @@ def record_final_decision(
     db.add(record)
     db.commit()
     db.refresh(record)
+    # Human override: the human decision disagrees with the model recommendation.
+    from src.qc_model import observability
+    rec = (run.overall_disposition or "")
+    human_matches_pass = (decision == "pass" and rec == DISPOSITION_PASS)
+    human_matches_reject = (decision == "reject" and rec == DISPOSITION_REJECT)
+    if not (human_matches_pass or human_matches_reject):
+        observability.record(observability.EV_HUMAN_OVERRIDE, tenant_id=tenant_id, run_id=run.id,
+                             human_decision=decision, recommended=rec, decided_by=decided_by)
     return record
 
 

@@ -421,13 +421,21 @@ def evaluate_readiness(
     production_assisted_allowed = exam_ready_allowed and all(by_id[cid].passed for cid in _L2_BLOCKING)
     controlled_active_allowed = production_assisted_allowed and all(by_id[cid].passed for cid in _L3_BLOCKING)
 
-    return ReadinessResult(
+    result = ReadinessResult(
         training_pack_id=training_pack_id, checks=checks,
         exam_ready_allowed=exam_ready_allowed,
         production_assisted_allowed=production_assisted_allowed,
         controlled_active_allowed=controlled_active_allowed,
         pack_known=pack_known, target_mode=target_mode,
     )
+    from src.qc_model import observability
+    observability.record(
+        observability.EV_READINESS_GATE_RESULT, tenant_id=tenant_id,
+        training_pack_id=training_pack_id, target_mode=target_mode,
+        exam_ready=exam_ready_allowed, production_assisted=production_assisted_allowed,
+        controlled_active=controlled_active_allowed, blocking=",".join(result._blocking_check_ids()) or "-",
+    )
+    return result
 
 
 def _memory_content(m) -> dict:

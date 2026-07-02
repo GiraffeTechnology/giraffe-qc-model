@@ -86,6 +86,20 @@ def _result_view(d) -> dict:
 # ── JSON API ─────────────────────────────────────────────────────────────────
 
 
+@router.get("/api/qc/production/provider-eligibility")
+def provider_eligibility():
+    """Expose whether the configured production provider is eligible (PR 29)."""
+    from src.qc_model.production.provider import production_provider_status
+    return production_provider_status()
+
+
+@router.get("/api/qc/production/metrics")
+def production_metrics():
+    """In-process observability metric snapshot (PR 29)."""
+    from src.qc_model import observability
+    return observability.snapshot()
+
+
 @router.post("/api/qc/production/inspection-sessions", status_code=201)
 def create_session(body: CreateSessionBody, db: Session = Depends(get_db_dep)):
     try:

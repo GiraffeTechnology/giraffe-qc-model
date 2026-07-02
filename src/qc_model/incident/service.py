@@ -149,6 +149,10 @@ def report_incident(
            payload={"incident_type": incident_type, "severity": incident.severity, "scope": affected_scope})
     db.commit()
     db.refresh(incident)
+    if incident_type == "false_fail":
+        from src.qc_model import observability
+        observability.record(observability.EV_FALSE_FAIL_INCIDENT, tenant_id=tenant_id,
+                             incident_id=incident.id, training_pack_id=training_pack_id)
     return incident
 
 
@@ -281,6 +285,10 @@ def confirm_incident(
     inc.status = STATUS_REQUAL_REQUIRED
     db.commit()
     db.refresh(inc)
+    from src.qc_model import observability
+    observability.record(observability.EV_FALSE_PASS_INCIDENT, tenant_id=tenant_id, incident_id=inc.id,
+                         training_pack_id=inc.training_pack_id, suspension_id=suspension.id,
+                         detection_point_code=inc.detection_point_code or "-")
     return inc
 
 

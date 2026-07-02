@@ -194,6 +194,24 @@ Unknown or cross-tenant packs fail closed.
 
 ---
 
+## Production Deployment Hardening
+
+Operational guarantees for real deployment. See [`docs/production-deployment.md`](docs/production-deployment.md).
+
+```text
+APP_ENV=production disables all mock/fake/test providers
+production APIs fail closed when the real provider is unconfigured
+GET /api/qc/production/provider-eligibility exposes provider eligibility
+structured observability + metrics: GET /api/qc/production/metrics
+append-only audit tables expose no PUT/PATCH/DELETE
+supervisor identity required for every gated action
+migrations 009 through 016 apply up/down/up cleanly
+```
+
+Mocked tests prove workflow only, not production visual accuracy. Production Assisted Mode (L2) requires a human final decision. Controlled Active Mode (L3) requires qualification and false-pass monitoring.
+
+---
+
 ## Physical Measurement Boundary
 
 If a ruler, fixture, gauge, caliper, scale, template, or other physical instrument is faster and more accurate, AI must not be the primary judge.
