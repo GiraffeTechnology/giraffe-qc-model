@@ -383,12 +383,18 @@ def evaluate_readiness(
         blocking_items=[{"item_key": p.id, "description": f"critical defect {p.proposed_code} pending"} for p in critical_pending],
     ))
 
-    # 12. Controlled-active qualification (L3). Produced by a later PR; until a
-    #     qualification report exists, L3 fails closed.
+    # 12. Controlled-active qualification (L3). Passes only when a supervisor has
+    #     approved a qualification report that meets the false-pass/false-fail/
+    #     sample thresholds (PR 27). Fails closed otherwise.
+    from src.qc_model.qualification.service import has_approved_qualification
+
+    qualified = has_approved_qualification(db, training_pack_id, tenant_id)
     checks.append(CheckResult(
-        C_QUALIFICATION, "Controlled-active qualification passed", passed=False,
-        blocking_items=[{"item_key": "qualification_required",
-                         "description": "L3 controlled active requires a passed qualification report (not yet available)"}],
+        C_QUALIFICATION, "Controlled-active qualification passed", passed=qualified,
+        blocking_items=[] if qualified else [{
+            "item_key": "qualification_required",
+            "description": "L3 controlled active requires an approved qualification report meeting thresholds",
+        }],
     ))
 
     by_id = {c.id: c for c in checks}
