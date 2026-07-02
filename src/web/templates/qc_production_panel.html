@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Production Assisted Mode{% endblock %}
+{% block content %}
+<section class="qcm-panel">
+  <h1>Production Assisted Mode (L2)</h1>
+  <p class="qcm-note qcm-boundary">
+    ⚠ Assisted mode: the model produces a <strong>recommended</strong> disposition
+    and evidence only. The final pass/reject decision is made by a human and is
+    recorded in an immutable audit trail. The system never auto-finalizes.
+  </p>
+
+  {% if not session %}
+  <h2>Sessions for training pack <code>{{ training_pack_id or '(none selected)' }}</code></h2>
+  {% if sessions %}
+  <table class="qcm-table">
+    <thead><tr><th>Session</th><th>SKU</th><th>Station</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for s in sessions %}
+      <tr>
+        <td><a href="/admin/qc-model/production/sessions/{{ s.session_id }}?tenant_id={{ tenant_id }}"><code>{{ s.session_id[:8] }}</code></a></td>
+        <td>{{ s.sku_id or '—' }}</td><td>{{ s.station_id or '—' }}</td><td>{{ s.status }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="qcm-note">No sessions. Create one via <code>POST /api/qc/production/inspection-sessions</code> (requires L2 readiness).</p>
+  {% endif %}
+
+  {% else %}
+  <h2>Session <code>{{ session.session_id[:8] }}</code></h2>
+  <p class="qcm-note">
+    Training pack <code>{{ session.training_pack_id }}</code>
+    · SKU {{ session.sku_id or '—' }} · Station {{ session.station_id or '—' }}
+    · Operator {{ session.operator_id or '—' }} · mode <code>{{ session.production_mode }}</code>
+    · status {{ session.status }}
+  </p>
+
+  <h3>Captures</h3>
+  <ul>{% for c in captures %}<li><code>{{ c.image_reference }}</code></li>{% else %}<li class="qcm-note">no captures yet</li>{% endfor %}</ul>
+  <form method="post" action="/admin/qc-model/production/sessions/{{ session.session_id }}/captures" class="qcm-inline-form">
+    <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+    <input type="text" name="image_reference" placeholder="s3://capture.jpg" size="40">
+    <button type="submit" class="btn">Add capture</button>
+  </form>
+  <form method="post" action="/admin/qc-model/production/sessions/{{ session.session_id }}/run" class="qcm-inline-form" style="display:inline">
+    <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+    <button type="submit" class="btn btn-primary">Run inspection</button>
+  </form>
+
+  {% if latest_run %}
+  <h3>Latest run <code>{{ latest_run.run_id[:8] }}</code>
+    <span class="qcm-state">{{ latest_run.status }}</span>
+    <span class="qcm-state">recommended: {{ latest_run.overall_disposition or '—' }}</span>
+    <span class="qcm-state">provider: {{ latest_run.provider }}</span>
+  </h3>
+  {% if latest_run.error_message %}<p class="qcm-pending">{{ latest_run.error_message }}</p>{% endif %}
+  <table class="qcm-table">
+    <thead><tr><th>Detection point</th><th>Recommendation</th><th>Evidence</th><th>Confidence</th><th>Review conditions</th></tr></thead>
+    <tbody>
+      {% for r in results %}
+      <tr>
+        <td>{{ r.detection_point_code }} <span class="qcm-state">{{ r.checkpoint_category }}</span></td>
+        <td><strong>{{ r.disposition }}</strong></td>
+        <td>{{ r.evidence_regions | length }} region(s)</td>
+        <td>{{ '%.2f' % r.confidence }}</td>
+        <td>{{ (r.review_required_conditions or []) | join('; ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h3>Human final decision (required)</h3>
+  {% if final_decisions %}
+  <table class="qcm-table">
+    <thead><tr><th>Decision</th><th>By</th><th>Comment</th></tr></thead>
+    <tbody>{% for d in final_decisions %}<tr><td>{{ d.decision }}</td><td>{{ d.decided_by }}</td><td>{{ d.comment }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% else %}
+  <p class="qcm-note">No final decision recorded yet — the run remains a recommendation only.</p>
+  {% endif %}
+  <form method="post" action="/admin/qc-model/production/runs/{{ latest_run.run_id }}/final-decision" class="qcm-source-form">
+    <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+    <label>Decision
+      <select name="decision"><option value="pass">pass</option><option value="reject">reject</option><option value="review">review</option></select>
+    </label>
+    <label>Decided by (identity required) <input type="text" name="decided_by" placeholder="operator/supervisor id"></label>
+    <label>Comment <input type="text" name="comment" size="40"></label>
+    <button type="submit" class="btn btn-primary">Record final decision</button>
+  </form>
+  {% endif %}
+  {% endif %}
+</section>
+{% endblock %}
