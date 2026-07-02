@@ -30,7 +30,11 @@ from src.db.qc_sample_learning_models import (
     VisualRuleMemory,
 )
 from src.db.qc_source_models import QCSourceDocument
-from src.db.qc_incident_models import QCIncidentAuditEvent
+from src.db.qc_incident_models import (
+    QCIncidentAuditEvent,
+    QCRequalificationRequirement,
+    QCScopeSuspension,
+)
 from src.db.qc_qualification_models import QualificationReport, REPORT_APPROVED
 from src.db.qc_production_models import DISPOSITION_PASS, DISPOSITION_REJECT
 from src.qc_model.production.provider import (
@@ -343,6 +347,79 @@ def test_api_confirm_requires_identity(client, db):
     r = client.post(f"/api/qc/incidents/{iid}/confirmation",
                     json={"confirmation_decision": "confirmed_false_pass", "confirmed_by": "", "tenant_id": T1, "confirmation_reason": "r"})
     assert r.status_code == 422
+
+
+# ── P1: requalification must cover the suspended scope ───────────────────────
+
+
+def _qualify_for_dp(db, dp, tenant=T1, sku_id=None, station_id=None):
+    ds = qual_service.create_dataset(db, TP, tenant, sku_id=sku_id, station_id=station_id)
+    for st, label, predict in [("positive", "pass", "pass"), ("defect", "fail", "fail"), ("boundary", "pass", "pass")]:
+        qual_service.add_sample(db, ds.id, dp, st, f"s3://{_uid()}|predict={predict}", label, tenant)
+    run = qual_service.run_qualification(db, ds.id, tenant, provider=_LabelProvider())
+    report = qual_service.get_report_for_run(db, run.id, tenant)
+    qual_service.approve_report(db, report.id, "approved", "sup1", tenant)
+    return report
+
+
+def test_report_for_other_detection_point_cannot_lift(db):
+    _make_l3_ready(db)
+    inc, suspension = _confirmed_incident(db)   # suspension scoped to detection point "dp"
+    # A new approved passing report that only covers a DIFFERENT detection point.
+    wrong = _qualify_for_dp(db, "dp_other")
+    assert wrong.qualified_detection_point_codes_json == ["dp_other"]
+    with pytest.raises(service.InvalidLift):
+        service.lift_suspension(db, suspension.id, "sup1", wrong.id, T1, lift_reason="wrong dp")
+    # Suspension is still active.
+    assert service.get_suspension(db, suspension.id, T1).status == "active"
+
+
+def test_report_covering_detection_point_lifts(db):
+    _make_l3_ready(db)
+    inc, suspension = _confirmed_incident(db)   # scoped to "dp"
+    covering = _qualify_for_dp(db, "dp")
+    lifted = service.lift_suspension(db, suspension.id, "sup1", covering.id, T1, lift_reason="requalified dp")
+    assert lifted.status == "lifted"
+
+
+def test_report_for_other_sku_cannot_lift(db):
+    _make_l3_ready(db)
+    # Incident scoped to a specific SKU.
+    inc = service.report_incident(db, TP, "false_pass", T1, detection_point_code="dp",
+                                  sku_id="sku_a", reported_by="qc1")
+    service.confirm_incident(db, inc.id, "confirmed_false_pass", "sup1", T1, confirmation_reason="r")
+    suspension = service.active_l3_suspensions_for_pack(db, TP, T1)[0]
+    assert suspension.sku_id == "sku_a"
+    # Requalification for dp but from a dataset with a different SKU.
+    wrong_sku = _qualify_for_dp(db, "dp", sku_id="sku_b")
+    with pytest.raises(service.InvalidLift):
+        service.lift_suspension(db, suspension.id, "sup1", wrong_sku.id, T1, lift_reason="wrong sku")
+    # Correct SKU + DP lifts.
+    right = _qualify_for_dp(db, "dp", sku_id="sku_a")
+    assert service.lift_suspension(db, suspension.id, "sup1", right.id, T1, lift_reason="ok").status == "lifted"
+
+
+# ── P2: duplicate confirmation is idempotent / terminal ──────────────────────
+
+
+def test_duplicate_confirmation_is_idempotent(db):
+    _make_l3_ready(db)
+    inc = service.report_incident(db, TP, "false_pass", T1, detection_point_code="dp", reported_by="qc1")
+    service.confirm_incident(db, inc.id, "confirmed_false_pass", "sup1", T1, confirmation_reason="r")
+    # Retry / double submit.
+    service.confirm_incident(db, inc.id, "confirmed_false_pass", "sup1", T1, confirmation_reason="r again")
+    active = db.query(QCScopeSuspension).filter_by(incident_id=inc.id, status="active").all()
+    assert len(active) == 1
+    requals = db.query(QCRequalificationRequirement).filter_by(incident_id=inc.id).all()
+    assert len(requals) == 1
+
+
+def test_confirmed_incident_cannot_be_flipped(db):
+    _make_l3_ready(db)
+    inc = service.report_incident(db, TP, "false_pass", T1, detection_point_code="dp", reported_by="qc1")
+    service.confirm_incident(db, inc.id, "confirmed_false_pass", "sup1", T1, confirmation_reason="r")
+    with pytest.raises(service.InvalidConfirmation):
+        service.confirm_incident(db, inc.id, "rejected_not_false_pass", "sup1", T1, confirmation_reason="flip")
 
 
 def test_ui_incident_page_smoke(client, db):

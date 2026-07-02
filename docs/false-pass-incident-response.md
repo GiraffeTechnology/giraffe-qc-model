@@ -29,6 +29,12 @@ new approved, threshold-meeting, production-eligible qualification report
 → no suspension; `needs_more_evidence` → stays `triage_pending`. Every action
 appends an immutable audit event.
 
+Confirmation is **idempotent / terminal**: once an incident is confirmed as a
+false pass, a retried or double-submitted `confirmed_false_pass` does **not**
+create a second suspension or requalification requirement (it appends a
+`confirmation_duplicate_ignored` audit event and returns the existing state), and
+the decision cannot be flipped by a later confirmation.
+
 ## Suspension &amp; readiness
 
 A confirmed false pass creates an **active** `controlled_active_suspended`
@@ -58,7 +64,12 @@ pack-level scope (fail closed).
 - **threshold-meeting** (any false pass above threshold → rejected);
 - **created after the incident confirmation** (an old report cannot restore L3);
 - produced by a **production-eligible** provider (no mock/fake/stub/skeleton
-  restore).
+  restore);
+- **covering the suspended scope** — if the suspension carries a
+  `detection_point_code`, it must be among the report's *qualified* (threshold-
+  meeting) detection points (a report for `dp_b` cannot lift a `dp_a`
+  suspension); if it carries `sku_id` / `station_id`, the report's dataset must
+  match; if it carries `provider` / `model`, the qualification run must match.
 
 On a valid lift the suspension becomes `lifted`, the requalification requirement
 is marked `satisfied`, and audit events are appended. The original suspension

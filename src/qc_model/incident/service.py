@@ -44,7 +44,12 @@ from src.db.qc_incident_models import (
     QCRequalificationRequirement,
     QCScopeSuspension,
 )
-from src.db.qc_qualification_models import QualificationReport, QualificationRun, REPORT_APPROVED
+from src.db.qc_qualification_models import (
+    QualificationDataset,
+    QualificationReport,
+    QualificationRun,
+    REPORT_APPROVED,
+)
 from src.qc_model.production.provider import is_production_eligible_provider
 from src.qc_model.training_pack.ownership import assert_pack_accessible
 
@@ -198,6 +203,20 @@ def confirm_incident(
     payload = {"decision": confirmation_decision, "reason": confirmation_reason,
                "role": confirmation_role, "evidence_refs": evidence_refs or []}
 
+    # Idempotent / terminal: once confirmed as a false pass, a retried or
+    # double-submitted confirmation must not create duplicate suspensions or
+    # requalification requirements, and the decision cannot be flipped.
+    if inc.confirmed_at is not None:
+        if confirmation_decision == CONFIRM_FALSE_PASS:
+            _audit(db, tenant_id, "confirmation_duplicate_ignored", incident_id=inc.id,
+                   actor_id=confirmed_by, actor_role=confirmation_role, payload=payload)
+            db.commit()
+            db.refresh(inc)
+            return inc
+        raise InvalidConfirmation(
+            "incident is already confirmed as a false pass and cannot be re-decided"
+        )
+
     if confirmation_decision == CONFIRM_NEEDS_EVIDENCE:
         inc.status = STATUS_TRIAGE_PENDING
         _audit(db, tenant_id, "incident_triaged", incident_id=inc.id, actor_id=confirmed_by,
@@ -215,6 +234,16 @@ def confirm_incident(
         return inc
 
     # confirmed_false_pass → suspend + require requalification.
+    # Defensive: never create a second active suspension for the same incident.
+    existing = db.query(QCScopeSuspension).filter_by(
+        incident_id=inc.id, tenant_id=tenant_id, status=SUSP_ACTIVE).first()
+    if existing is not None:
+        _audit(db, tenant_id, "confirmation_duplicate_ignored", incident_id=inc.id,
+               suspension_id=existing.id, actor_id=confirmed_by, actor_role=confirmation_role, payload=payload)
+        db.commit()
+        db.refresh(inc)
+        return inc
+
     inc.status = STATUS_CONFIRMED
     inc.confirmed_by = confirmed_by
     inc.confirmed_at = _now()
@@ -354,3 +383,29 @@ def _validate_requalification_report(db, report, suspension, incident, tenant_id
     run = db.query(QualificationRun).filter_by(id=report.run_id, tenant_id=tenant_id).first()
     if run is None or not is_production_eligible_provider(run.provider):
         raise InvalidLift("requalification report was not produced by a production-eligible provider")
+    # The report must cover the suspended scope — a report for a different
+    # detection point / SKU / station / provider / model cannot release it.
+    _assert_report_covers_scope(db, report, run, suspension, tenant_id)
+
+
+def _assert_report_covers_scope(db, report, run, suspension, tenant_id) -> None:
+    # Detection point: the suspended DP must be among the report's *qualified*
+    # (threshold-meeting) detection points. A report for dp_b cannot lift dp_a.
+    if suspension.detection_point_code:
+        qualified = set(report.qualified_detection_point_codes_json or [])
+        if suspension.detection_point_code not in qualified:
+            raise InvalidLift(
+                f"requalification report does not cover suspended detection point "
+                f"{suspension.detection_point_code!r}"
+            )
+    # SKU / station: derived from the dataset the report was produced from.
+    dataset = db.query(QualificationDataset).filter_by(id=run.dataset_id, tenant_id=tenant_id).first()
+    if suspension.sku_id and (dataset is None or dataset.sku_id != suspension.sku_id):
+        raise InvalidLift(f"requalification report does not cover suspended SKU {suspension.sku_id!r}")
+    if suspension.station_id and (dataset is None or dataset.station_id != suspension.station_id):
+        raise InvalidLift(f"requalification report does not cover suspended station {suspension.station_id!r}")
+    # Provider / model scope: requalify the same provider/model that failed.
+    if suspension.provider and run.provider != suspension.provider:
+        raise InvalidLift(f"requalification report does not cover suspended provider {suspension.provider!r}")
+    if suspension.model and run.model != suspension.model:
+        raise InvalidLift(f"requalification report does not cover suspended model {suspension.model!r}")
