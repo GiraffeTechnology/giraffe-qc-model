@@ -179,6 +179,9 @@ class Qwen35VLSampleLearningProvider(SampleLearningProvider):
 
 
 def sample_learning_mock_allowed() -> bool:
+    # In production, the override env var can never re-enable mock sample learning.
+    if app_env() == "production":
+        return False
     if os.getenv("QC_SAMPLE_LEARNING_ALLOW_MOCK", "false").strip().lower() in ("1", "true", "yes"):
         return True
     return app_env() == "test"

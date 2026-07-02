@@ -44,6 +44,7 @@ from src.qc_model.production.provider import (
     ProductionInspectionProvider,
     ProductionProviderError,
     ProductionProviderNotConfigured,
+    ProductionProviderSchemaError,
     get_production_inspection_provider,
     is_production_eligible_provider,
 )
@@ -88,7 +89,9 @@ class InvalidFinalDecision(ValueError):
 
 
 class ProviderInspectionFailed(ValueError):
-    pass
+    def __init__(self, message: str, schema_error: bool = False):
+        super().__init__(message)
+        self.schema_error = schema_error
 
 
 # ── Sessions ───────────────────────────────────────────────────────────────
@@ -245,11 +248,14 @@ def run_inspection(
             )
             try:
                 response = provider.inspect(request)
+            except ProductionProviderSchemaError as exc:
+                raise ProviderInspectionFailed(str(exc), schema_error=True) from exc
             except (ProductionProviderError, ProductionProviderNotConfigured) as exc:
                 raise ProviderInspectionFailed(str(exc)) from exc
             if not response.is_schema_valid():
                 raise ProviderInspectionFailed(
-                    f"provider returned schema-invalid output for {rule.detection_point_code!r}"
+                    f"provider returned schema-invalid output for {rule.detection_point_code!r}",
+                    schema_error=True,
                 )
             disposition = _coerce_disposition(response, content)
             results.append(_build_result(
@@ -279,10 +285,10 @@ def run_inspection(
         db.commit()
         db.refresh(run)
         from src.qc_model import observability
-        event = (observability.EV_SCHEMA_VALIDATION_ERROR if "schema" in str(exc).lower()
+        event = (observability.EV_SCHEMA_VALIDATION_ERROR if exc.schema_error
                  else observability.EV_PROVIDER_ERROR)
         observability.record(event, tenant_id=tenant_id, run_id=run.id, provider=provider.provider_name,
-                             error=type(exc).__name__)
+                             error=type(exc.__cause__ or exc).__name__)
         observability.record(observability.EV_PRODUCTION_INSPECTION_RUN, tenant_id=tenant_id,
                              run_id=run.id, status="failed")
         return run
@@ -445,12 +451,18 @@ def record_final_decision(
     db.add(record)
     db.commit()
     db.refresh(record)
-    # Human override: the human decision disagrees with the model recommendation.
+    # Human override = the human contradicts a *decisive* model recommendation.
+    # A non-decisive recommendation (review/capture_retry/measurement) defers to a
+    # human, so a human review/pass/reject after it is not an override — in
+    # particular a model review recommendation followed by a human review decision
+    # is agreement, not an override.
     from src.qc_model import observability
     rec = (run.overall_disposition or "")
-    human_matches_pass = (decision == "pass" and rec == DISPOSITION_PASS)
-    human_matches_reject = (decision == "reject" and rec == DISPOSITION_REJECT)
-    if not (human_matches_pass or human_matches_reject):
+    is_override = (
+        (rec == DISPOSITION_PASS and decision != "pass")
+        or (rec == DISPOSITION_REJECT and decision != "reject")
+    )
+    if is_override:
         observability.record(observability.EV_HUMAN_OVERRIDE, tenant_id=tenant_id, run_id=run.id,
                              human_decision=decision, recommended=rec, decided_by=decided_by)
     return record

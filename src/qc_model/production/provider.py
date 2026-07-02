@@ -155,6 +155,10 @@ class ProductionProviderError(RuntimeError):
     """The real provider failed or returned malformed output (fail closed)."""
 
 
+class ProductionProviderSchemaError(ProductionProviderError):
+    """The provider returned malformed / schema-invalid output (fail closed)."""
+
+
 class ServerVLMInspectionProvider(ProductionInspectionProvider):
     """Real server-side VLM inspection provider (PR 26).
 
@@ -221,7 +225,7 @@ class ServerVLMInspectionProvider(ProductionInspectionProvider):
         try:
             return parse_provider_response(raw)
         except ValueError as exc:
-            raise ProductionProviderError(f"server_vlm malformed output: {exc}") from exc
+            raise ProductionProviderSchemaError(f"server_vlm malformed output: {exc}") from exc
 
 
 def _server_profile_model() -> str:

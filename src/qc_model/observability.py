@@ -37,7 +37,14 @@ KNOWN_EVENTS = frozenset({
 
 _lock = threading.Lock()
 _counters: dict[str, int] = defaultdict(int)
-_latency_ms: dict[str, list[float]] = defaultdict(list)
+
+
+def _new_latency_agg() -> dict:
+    # Bounded, O(1) running aggregate — never grows with sample count.
+    return {"count": 0, "sum_ms": 0.0, "min_ms": None, "max_ms": None}
+
+
+_latency_ms: dict[str, dict] = defaultdict(_new_latency_agg)
 
 
 def record(event_type: str, tenant_id: str = "", **fields) -> None:
@@ -56,19 +63,30 @@ def record(event_type: str, tenant_id: str = "", **fields) -> None:
 
 def observe_latency(name: str, latency_ms: float, tenant_id: str = "") -> None:
     try:
+        ms = float(latency_ms)
         with _lock:
-            _latency_ms[name].append(float(latency_ms))
-        record(EV_PROVIDER_LATENCY, tenant_id=tenant_id, name=name, latency_ms=round(float(latency_ms), 2))
+            agg = _latency_ms[name]
+            agg["count"] += 1
+            agg["sum_ms"] += ms
+            agg["min_ms"] = ms if agg["min_ms"] is None else min(agg["min_ms"], ms)
+            agg["max_ms"] = ms if agg["max_ms"] is None else max(agg["max_ms"], ms)
+        record(EV_PROVIDER_LATENCY, tenant_id=tenant_id, name=name, latency_ms=round(ms, 2))
     except Exception:
         pass
 
 
 def snapshot() -> dict:
-    """Current metric snapshot (for scraping / tests)."""
+    """Current metric snapshot (for scraping / tests). Latency is a bounded,
+    O(1) running aggregate — memory does not grow with the number of samples."""
     with _lock:
         counters = dict(_counters)
         latency = {
-            k: {"count": len(v), "avg_ms": (sum(v) / len(v) if v else 0.0)}
+            k: {
+                "count": v["count"],
+                "avg_ms": (v["sum_ms"] / v["count"] if v["count"] else 0.0),
+                "min_ms": v["min_ms"] or 0.0,
+                "max_ms": v["max_ms"] or 0.0,
+            }
             for k, v in _latency_ms.items()
         }
     return {"counters": counters, "latency": latency}

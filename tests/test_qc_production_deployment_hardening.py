@@ -71,6 +71,36 @@ def test_production_env_disables_fake_provider(monkeypatch):
     assert fake_provider_allowed() is False
 
 
+# ── Review finding 1: overrides cannot re-enable mock/fake in production ──────
+
+
+def test_production_ignores_mock_sample_learning_override(monkeypatch):
+    from src.qc_model.sample_learning.provider import (
+        sample_learning_mock_allowed, get_sample_learning_provider, Qwen35VLSampleLearningProvider,
+    )
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("QC_SAMPLE_LEARNING_ALLOW_MOCK", "true")  # must be ignored in prod
+    assert sample_learning_mock_allowed() is False
+    assert isinstance(get_sample_learning_provider(), Qwen35VLSampleLearningProvider)
+
+
+def test_production_ignores_fake_adapter_override(monkeypatch):
+    from src.config import fake_provider_allowed
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("QC_ALLOW_TEST_ADAPTER", "true")  # must be ignored in prod
+    assert fake_provider_allowed() is False
+
+
+def test_overrides_still_work_outside_production(monkeypatch):
+    from src.qc_model.sample_learning.provider import sample_learning_mock_allowed
+    from src.config import fake_provider_allowed
+    monkeypatch.setenv("APP_ENV", "staging")
+    monkeypatch.setenv("QC_SAMPLE_LEARNING_ALLOW_MOCK", "true")
+    monkeypatch.setenv("QC_ALLOW_TEST_ADAPTER", "true")
+    assert sample_learning_mock_allowed() is True
+    assert fake_provider_allowed() is True
+
+
 def test_server_provider_unconfigured_fails_closed(monkeypatch):
     from src.qc_model.production.provider import get_production_inspection_provider, ServerVLMInspectionProvider
     monkeypatch.setenv("QC_PRODUCTION_INSPECTION_PROVIDER", "server_vlm")
@@ -121,6 +151,152 @@ def test_metrics_endpoint(client):
 def test_record_never_raises():
     # Even with un-serializable fields, observability must not raise.
     observability.record("readiness_gate_result", tenant_id="t", weird=object())
+
+
+# ── Review finding 3: latency uses bounded/running aggregate, not a list ─────
+
+
+def test_latency_metrics_are_bounded_aggregate():
+    observability.reset()
+    for i in range(5000):
+        observability.observe_latency("server_vlm_inspect", float(i % 100))
+    # Internal storage is a fixed-size running aggregate, never a growing list.
+    agg = observability._latency_ms["server_vlm_inspect"]
+    assert isinstance(agg, dict)
+    assert set(agg) == {"count", "sum_ms", "min_ms", "max_ms"}
+    snap = observability.snapshot()["latency"]["server_vlm_inspect"]
+    assert snap["count"] == 5000
+    assert snap["min_ms"] == 0.0
+    assert snap["max_ms"] == 99.0
+
+
+# ── Production-flow helpers (schema-error + human-override findings) ──────────
+
+
+def _l2_ready(db, tenant="t1", confirmed_content=None):
+    import uuid as _uuid
+    from src.db.qc_source_models import QCSourceDocument
+    from src.db.qc_authoring_models import RuleAuthoringJob
+    from src.db.qc_learning_models import QCLearnedDetectionPointProposal
+    from src.db.qc_sample_learning_models import (
+        QCConfirmedVisualRule, SampleGroup, SampleLearningJob, VisualRuleMemory,
+    )
+
+    uid = lambda: _uuid.uuid4().hex  # noqa: E731
+    tp = "packDH"
+    db.add(QCSourceDocument(id=uid(), tenant_id=tenant, training_pack_id=tp, source_type="process_spec", status="reviewed"))
+    job = RuleAuthoringJob(id=uid(), tenant_id=tenant, training_pack_id=tp, status="completed")
+    db.add(job); db.flush()
+    db.add(QCLearnedDetectionPointProposal(
+        id=uid(), tenant_id=tenant, rule_authoring_job_id=job.id, learning_job_id=None,
+        proposed_code="dp", proposed_checkpoint_category="visual_defect",
+        proposed_ai_role="primary_visual_judge", severity="major", status="approved", decision_rule="r"))
+    mjob = SampleLearningJob(id=uid(), tenant_id=tenant, training_pack_id=tp, sample_group_id=uid(),
+                             status="completed", provider="qwen3.5-vl-8b-int4", model="m")
+    db.add(mjob); db.flush()
+    db.add(VisualRuleMemory(id=uid(), tenant_id=tenant, sample_learning_job_id=mjob.id, training_pack_id=tp,
+                            detection_point_code="dp", feature_type="defect_feature", status="applied"))
+    db.add(QCConfirmedVisualRule(id=uid(), tenant_id=tenant, training_pack_id=tp, detection_point_code="dp",
+                                 feature_type="defect_feature", content_json=confirmed_content or {}, source_memory_id=uid()))
+    for st in ("positive", "defect"):
+        g = SampleGroup(id=uid(), tenant_id=tenant, training_pack_id=tp, detection_point_id=uid(),
+                        detection_point_code="dp", sample_type=st, samples_json=[])
+        db.add(g); db.flush()
+        db.add(SampleLearningJob(id=uid(), tenant_id=tenant, training_pack_id=tp, sample_group_id=g.id, status="completed"))
+    db.commit()
+    return tp
+
+
+def _make_provider(disposition, raise_schema=False, raise_provider=False):
+    from src.qc_model.production.provider import (
+        DetectionInspectionRequest, DetectionInspectionResult, ProductionInspectionProvider,
+        ProductionProviderSchemaError, ProductionProviderError,
+    )
+
+    class _P(ProductionInspectionProvider):
+        provider_name = "server_vlm"
+        model_name = "qwen3.5-vl-8b-int4"
+        production_eligible = True
+        is_configured = True
+
+        def inspect(self, request: DetectionInspectionRequest) -> DetectionInspectionResult:
+            if raise_schema:
+                raise ProductionProviderSchemaError("server_vlm malformed output: missing fields")
+            if raise_provider:
+                raise ProductionProviderError("server_vlm backend error: TimeoutException")
+            return DetectionInspectionResult(disposition=disposition, observed_features=["f"],
+                                             evidence_regions=[{"bbox": [1, 2, 3, 4]}], confidence=0.9,
+                                             provider="server_vlm", model="qwen3.5-vl-8b-int4")
+
+    return _P()
+
+
+def _session_with_capture(db, tp, tenant="t1"):
+    from src.qc_model.production import service
+    s = service.create_session(db, tp, tenant, operator_id="op1")
+    service.add_capture(db, s.id, "s3://img.jpg", tenant, {})
+    return s
+
+
+# ── Review finding 2: malformed server VLM output → schema_validation_error ──
+
+
+def test_malformed_output_counts_as_schema_validation_error(db):
+    from src.qc_model.production import service
+    tp = _l2_ready(db)
+    s = _session_with_capture(db, tp)
+    observability.reset()
+    run = service.run_inspection(db, s.id, "t1", provider=_make_provider("pass_recommended", raise_schema=True))
+    assert run.status == "failed"
+    counters = observability.snapshot()["counters"]
+    assert counters.get(observability.EV_SCHEMA_VALIDATION_ERROR, 0) >= 1
+    assert counters.get(observability.EV_PROVIDER_ERROR, 0) == 0
+
+
+def test_generic_provider_error_counts_as_provider_error(db):
+    from src.qc_model.production import service
+    tp = _l2_ready(db)
+    s = _session_with_capture(db, tp)
+    observability.reset()
+    run = service.run_inspection(db, s.id, "t1", provider=_make_provider("pass_recommended", raise_provider=True))
+    assert run.status == "failed"
+    counters = observability.snapshot()["counters"]
+    assert counters.get(observability.EV_PROVIDER_ERROR, 0) >= 1
+    assert counters.get(observability.EV_SCHEMA_VALIDATION_ERROR, 0) == 0
+
+
+# ── Review finding 4: review-rec + human-review is not an override ───────────
+
+
+def _run_and_decide(db, tp, model_disposition, human_decision):
+    from src.qc_model.production import service
+    s = _session_with_capture(db, tp)
+    run = service.run_inspection(db, s.id, "t1", provider=_make_provider(model_disposition))
+    observability.reset()
+    service.record_final_decision(db, run.id, human_decision, "sup1", "t1")
+    return observability.snapshot()["counters"].get(observability.EV_HUMAN_OVERRIDE, 0)
+
+
+def test_review_rec_then_human_review_is_not_override(db):
+    tp = _l2_ready(db)
+    # Model recommends review_required; human decides review → agreement.
+    assert _run_and_decide(db, tp, "review_required", "review") == 0
+
+
+def test_pass_rec_then_human_pass_is_not_override(db):
+    tp = _l2_ready(db)
+    assert _run_and_decide(db, tp, "pass_recommended", "pass") == 0
+
+
+def test_pass_rec_then_human_reject_is_override(db):
+    tp = _l2_ready(db)
+    assert _run_and_decide(db, tp, "pass_recommended", "reject") >= 1
+
+
+def test_review_rec_then_human_reject_is_not_override(db):
+    tp = _l2_ready(db)
+    # Non-decisive recommendation → human decision is not an override.
+    assert _run_and_decide(db, tp, "review_required", "reject") == 0
 
 
 # ── Audit tables have no mutating public API ─────────────────────────────────
