@@ -108,3 +108,10 @@ unchanged.
   VLM provider path and qualification (later PRs).
 - Production inspection sessions / evidence packets / human-final-decision flow
   are not part of this fix (later PR).
+
+## L3 suspension on confirmed false pass (PR 28)
+
+`controlled_active` also fails closed while an active false-pass suspension
+exists for the pack (readiness check `active_false_pass_suspension`, severity
+P0). L2 `production_assisted` is unaffected. See
+[false-pass-incident-response.md](false-pass-incident-response.md).

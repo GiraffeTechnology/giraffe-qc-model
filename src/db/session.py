@@ -88,6 +88,7 @@ def init_db() -> None:
     import src.db.qc_readiness_models  # noqa: F401 — side-effect import registers tables
     import src.db.qc_production_models  # noqa: F401 — side-effect import registers tables
     import src.db.qc_qualification_models  # noqa: F401 — side-effect import registers tables
+    import src.db.qc_incident_models  # noqa: F401 — side-effect import registers tables
     import src.db.execution_models  # noqa: F401 — side-effect import registers tables
     import src.db.intake_models  # noqa: F401 — side-effect import registers tables
     import src.db.pad_models  # noqa: F401 — side-effect import registers tables

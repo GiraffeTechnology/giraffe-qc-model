@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}False-Pass Incidents{% endblock %}
+{% block content %}
+<section class="qcm-panel">
+  <h1>False-Pass Incident Response</h1>
+  <p class="qcm-note qcm-boundary">
+    ⚠ Confirmed false pass is <strong>P0</strong>. It suspends
+    <code>controlled_active</code> (L3) for the affected scope and requires a new
+    approved, threshold-meeting qualification report to lift.
+    <code>production_assisted</code> (L2, human-final) remains available.
+  </p>
+
+  {% if error %}<p class="qcm-pending" role="alert">⚠ {{ error }}</p>{% endif %}
+
+  {% if not incident %}
+  <h2>Report a false-pass incident</h2>
+  <form method="post" action="/admin/qc-model/incidents" class="qcm-source-form">
+    <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+    <label>Training pack <input type="text" name="training_pack_id" value="{{ training_pack_id }}"></label>
+    <label>Detection point <input type="text" name="detection_point_code" placeholder="optional"></label>
+    <label>Reported by <input type="text" name="reported_by" value="qc_supervisor"></label>
+    <label>Description <input type="text" name="description" size="50"></label>
+    <button type="submit" class="btn btn-primary">Report false pass (P0)</button>
+  </form>
+
+  <h2>Incidents</h2>
+  {% if incidents %}
+  <table class="qcm-table">
+    <thead><tr><th>Incident</th><th>Type</th><th>Severity</th><th>Status</th><th>Pack</th></tr></thead>
+    <tbody>
+      {% for i in incidents %}
+      <tr>
+        <td><a href="/admin/qc-model/incidents/{{ i.incident_id }}?tenant_id={{ tenant_id }}"><code>{{ i.incident_id[:8] }}</code></a></td>
+        <td>{{ i.incident_type }}</td><td>{{ i.severity }}</td><td>{{ i.status }}</td><td>{{ i.training_pack_id }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="qcm-note">No incidents.</p>{% endif %}
+
+  <h2>Active suspensions</h2>
+  {% if active_suspensions %}
+  <ul>{% for s in active_suspensions %}<li><code>{{ s.suspension_id[:8] }}</code> {{ s.suspension_type }} ({{ s.status }}) — pack {{ s.training_pack_id }}</li>{% endfor %}</ul>
+  {% else %}<p class="qcm-note">No active suspensions.</p>{% endif %}
+
+  {% else %}
+  <h2>Incident <code>{{ incident.incident_id[:8] }}</code>
+    <span class="qcm-state">{{ incident.incident_type }}</span>
+    <span class="qcm-state">{{ incident.severity }}</span>
+    <span class="qcm-state">{{ incident.status }}</span>
+  </h2>
+  <p class="qcm-note">Pack <code>{{ incident.training_pack_id }}</code> · DP {{ incident.detection_point_code or '—' }} · scope: {{ incident.affected_scope }}</p>
+
+  <h3>Confirm / reject</h3>
+  <form method="post" action="/admin/qc-model/incidents/{{ incident.incident_id }}/confirmation" class="qcm-source-form">
+    <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+    <label>Decision
+      <select name="confirmation_decision">
+        <option value="confirmed_false_pass">confirmed_false_pass</option>
+        <option value="rejected_not_false_pass">rejected_not_false_pass</option>
+        <option value="needs_more_evidence">needs_more_evidence</option>
+      </select>
+    </label>
+    <label>Confirmed by <input type="text" name="confirmed_by" placeholder="supervisor id"></label>
+    <label>Reason <input type="text" name="confirmation_reason" size="40"></label>
+    <button type="submit" class="btn btn-primary">Submit confirmation</button>
+  </form>
+
+  <h3>Suspensions</h3>
+  {% if suspensions %}
+  <table class="qcm-table">
+    <thead><tr><th>Suspension</th><th>Type</th><th>Status</th><th>Lift (requires requalification)</th></tr></thead>
+    <tbody>
+      {% for s in suspensions %}
+      <tr>
+        <td><code>{{ s.suspension_id[:8] }}</code></td><td>{{ s.suspension_type }}</td><td>{{ s.status }}</td>
+        <td>
+          {% if s.status == 'active' %}
+          <form method="post" action="/admin/qc-model/suspensions/{{ s.suspension_id }}/lift" style="display:inline">
+            <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+            <input type="hidden" name="incident_id" value="{{ incident.incident_id }}">
+            <input type="text" name="requalification_report_id" placeholder="requalification report id" size="20">
+            <input type="text" name="lifted_by" placeholder="supervisor id" size="14">
+            <input type="text" name="lift_reason" placeholder="reason" size="20">
+            <button type="submit" class="btn">Lift</button>
+          </form>
+          {% else %}lifted{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="qcm-note">No suspensions.</p>{% endif %}
+
+  <h3>Requalification requirements</h3>
+  <ul>{% for r in requals %}<li><code>{{ r.id[:8] }}</code> — {{ r.status }}</li>{% else %}<li class="qcm-note">none</li>{% endfor %}</ul>
+
+  <h3>Audit trail (append-only)</h3>
+  <ul>{% for a in audit %}<li>{{ a.event_type }} {% if a.actor_id %}by {{ a.actor_id }}{% endif %}</li>{% endfor %}</ul>
+  {% endif %}
+</section>
+{% endblock %}
