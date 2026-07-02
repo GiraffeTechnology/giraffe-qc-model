@@ -85,3 +85,10 @@ approved report is immutable.
 ## Out of scope
 
 - False-pass **incident** response &amp; requalification loop is PR 28.
+
+## False-pass incidents (PR 28)
+
+A confirmed false pass suspends `controlled_active` for the affected scope and
+requires a new approved, threshold-meeting qualification report to restore L3. L2
+`production_assisted` remains human-final. See
+[false-pass-incident-response.md](false-pass-incident-response.md).

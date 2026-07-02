@@ -51,6 +51,7 @@ C_PSEUDO_CLOSURE = "pseudo_defect_rules_closed"
 C_CAPTURE_CLOSURE = "capture_artifact_rules_closed"
 C_CRITICAL_DEFECTS = "no_pending_critical_defect_rules"
 C_QUALIFICATION = "controlled_active_qualification"
+C_FALSE_PASS_SUSPENSION = "active_false_pass_suspension"
 
 # Knowledge-complete checks that block exam_ready.
 _EXAM_READY_BLOCKING = [
@@ -60,7 +61,7 @@ _EXAM_READY_BLOCKING = [
 # Additional checks required for L2 Production Assisted mode.
 _L2_BLOCKING = [C_COVERAGE, C_PROVIDER, C_PSEUDO_CLOSURE, C_CAPTURE_CLOSURE]
 # Additional checks required for L3 Controlled Active mode.
-_L3_BLOCKING = [C_COVERAGE_L3, C_QUALIFICATION]
+_L3_BLOCKING = [C_COVERAGE_L3, C_QUALIFICATION, C_FALSE_PASS_SUSPENSION]
 
 _RESOLVED_PROPOSAL = {"approved", "rejected", "applied"}
 _CONFIRMED_PROPOSAL = {"approved", "applied"}
@@ -86,6 +87,7 @@ class CheckResult:
     passed: bool
     waivable: bool = False
     blocking_items: list[dict] = field(default_factory=list)
+    severity: str = ""
 
 
 @dataclass
@@ -136,6 +138,7 @@ class ReadinessResult:
                 {
                     "id": c.id, "title": c.title, "passed": c.passed,
                     "waivable": c.waivable, "blocking_items": c.blocking_items,
+                    **({"severity": c.severity} if c.severity else {}),
                 }
                 for c in self.checks
             ],
@@ -395,6 +398,21 @@ def evaluate_readiness(
             "item_key": "qualification_required",
             "description": "L3 controlled active requires an approved qualification report meeting thresholds",
         }],
+    ))
+
+    # 13. No active false-pass suspension for the pack (PR 28). A confirmed false
+    #     pass suspends controlled_active until requalification lifts it. This
+    #     blocks L3 only — production_assisted (L2) is unaffected.
+    from src.qc_model.incident.service import active_l3_suspensions_for_pack
+
+    suspensions = active_l3_suspensions_for_pack(db, training_pack_id, tenant_id)
+    checks.append(CheckResult(
+        C_FALSE_PASS_SUSPENSION, "No active false-pass suspension", passed=not suspensions,
+        severity="P0",
+        blocking_items=[{
+            "item_key": s.id,
+            "description": f"active {s.suspension_type} from confirmed false pass (incident {s.incident_id})",
+        } for s in suspensions],
     ))
 
     by_id = {c.id: c for c in checks}
