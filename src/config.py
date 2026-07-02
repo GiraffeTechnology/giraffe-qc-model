@@ -53,4 +53,7 @@ def app_env() -> str:
 
 
 def fake_provider_allowed() -> bool:
+    # In production, override env vars can never re-enable a fake adapter.
+    if app_env() == "production":
+        return False
     return app_env() == "test" or os.getenv("QC_ALLOW_TEST_ADAPTER", "false").lower() == "true"

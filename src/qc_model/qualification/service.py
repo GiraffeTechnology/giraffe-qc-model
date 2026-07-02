@@ -263,6 +263,10 @@ def run_qualification(
     ))
     db.commit()
     db.refresh(run)
+    from src.qc_model import observability
+    observability.record(observability.EV_QUALIFICATION_RESULT, tenant_id=tenant_id, run_id=run.id,
+                         training_pack_id=ds.training_pack_id, overall_meets_thresholds=overall,
+                         qualified_points=len(qualified_codes), provider=run.provider)
     return run
 
 

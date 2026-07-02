@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from src.db.qc_authoring_models import RuleAuthoringJob
 from src.db.qc_learning_models import QCLearnedDetectionPointProposal, QCLearningJob
 from src.db.qc_production_models import (
+    DISPOSITION_CAPTURE_RETRY,
     DISPOSITION_MEASUREMENT,
     DISPOSITION_PASS,
     DISPOSITION_REJECT,
@@ -44,6 +45,7 @@ from src.qc_model.production.provider import (
     ProductionInspectionProvider,
     ProductionProviderError,
     ProductionProviderNotConfigured,
+    ProductionProviderSchemaError,
     get_production_inspection_provider,
     is_production_eligible_provider,
 )
@@ -88,7 +90,9 @@ class InvalidFinalDecision(ValueError):
 
 
 class ProviderInspectionFailed(ValueError):
-    pass
+    def __init__(self, message: str, schema_error: bool = False):
+        super().__init__(message)
+        self.schema_error = schema_error
 
 
 # ── Sessions ───────────────────────────────────────────────────────────────
@@ -245,11 +249,14 @@ def run_inspection(
             )
             try:
                 response = provider.inspect(request)
+            except ProductionProviderSchemaError as exc:
+                raise ProviderInspectionFailed(str(exc), schema_error=True) from exc
             except (ProductionProviderError, ProductionProviderNotConfigured) as exc:
                 raise ProviderInspectionFailed(str(exc)) from exc
             if not response.is_schema_valid():
                 raise ProviderInspectionFailed(
-                    f"provider returned schema-invalid output for {rule.detection_point_code!r}"
+                    f"provider returned schema-invalid output for {rule.detection_point_code!r}",
+                    schema_error=True,
                 )
             disposition = _coerce_disposition(response, content)
             results.append(_build_result(
@@ -278,6 +285,13 @@ def run_inspection(
         run.completed_at = _now()
         db.commit()
         db.refresh(run)
+        from src.qc_model import observability
+        event = (observability.EV_SCHEMA_VALIDATION_ERROR if exc.schema_error
+                 else observability.EV_PROVIDER_ERROR)
+        observability.record(event, tenant_id=tenant_id, run_id=run.id, provider=provider.provider_name,
+                             error=type(exc.__cause__ or exc).__name__)
+        observability.record(observability.EV_PRODUCTION_INSPECTION_RUN, tenant_id=tenant_id,
+                             run_id=run.id, status="failed")
         return run
 
     for r in results:
@@ -296,6 +310,13 @@ def run_inspection(
     ))
     db.commit()
     db.refresh(run)
+    from src.qc_model import observability
+    review_n = sum(1 for r in results if r.disposition in (DISPOSITION_REVIEW, "capture_retry_required"))
+    observability.record(observability.EV_PRODUCTION_INSPECTION_RUN, tenant_id=tenant_id, run_id=run.id,
+                         status="completed", overall=run.overall_disposition,
+                         detections=run.detection_result_count, provider=provider.provider_name)
+    if review_n:
+        observability.record(observability.EV_REVIEW_REQUIRED, tenant_id=tenant_id, run_id=run.id, count=review_n)
     return run
 
 
@@ -339,6 +360,35 @@ def _build_result(
         prompt_schema_version=PROMPT_SCHEMA_VERSION,
         raw_provider_response_json=(dict(response.raw_response) if response and response.raw_response else None),
     )
+
+
+# Recommendation / decision families for the human-override metric.
+_MODEL_FAMILY = {
+    DISPOSITION_PASS: "pass",
+    DISPOSITION_REJECT: "reject",
+    DISPOSITION_REVIEW: "review",
+    DISPOSITION_CAPTURE_RETRY: "review",
+    DISPOSITION_MEASUREMENT: "review",
+}
+_HUMAN_FAMILY = {
+    "pass": "pass", "accept": "pass",
+    "reject": "reject", "fail": "reject", "rework": "reject",
+    "review": "review", "review_required": "review",
+}
+
+
+def _model_recommendation_family(recommended: str) -> str:
+    return _MODEL_FAMILY.get((recommended or "").strip().lower(), "review")
+
+
+def _human_decision_family(decision: str) -> str:
+    return _HUMAN_FAMILY.get((decision or "").strip().lower(), "review")
+
+
+def _is_human_override(recommended: str, decision: str) -> bool:
+    """True when the human decision family differs from the model recommendation
+    family. Matching review/review outcomes are not overrides."""
+    return _model_recommendation_family(recommended) != _human_decision_family(decision)
 
 
 def _overall_disposition(dispositions: list[str]) -> str:
@@ -431,6 +481,14 @@ def record_final_decision(
     db.add(record)
     db.commit()
     db.refresh(record)
+    # Human override = the human decision family differs from the model
+    # recommendation family (pass / reject / review). A model review-family
+    # recommendation followed by a human review decision is a match, not an
+    # override; clearing a review to pass, or contradicting a pass/reject, is.
+    from src.qc_model import observability
+    if _is_human_override(run.overall_disposition or "", decision):
+        observability.record(observability.EV_HUMAN_OVERRIDE, tenant_id=tenant_id, run_id=run.id,
+                             human_decision=decision, recommended=run.overall_disposition, decided_by=decided_by)
     return record
 
 

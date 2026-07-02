@@ -155,6 +155,10 @@ class ProductionProviderError(RuntimeError):
     """The real provider failed or returned malformed output (fail closed)."""
 
 
+class ProductionProviderSchemaError(ProductionProviderError):
+    """The provider returned malformed / schema-invalid output (fail closed)."""
+
+
 class ServerVLMInspectionProvider(ProductionInspectionProvider):
     """Real server-side VLM inspection provider (PR 26).
 
@@ -205,16 +209,23 @@ class ServerVLMInspectionProvider(ProductionInspectionProvider):
             "capture_metadata": request.capture_metadata,
             "prompt_schema_version": PROMPT_SCHEMA_VERSION,
         }
+        import time
+
+        from src.qc_model import observability
+
+        started = time.monotonic()
         try:
             raw = self._call_backend(payload)
         except (ProductionProviderNotConfigured, ProductionProviderError):
             raise
         except Exception as exc:  # transport / HTTP / decode → fail closed
             raise ProductionProviderError(f"server_vlm backend error: {type(exc).__name__}") from exc
+        finally:
+            observability.observe_latency("server_vlm_inspect", (time.monotonic() - started) * 1000.0)
         try:
             return parse_provider_response(raw)
         except ValueError as exc:
-            raise ProductionProviderError(f"server_vlm malformed output: {exc}") from exc
+            raise ProductionProviderSchemaError(f"server_vlm malformed output: {exc}") from exc
 
 
 def _server_profile_model() -> str:
@@ -225,6 +236,32 @@ def _server_profile_model() -> str:
 
 # Provider names that select the real server VLM path.
 _SERVER_PROVIDER_NAMES = {"server_vlm", "qwen", "qwen3_5_vl", "qwen35vl"}
+
+
+def production_provider_status() -> dict:
+    """Report the configured production inspection provider's eligibility.
+
+    Surfaces, for deployment/readiness checks: which provider is selected, its
+    model, whether it is configured, whether it is production-eligible, the
+    current APP_ENV, and whether a mock provider is permitted (never in
+    production).
+    """
+    from src.config import app_env
+
+    name = os.getenv("QC_PRODUCTION_INSPECTION_PROVIDER", "mock").strip().lower()
+    if name in _SERVER_PROVIDER_NAMES:
+        p = ServerVLMInspectionProvider()
+        configured = p.is_configured
+        eligible = bool(configured and p.production_eligible and is_production_eligible_provider(p.provider_name))
+        provider_name, model = p.provider_name, p.model_name
+    else:
+        configured, eligible = False, False
+        provider_name, model = MockProductionInspectionProvider.provider_name, MockProductionInspectionProvider.model_name
+    return {
+        "selected": name, "provider_name": provider_name, "model": model,
+        "configured": configured, "production_eligible": eligible,
+        "app_env": app_env(), "mock_allowed": app_env() != "production",
+    }
 
 
 def get_production_inspection_provider() -> ProductionInspectionProvider:
