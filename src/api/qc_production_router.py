@@ -79,6 +79,7 @@ def _result_view(d) -> dict:
         "review_required_conditions": d.review_required_conditions_json,
         "confidence": d.confidence, "uncertainty": d.uncertainty,
         "provider": d.provider, "model": d.model, "source_image_reference": d.source_image_reference,
+        "raw_provider_response": d.raw_provider_response_json,
     }
 
 
@@ -119,12 +120,18 @@ def add_capture(session_id: str, body: CaptureBody, db: Session = Depends(get_db
 
 @router.post("/api/qc/production/inspection-sessions/{session_id}/run", status_code=201)
 def run_session(session_id: str, body: RunBody = RunBody(), db: Session = Depends(get_db_dep)):
+    from src.qc_model.production.provider import ProductionProviderNotConfigured
+    from src.qc_model.production.runtime import TabletRuntimeNotAllowedForProduction
     try:
         run = service.run_inspection(db, session_id, body.tenant_id)
     except service.SessionNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except service.ReadinessNotMet as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ProductionProviderNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except TabletRuntimeNotAllowedForProduction as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except service.ProviderNotEligible as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except service.NoCaptures as exc:
@@ -240,9 +247,12 @@ def ui_add_capture(session_id: str, image_reference: str = Form(...), tenant_id:
 
 @router.post("/admin/qc-model/production/sessions/{session_id}/run")
 def ui_run(session_id: str, tenant_id: str = Form("default"), db: Session = Depends(get_db_dep)):
+    from src.qc_model.production.provider import ProductionProviderNotConfigured
+    from src.qc_model.production.runtime import TabletRuntimeNotAllowedForProduction
     try:
         service.run_inspection(db, session_id, tenant_id)
-    except (service.SessionNotFound, service.ReadinessNotMet, service.ProviderNotEligible, service.NoCaptures):
+    except (service.SessionNotFound, service.ReadinessNotMet, service.ProviderNotEligible,
+            service.NoCaptures, ProductionProviderNotConfigured, TabletRuntimeNotAllowedForProduction):
         pass
     return _session_redirect(session_id, tenant_id)
 

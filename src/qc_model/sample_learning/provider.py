@@ -150,9 +150,17 @@ class MockSampleLearningProvider(SampleLearningProvider):
 
 
 class Qwen35VLSampleLearningProvider(SampleLearningProvider):
-    """Default server adapter skeleton — fails closed (no real backend in PR 23)."""
+    """Default server adapter skeleton — fails closed (no real backend yet).
 
-    def __init__(self, model: str = "qwen3.5-vl-8b-int4") -> None:
+    Production sample learning uses the **server** runtime profile
+    (``qwen3.5-vl-8b-int4`` by default), never the ``tablet_mnn`` edge profile.
+    """
+
+    def __init__(self, model: str | None = None) -> None:
+        if model is None:
+            from src.qc_model.runtime_profiles import RuntimeEnvironment, get_runtime_profile
+
+            model = get_runtime_profile(RuntimeEnvironment.SERVER.value).model
         self._model = model
 
     @property

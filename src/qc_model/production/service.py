@@ -42,8 +42,14 @@ from src.qc_model.production.provider import (
     PROMPT_SCHEMA_VERSION,
     DetectionInspectionRequest,
     ProductionInspectionProvider,
+    ProductionProviderError,
+    ProductionProviderNotConfigured,
     get_production_inspection_provider,
     is_production_eligible_provider,
+)
+from src.qc_model.production.runtime import (
+    TabletRuntimeNotAllowedForProduction,
+    assert_server_side_runtime,
 )
 from src.qc_model.readiness.evaluator import TARGET_PRODUCTION_ASSISTED, evaluate_readiness
 from src.qc_model.training_pack.ownership import assert_pack_accessible
@@ -180,12 +186,19 @@ def run_inspection(
 ) -> ProductionInspectionRun:
     session = get_session(db, session_id, tenant_id)
 
+    # Production runs are server-side only; tablet_mnn is refused (§ PR 26).
+    assert_server_side_runtime()
+
     # Readiness must still hold at run time.
     readiness = evaluate_readiness(db, session.training_pack_id, tenant_id, target_mode=TARGET_PRODUCTION_ASSISTED)
     if not readiness.production_assisted_allowed:
         raise ReadinessNotMet("training pack is no longer production_assisted-ready")
 
+    # Resolve the configured provider. The real server VLM path never falls back
+    # to mock; an unconfigured real provider fails closed.
     provider = provider or get_production_inspection_provider()
+    if not getattr(provider, "is_configured", True):
+        raise ProductionProviderNotConfigured("production_provider_not_configured")
     # Fail closed: never run a production inspection on a non-eligible provider.
     if not getattr(provider, "production_eligible", False) or not is_production_eligible_provider(provider.provider_name):
         raise ProviderNotEligible(
@@ -230,7 +243,10 @@ def run_inspection(
                 image_references=image_refs,
                 capture_metadata=capture_metadata,
             )
-            response = provider.inspect(request)
+            try:
+                response = provider.inspect(request)
+            except (ProductionProviderError, ProductionProviderNotConfigured) as exc:
+                raise ProviderInspectionFailed(str(exc)) from exc
             if not response.is_schema_valid():
                 raise ProviderInspectionFailed(
                     f"provider returned schema-invalid output for {rule.detection_point_code!r}"
@@ -321,6 +337,7 @@ def _build_result(
         uncertainty=response.uncertainty if response else "",
         provider=provider.provider_name, model=provider.model_name,
         prompt_schema_version=PROMPT_SCHEMA_VERSION,
+        raw_provider_response_json=(dict(response.raw_response) if response and response.raw_response else None),
     )
 
 
