@@ -253,6 +253,29 @@ def test_malformed_output_counts_as_schema_validation_error(db):
     assert counters.get(observability.EV_PROVIDER_ERROR, 0) == 0
 
 
+def test_real_server_provider_malformed_json_is_schema_error(db):
+    # End-to-end: ServerVLMInspectionProvider parses a malformed backend response
+    # -> ProductionProviderSchemaError -> schema_validation_error.
+    from src.qc_model.production import service
+    from src.qc_model.production.provider import ServerVLMInspectionProvider
+
+    class _BadBackend(ServerVLMInspectionProvider):
+        def __init__(self):
+            super().__init__(base_url="https://vlm.internal", model="qwen3.5-vl-8b-int4")
+
+        def _call_backend(self, payload):
+            return {"disposition": "pass_recommended"}  # missing required fields
+
+    tp = _l2_ready(db)
+    s = _session_with_capture(db, tp)
+    observability.reset()
+    run = service.run_inspection(db, s.id, "t1", provider=_BadBackend())
+    assert run.status == "failed"
+    counters = observability.snapshot()["counters"]
+    assert counters.get(observability.EV_SCHEMA_VALIDATION_ERROR, 0) >= 1
+    assert counters.get(observability.EV_PROVIDER_ERROR, 0) == 0
+
+
 def test_generic_provider_error_counts_as_provider_error(db):
     from src.qc_model.production import service
     tp = _l2_ready(db)
@@ -293,10 +316,32 @@ def test_pass_rec_then_human_reject_is_override(db):
     assert _run_and_decide(db, tp, "pass_recommended", "reject") >= 1
 
 
-def test_review_rec_then_human_reject_is_not_override(db):
+def test_reject_rec_then_human_reject_is_not_override(db):
     tp = _l2_ready(db)
-    # Non-decisive recommendation → human decision is not an override.
-    assert _run_and_decide(db, tp, "review_required", "reject") == 0
+    assert _run_and_decide(db, tp, "reject_recommended", "reject") == 0
+
+
+def test_reject_rec_then_human_pass_is_override(db):
+    tp = _l2_ready(db)
+    assert _run_and_decide(db, tp, "reject_recommended", "pass") >= 1
+
+
+def test_review_rec_then_human_pass_is_override(db):
+    tp = _l2_ready(db)
+    # Supervisor clears a review to pass → override (spec §4).
+    assert _run_and_decide(db, tp, "review_required", "pass") >= 1
+
+
+def test_override_family_helper_direct():
+    from src.qc_model.production.service import _is_human_override
+    assert _is_human_override("review_required", "review") is False
+    assert _is_human_override("capture_retry_required", "review") is False
+    assert _is_human_override("measurement_required", "review") is False
+    assert _is_human_override("pass_recommended", "pass") is False
+    assert _is_human_override("reject_recommended", "reject") is False
+    assert _is_human_override("pass_recommended", "reject") is True
+    assert _is_human_override("reject_recommended", "pass") is True
+    assert _is_human_override("review_required", "pass") is True
 
 
 # ── Audit tables have no mutating public API ─────────────────────────────────

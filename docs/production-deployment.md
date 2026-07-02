@@ -11,11 +11,13 @@ audit immutability, and the deployment documentation pass.
 
 ## Environment &amp; provider controls
 
-- `APP_ENV=production` **disables all mock/fake/test providers**:
+- `APP_ENV=production` **disables all mock/fake/test providers, and no override
+  env var can re-enable them**:
   - `get_production_inspection_provider()` refuses the mock inspection provider
     (`production_provider_not_configured`).
-  - `sample_learning_mock_allowed()` and `fake_provider_allowed()` return
-    `False`.
+  - `sample_learning_mock_allowed()` and `fake_provider_allowed()` return `False`
+    even when `QC_SAMPLE_LEARNING_ALLOW_MOCK=true` / `QC_ALLOW_TEST_ADAPTER=true`
+    — production wins over every override flag.
 - Production APIs **fail closed** when the real provider is unavailable: a
   selected `server_vlm` provider with no `QC_SERVER_VLM_BASE_URL` raises
   `production_provider_not_configured` on use — it never falls back to mock.
@@ -36,6 +38,26 @@ in-process metrics (scrape via `GET /api/qc/production/metrics`) for:
 `provider_error`, `schema_validation_error`, `review_required`,
 `false_pass_incident`, `false_fail_incident`, `human_override`,
 `qualification_result`.
+
+Semantics hardened per review:
+
+- **Schema vs. provider errors.** A provider *response contract* failure —
+  non-object, missing/typed fields, invalid disposition, non-numeric confidence,
+  non-list evidence regions, malformed JSON, any `parse_provider_response`
+  failure — is counted as `schema_validation_error`. Only unavailability /
+  timeout / transport / HTTP failures (and unconfigured providers) count as
+  `provider_error` / `production_provider_not_configured`.
+- **Bounded latency.** `provider_latency` is stored as a bounded O(1) running
+  aggregate (`count`, `sum_ms`, `min_ms`, `max_ms`) — memory does not grow with
+  the number of requests. `snapshot()` exposes `count`, `avg_ms`, `min_ms`,
+  `max_ms`.
+- **Human override.** `human_override` is emitted only when the human decision
+  *family* differs from the model recommendation *family* over
+  `{pass, reject, review}`. A model review-family recommendation
+  (`review_required` / `capture_retry_required` / `measurement_required`)
+  followed by a human `review` decision is a **match, not an override**; clearing
+  a review to pass, or contradicting a `pass_recommended` / `reject_recommended`,
+  is an override.
 
 `observability.record(...)` never raises — observability cannot break a
 production path.

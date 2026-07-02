@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from src.db.qc_authoring_models import RuleAuthoringJob
 from src.db.qc_learning_models import QCLearnedDetectionPointProposal, QCLearningJob
 from src.db.qc_production_models import (
+    DISPOSITION_CAPTURE_RETRY,
     DISPOSITION_MEASUREMENT,
     DISPOSITION_PASS,
     DISPOSITION_REJECT,
@@ -361,6 +362,35 @@ def _build_result(
     )
 
 
+# Recommendation / decision families for the human-override metric.
+_MODEL_FAMILY = {
+    DISPOSITION_PASS: "pass",
+    DISPOSITION_REJECT: "reject",
+    DISPOSITION_REVIEW: "review",
+    DISPOSITION_CAPTURE_RETRY: "review",
+    DISPOSITION_MEASUREMENT: "review",
+}
+_HUMAN_FAMILY = {
+    "pass": "pass", "accept": "pass",
+    "reject": "reject", "fail": "reject", "rework": "reject",
+    "review": "review", "review_required": "review",
+}
+
+
+def _model_recommendation_family(recommended: str) -> str:
+    return _MODEL_FAMILY.get((recommended or "").strip().lower(), "review")
+
+
+def _human_decision_family(decision: str) -> str:
+    return _HUMAN_FAMILY.get((decision or "").strip().lower(), "review")
+
+
+def _is_human_override(recommended: str, decision: str) -> bool:
+    """True when the human decision family differs from the model recommendation
+    family. Matching review/review outcomes are not overrides."""
+    return _model_recommendation_family(recommended) != _human_decision_family(decision)
+
+
 def _overall_disposition(dispositions: list[str]) -> str:
     if not dispositions:
         return DISPOSITION_REVIEW
@@ -451,20 +481,14 @@ def record_final_decision(
     db.add(record)
     db.commit()
     db.refresh(record)
-    # Human override = the human contradicts a *decisive* model recommendation.
-    # A non-decisive recommendation (review/capture_retry/measurement) defers to a
-    # human, so a human review/pass/reject after it is not an override — in
-    # particular a model review recommendation followed by a human review decision
-    # is agreement, not an override.
+    # Human override = the human decision family differs from the model
+    # recommendation family (pass / reject / review). A model review-family
+    # recommendation followed by a human review decision is a match, not an
+    # override; clearing a review to pass, or contradicting a pass/reject, is.
     from src.qc_model import observability
-    rec = (run.overall_disposition or "")
-    is_override = (
-        (rec == DISPOSITION_PASS and decision != "pass")
-        or (rec == DISPOSITION_REJECT and decision != "reject")
-    )
-    if is_override:
+    if _is_human_override(run.overall_disposition or "", decision):
         observability.record(observability.EV_HUMAN_OVERRIDE, tenant_id=tenant_id, run_id=run.id,
-                             human_decision=decision, recommended=rec, decided_by=decided_by)
+                             human_decision=decision, recommended=run.overall_disposition, decided_by=decided_by)
     return record
 
 
