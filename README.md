@@ -1,340 +1,245 @@
-# Giraffe QC Model
+# Giraffe QC Model — AI-Native Visual QC Intelligence
 
-AI-native quality control inference system for industrial procurement. The repository contains a Tablet / Pad-side QC app, a server-side QC service, and a shared visual QC training foundation for SKU-specific inspection workflows.
+`Tablet / Pad` | `Server` | `Training Pack` | `Rule Learning` | `Sample Learning` | `Readiness Gate` | `giraffe-language-skill` | `Fail Closed`
 
-At the product level, Giraffe QC Model is a **general-purpose, provider-compatible, LLM/VLM-driven visual QC training and execution framework**. It is product-category agnostic at the framework layer, but every production digital inspector is **SKU-specific**, **workstation-specific**, and bound to a confirmed Training Pack, Playbook, capture protocol, and qualification state.
+Giraffe QC Model is an AI-native quality control inference system for industrial procurement.
 
-The artificial-flower accessory is only a seed SKU used to validate the pipeline. It is not the product scope. The chain-link-count case is a boundary example: if a ruler, fixture, gauge, caliper, scale, or template is faster and more accurate, AI must not be the primary judge.
+The repository contains a Tablet / Pad-side QC path, a server-side QC service, and a shared visual QC training foundation for SKU-specific inspection workflows.
 
-## Product default model profiles
+At the product level, Giraffe QC Model is a general-purpose, provider-compatible, LLM/VLM-driven visual QC training and execution framework. It is product-category agnostic at the framework layer, but every production digital inspector is SKU-specific, workstation-specific, and bound to a confirmed Training Pack, Playbook, capture protocol, and qualification state.
 
-The product has two default Qwen3.5-VL runtime profiles:
+---
+
+## Product Boundary
+
+Giraffe QC Model owns:
+
+```text
+Training Pack
+Playbook
+Capture Protocol
+Digital Inspector
+standard photos
+operator QC requirements
+source ingestion workbench
+rule learning proposals
+visual rule memory
+sample learning
+readiness and completeness gates
+Pad / Server runtime profiles
+QC result conventions
+fail-closed review behavior
+```
+
+It does not own:
+
+```text
+RFQ execution
+supplier routing
+buyer/supplier messaging
+OpenClaw channel credentials
+GLTG lead-time simulation
+GPM procurement reasoning
+giraffe-db business fact ownership
+commercial or legal approval
+```
+
+---
+
+## P0 Language Boundary
+
+Standard English is the only internal working language across Giraffe products.
+
+QC source text can arrive in Chinese, Japanese, English, or other languages. Before QC workflow code extracts requirements, creates test points, proposes detection rules, builds decision packets, or writes graph data, raw multilingual text must pass through `giraffe-language-skill`.
+
+Allowed path:
+
+```text
+raw multilingual QC requirement / process spec / operator note
+-> giraffe-language-skill
+-> canonical English QC requirement packet
+-> QC source ingestion / rule proposal / training pack workflow
+-> localized QC report or operator summary
+```
+
+The QC repository must not add its own multilingual product, material, defect, tolerance, count, view, or quality alias maps outside the shared language boundary.
+
+If language-skill cannot produce a valid canonical packet, QC workflow must ask for clarification or mark the item `review_required`. It must not guess missing count, tolerance, threshold, view, material, or defect semantics.
+
+---
+
+## Runtime Profiles
+
+Product default runtime profiles:
 
 | Runtime profile | Product default model | Intended runtime | Notes |
 |---|---|---|---|
 | `tablet_mnn` | `qwen3.5-vl-2b-mnn` | Tablet / Pad local MNN | Local visual QC profile for edge-side inspection. Physical Android Pad MNN migration remains separately audited. |
 | `server` | `qwen3.5-vl-8b-int4` | Server-side QC model | Larger server profile for backend visual reasoning when explicitly configured. |
 
-These are product defaults, not a Qwen ecosystem lock-in. Product services depend on a provider abstraction, not Qwen-specific classes, so mainstream LLM/VLM providers can be added through adapters.
+These are product defaults, not a Qwen ecosystem lock-in. Product services depend on provider abstraction, so mainstream LLM/VLM providers can be added through adapters.
 
-Environment selection for the Phase 1 visual QC engine:
+Environment selection:
 
 ```bash
-QC_VISION_RUNTIME_ENV=tablet_mnn   # qwen3.5-vl-2b-mnn
-QC_VISION_RUNTIME_ENV=server       # qwen3.5-vl-8b-int4
+QC_VISION_RUNTIME_ENV=tablet_mnn
+QC_VISION_RUNTIME_ENV=server
 ```
 
 Unknown or unset `QC_VISION_RUNTIME_ENV` falls back to `server`.
 
-> Runtime naming note: the edge profile is **tablet**, not desktop. Do not use `desktop_pc_mnn` for this product path.
-
-## Existing Pad vs Server edition config
-
-The repository also contains the older edition switch in `src/runtime/editions.py`:
+Older edition switch remains in place:
 
 ```bash
 QC_RUNTIME_EDITION=padLocal|server
 ```
 
-This remains in place for existing Pad / Server behavior. It is intentionally separate from the Phase 1 visual QC runtime profile layer in `src/qc_model/runtime_profiles.py`.
+The edge profile is tablet, not desktop. Do not use `desktop_pc_mnn` for this product path.
 
-Current Android / MNN code may still reference model names such as `Qwen3-VL-2B-Instruct-MNN`, while the product default tablet profile is `qwen3.5-vl-2b-mnn`. This mismatch is documented and must not be silently migrated inside server/schema-only changes.
+---
 
-## Overview
+## Visual QC Foundation
 
-| Target | Model / profile | Inference | Network |
-|---|---|---|---|
-| Android Tablet App | Existing Android MNN runtime; product target profile `qwen3.5-vl-2b-mnn` | Local MNN path, real JNI inference wiring still pending | Fully offline |
-| QC Model Server | Product target profile `qwen3.5-vl-8b-int4` | Server provider path, fail-closed by default | Network only when explicitly configured |
-| Visual QC Training Engine | Provider abstraction + Training Pack + deterministic finalizer | Schema / orchestration foundation in Phase 1 | Provider-compatible |
-
-## What the visual QC engine does
-
-The Phase 1 visual QC foundation lives under `src/qc_model/` and is described in [`docs/QC_MODEL_PHASE1_VISUAL_QC.md`](docs/QC_MODEL_PHASE1_VISUAL_QC.md). It introduces:
-
-- dual default runtime profiles: `tablet_mnn` and `server`;
-- provider abstraction for Qwen3.5-VL and mainstream LLM/VLM adapters;
-- SKU Training Pack, Playbook, Capture Protocol, and Digital Inspector schemas;
-- detection point category workflow with proposed and supervisor-confirmed categories;
-- physical-measurement boundary enforcement;
-- deterministic finalizer: model-level `pass` can never override checkpoint-level `fail`;
-- capture-quality gate and fail-closed `review_required` behavior;
-- digital inspector lifecycle skeleton;
-- human feedback schema and false-pass P0 escalation skeleton;
-- existing FastAPI + Jinja2 UI extension at `/admin/qc-model`.
-
-Phase 1 validates **structure and safety guardrails**. It does not certify real-world Qwen3.5-VL inspection accuracy, defect recall, or production readiness. Real accuracy must be validated later with labeled real-world sample sets.
-
-### Phase 2A — QC rule learning engine
-
-Phase 2A adds the first **rule-learning** loop under `src/qc_model/learning/`, described in [`docs/QC_MODEL_PHASE2A_RULE_LEARNING.md`](docs/QC_MODEL_PHASE2A_RULE_LEARNING.md). The LLM/VLM **proposes** structured detection points, visual features, pseudo-defects, decision rules, and review-required conditions from operator requirements + Training Pack context; a supervisor must approve them before they are applied to a Training Pack. Rule learning defaults to the `server` profile (`qwen3.5-vl-8b-int4`); the `tablet_mnn` edge profile executes confirmed rules and is never used for learning. This is rule learning, **not** model fine-tuning, and it does not certify visual accuracy. Admin UI: `/admin/qc-model/learning`.
-
-### QC Source Ingestion Workbench
-
-The source ingestion workbench (`src/qc_model/ingestion/`, [`docs/qc-source-ingestion.md`](docs/qc-source-ingestion.md)) lets operators register QC source materials — natural-language requirements, process specs, standards, and drawing/PDF/image references — against a Training Pack, then run a **deterministic mock** extraction into typed **draft fragments** (possible detection point, physical measurement, boundary condition, missing tolerance/count, pseudo-defect, unclear requirement, requires-review). Everything produced is **draft-only**: extracted fragments never update a Training Pack and can never become active rules. The mock extractor is a placeholder for the real LLM/VLM extraction in a later PR. Admin UI: `/admin/qc-model/training-packs/{training_pack_id}/sources`.
-
-**LLM rule authoring (PR 22, `src/qc_model/authoring/`):** extracted fragments are turned into structured **learned rule proposals** (checkpoint category, AI role, decision rule, review conditions, `questions_or_ambiguities`) that **reuse PR 20's proposal table and supervisor approval workflow**. Two invariants are enforced in code, not just prompts: a **physical-measurement guard** forces `record_only` for any `physical_measurement` checkpoint regardless of the LLM, and the system **never fabricates** a missing count/tolerance/view/threshold — it raises a question instead. Provider failure or malformed LLM JSON **fails the job closed** (zero proposals persisted). This PR still does **not** touch Training Pack activation. Proposals surface with Approve / Edit / Reject controls on the source workbench page.
-
-**VLM sample learning (PR 23, `src/qc_model/sample_learning/`):** learns structured **visual rule memory** from grouped sample images (`reference` / `positive` / `defect` / `boundary` / `capture_artifact`). Every observation preserves **per-sample provenance** (traceable to the exact image + optional region via an append-only evidence anchor). Approve and apply are **two distinct steps**: `apply-approved-visual-rule-memory` is the only Training-Pack writer and rejects non-approved memory (409); applying **never silently overwrites** an existing confirmed rule (conflict → 409, supervisor must resolve). VLM failure or malformed output fails closed. Admin UI: `/admin/qc-model/training-packs/{training_pack_id}/sample-learning`.
-
-**Readiness & completeness gate (PR 24, `src/qc_model/readiness/`):** makes `exam_ready` / `production_assisted` (L2) / `controlled_active` (L3) depend on **confirmed, production-eligible QC knowledge** — not just structural completeness. Beyond the base knowledge checks it requires **approved/applied `VisualRuleMemory`** (or a confirmed visual rule) for every visual detection point, a **production-eligible provider** (mock/fake/stub/skeleton-derived memory can never satisfy production readiness), sample coverage, and closed pseudo-defect / capture-artifact rules. `controlled_active` (L3) additionally requires a qualification report and **fails closed** until it exists. Ownership is resolved by a single shared resolver (`src/qc_model/training_pack/ownership.py`); unknown/cross-tenant packs fail closed. The readiness endpoint is target-mode aware (`?target_mode=production_assisted|controlled_active`). Only unresolved questions are **waivable** (supervisor identity + justification, audited); waiver validation errors are now surfaced visibly. See **[docs/production-readiness.md](docs/production-readiness.md)**. Admin UI: `/admin/qc-model/training-packs/{training_pack_id}/readiness`.
-
-**Production Assisted Mode (PR 25, `src/qc_model/production/`):** L2 assisted factory QC on a ready Training Pack. Flow: inspection session (gated on `production_assisted` readiness) → evidence capture → run over **confirmed detection points only** → per-detection **recommended** disposition (`pass_recommended` / `reject_recommended` / `review_required` / `capture_retry_required` / `measurement_required`) + evidence packet → **mandatory human final decision** (operator/supervisor identity required) recorded in an append-only audit trail. The system **never auto-finalizes**: physical-measurement points force `measurement_required`, missing required evidence downgrades a pass to `review_required`, and a run **fails closed** on a non-production-eligible provider (mock/fake/stub/skeleton/deterministic). The real server VLM provider is PR 26. See **[docs/production-assisted-mode.md](docs/production-assisted-mode.md)**. Admin UI: `/admin/qc-model/production`.
-
-**Real VLM provider integration (PR 26, `src/qc_model/production/provider.py`):** a production-configurable server-side VLM inspection provider (`ServerVLMInspectionProvider`, default `qwen3.5-vl-8b-int4`) selected via `QC_PRODUCTION_INSPECTION_PROVIDER=server_vlm` + `QC_SERVER_VLM_BASE_URL`. It **fails closed** when unconfigured (`production_provider_not_configured`, never falls back to mock), rejects **malformed** output against a strict JSON schema (run marked failed), and stores the **raw provider response** for audit (`raw_provider_response_json`, migration 014). Mock is L0-only and refused in `APP_ENV=production`. Production runs are **server-side only** — `tablet_mnn` is blocked from generating production rules; sample learning uses the server runtime profile. See **[docs/real-vlm-provider.md](docs/real-vlm-provider.md)**.
-
-**Qualification / shadow mode / accuracy gate (PR 27, `src/qc_model/qualification/`):** the validation layer that unlocks L3 `controlled_active`. A supervisor builds a qualification dataset of human-labeled reference/positive/defect/boundary/capture-artifact samples; a run has the production-eligible VLM predict each sample and computes a **per-detection-point confusion matrix + false-pass/false-fail rates**. A report is approvable only if it meets conservative env-configurable thresholds (`QC_MAX_FALSE_PASS_RATE_L3=0.0`, `QC_MAX_FALSE_FAIL_RATE_L3=0.05`, sample minimums). **False pass is critical**; a failing report cannot be approved and L3 stays blocked. The `controlled_active_qualification` readiness check passes only after an approved, threshold-meeting report (immutable once approved). **Shadow mode (L1)** records model-vs-human disagreement and never affects pass/reject. See **[docs/qualification-and-shadow-mode.md](docs/qualification-and-shadow-mode.md)**. Admin UI: `/admin/qc-model/training-packs/{training_pack_id}/qualification`.
-
-**False-pass incident response &amp; requalification (PR 28, `src/qc_model/incident/`):** the production safety loop. A reported false pass becomes a **P0** incident; on supervisor **confirmation** the affected scope is auto-**suspended** from L3 (`controlled_active_suspended`) and a **requalification requirement** is created (prior approved reports are never mutated). The readiness gate adds a P0 `active_false_pass_suspension` check that blocks `controlled_active` — **L2 `production_assisted` stays available (human-final)**. A suspension can be **lifted only** with a new **supervisor-approved, threshold-meeting, production-eligible** qualification report **created after the confirmation** (old/mock/failing reports are rejected); lifting marks the requirement satisfied. All events are append-only audited; tenant-scoped throughout. See **[docs/false-pass-incident-response.md](docs/false-pass-incident-response.md)**. Admin UI: `/admin/qc-model/incidents`.
-
-## Visual QC boundary
-
-Giraffe QC Model focuses on visual signal interpretation under fixed SKU / fixed workstation conditions:
+The visual QC engine introduces:
 
 ```text
-standard image + qualified samples + defect samples + boundary samples
-→ confirmed detection points
-→ visual evidence
-→ pass / fail / review_required
+provider abstraction for Qwen3.5-VL and other adapters
+SKU Training Pack
+Playbook
+Capture Protocol
+Digital Inspector schemas
+detection point category workflow
+supervisor-confirmed categories
+physical-measurement boundary enforcement
+deterministic finalizer
+capture-quality gate
+fail-closed review_required behavior
+human feedback schema
+false-pass P0 escalation skeleton
+admin UI at /admin/qc-model
 ```
 
-The model should distinguish:
+Phase 1 validates structure and safety guardrails. It does not certify real-world visual accuracy, defect recall, or production readiness.
 
-- true quality defects;
-- normal material behavior;
-- reflection, shadow, blur, exposure, angle, or other capture artifacts;
-- uncertainty requiring human review.
+---
 
-Examples of visual QC targets:
+## Rule Learning
 
-- missing rhinestone or missing component;
-- pearl hairline crack;
-- edge chip or surface scratch;
-- color deviation or stain;
-- glue overflow;
-- deformation or assembly misalignment;
-- reflection abnormality;
-- texture or edge discontinuity;
-- incidental visible abnormality outside the requested checklist.
+The rule-learning loop proposes structured detection points, visual features, pseudo-defects, decision rules, and review-required conditions from canonical operator requirements plus Training Pack context.
 
-Examples that should not be AI-primary:
-
-- length, width, height, thickness;
-- weight;
-- hole diameter;
-- spacing;
-- chain link count;
-- angle, hardness, tensile force;
-- chemical or laboratory test results.
-
-For physical measurement checkpoints, AI may record evidence, guide the operator, archive measurement results, or flag missing measurement proof. It must not be the primary judge.
-
-## Core principles
-
-- **Learn before work.** A digital inspector cannot inspect a production SKU until the Training Pack, Playbook, detection points, and qualification state are confirmed.
-- **No fake production results.** Fake providers are test-only and blocked in default production runtime.
-- **No silent cloud fallback.** Cloud/server inference is invoked only when explicitly configured.
-- **No silent degradation.** If Tablet MNN runtime is unavailable, the result must be marked `review_required` / pending, never silently passed.
-- **No pass without evidence.** Missing standard photos, missing detection points, invalid model output, missing evidence, disabled provider, or unreadable capture must return `review_required`.
-- **No AI-primary physical measurement.** Physical measurement checkpoints are record-only / operator-guidance for AI.
-- **False pass is P0.** Any human-confirmed false pass must trigger escalation, inspector downgrade/suspension, Training Pack update, and requalification.
-
-## Architecture
+Rules:
 
 ```text
-Android QC Tablet App
-  ├── CameraX capture and quality/stability gating
-  ├── Local-first photo + metadata storage
-  ├── Tablet / Pad MNN runtime target: qwen3.5-vl-2b-mnn
-  ├── Manual SKU/task fallback when visual matching is unavailable
-  └── Result display with explicit engine/source labeling
-
-giraffe-qc-model backend
-  ├── FastAPI
-  ├── SKU / standard photo / QC point / inspection data model
-  ├── QC Sample Admin UI (/admin/samples)
-  ├── Visual QC Phase 1 admin panel (/admin/qc-model)
-  ├── Provider abstraction for Qwen3.5-VL + mainstream LLM/VLM adapters
-  ├── Training Pack / Playbook / Digital Inspector schemas
-  ├── Deterministic finalizer and fail-closed result handling
-  └── Fleet aggregation, reporting, and abcdYi integration
+LLM/VLM proposes
+supervisor approves
+confirmed rules execute
+unapproved proposals do not modify active Training Packs
+physical-measurement checkpoints force record_only
+missing count / tolerance / threshold / view becomes a question, not a hallucinated rule
+provider failure fails closed
+malformed model output persists zero proposals
 ```
 
-## Repository structure
+The tablet MNN edge profile executes confirmed rules. It is not used for learning.
+
+---
+
+## Sample Learning
+
+Sample learning builds structured visual rule memory from grouped sample images:
 
 ```text
-giraffe-qc-model/
-├── alembic/               # DB migrations
-├── apps/
-│   └── android-qc/        # Android Tablet app (Kotlin, Gradle)
-├── scripts/
-│   ├── benchmark_mnn.sh
-│   └── download_mnn_android_libs.sh
-├── .github/workflows/
-│   ├── tests.yml
-│   └── android-pad-ci.yml
-├── src/
-│   ├── api/               # FastAPI routers
-│   ├── cv/                # classical CV comparator
-│   ├── db/                # SQLAlchemy models, session, config
-│   ├── qc_model/          # Phase 1 visual QC training engine foundation
-│   │   ├── providers/     # provider abstraction, Qwen adapter, mainstream adapter, mocks
-│   │   ├── schemas/       # Training Pack, detection point, inspector, inspection, feedback
-│   │   ├── runtime_profiles.py
-│   │   ├── finalizer.py
-│   │   ├── lifecycle.py
-│   │   ├── runner.py
-│   │   ├── feedback_escalation.py
-│   │   └── prompts.py
-│   ├── qwen/              # existing Qwen provider/parser/router code path
-│   ├── runtime/           # existing padLocal/server edition config
-│   └── web/               # Jinja2 templates + static assets
-├── tests/
-└── docs/
-    ├── QC_MODEL_PHASE1_VISUAL_QC.md
-    ├── LOCAL_FIRST_QWEN_QC.md
-    ├── DEPLOYMENT_LOCAL_QWEN.md
-    ├── ANDROID_QC_APP.md
-    ├── API_CONTRACT.md
-    ├── QC_SAMPLE_DB_API.md
-    └── QC_SAMPLE_ADMIN_UI.md
+reference
+positive
+defect
+boundary
+capture_artifact
 ```
 
-## Current state after Phase 1 foundation
+Every observation preserves per-sample provenance, traceable to the exact image and optional region through an append-only evidence anchor.
 
-- [x] QC Sample DB and SKU API implemented: `qc_sku_items`, `qc_standard_photos`, `qc_inspection_requirements`, `qc_detection_points`; `/api/v1/sku/search`; `/api/v1/sku/{sku_id}`.
-- [x] Shared QC Sample Admin UI at `/admin/samples`: create SKU, upload/register photos, set primary photo, add requirements, draw ROI detection points, archive SKU.
-- [x] Existing Pad vs Server edition config in `src/runtime/editions.py`: `QC_RUNTIME_EDITION=padLocal|server`.
-- [x] Production-safety server behavior: disabled provider, fake provider outside test mode, unreadable photos, missing standard photos, zero detection points, parser inconsistency, and incomplete model output fail closed to `review_required`.
-- [x] Android Tablet module scaffolded with CameraX, capture, SKU selection, prompt/parser/router, MNN runtime loader, model provisioning, benchmark activity, and JVM tests.
-- [x] Fake/mock Android test doubles live under test sources only, not main production sources.
-- [x] Phase 1 visual QC training engine foundation added under `src/qc_model/`: runtime profiles, provider abstraction, Training Pack schema, category confirmation, lifecycle, finalizer, feedback escalation skeleton, prompts, runner, and `/admin/qc-model` UI extension.
-- [x] Dual product-default visual QC profiles defined: `tablet_mnn → qwen3.5-vl-2b-mnn`, `server → qwen3.5-vl-8b-int4`.
-- [x] CI acceptance for the Phase 1 foundation: `tests` and `QC Model Full Acceptance` workflows pass on the Phase 1 branch.
-- [ ] Real Tablet / Pad MNN inference not yet confirmed. JNI native integration is scaffolded but physical device validation remains pending.
-- [ ] Real qwen3.5-vl visual accuracy certification is not complete. Mocked tests validate structure and safety, not production defect-detection accuracy.
-- [ ] Full LLM/VLM automatic QC-rule learning is not implemented yet. This is the next planned iteration.
+Approval and apply are separate steps:
 
-## Next milestones
-
-### 1. LLM/VLM automatic QC-rule learning
-
-The next major iteration is to let the system use LLM/VLM providers to learn QC rules from operator-provided standards and labeled samples:
-
-1. operator requirement ingestion from natural language or speech-to-text;
-2. automatic proposal of structured detection points;
-3. automatic proposal of checkpoint categories and AI roles;
-4. learning normal visual features from standard and qualified samples;
-5. learning defect visual features from defect samples;
-6. learning pseudo-defects from boundary samples such as reflection, shadow, blur, angle, and overexposure;
-7. generating decision rules and `review_required` conditions;
-8. supervisor confirmation before any learned rule enters an active Training Pack.
-
-This iteration should add a real learning workflow on top of the Phase 1 schemas. It should not treat mocked-provider tests as proof of visual accuracy.
-
-### 2. Production hardening of Phase 1 guardrails
-
-Before production use, harden the foundation around:
-
-1. strict Training Pack qualification gates in `run_inspection()`;
-2. consistency checks across `InspectionRequest`, `TrainingPack`, and `DigitalInspector` for `sku_id`, `station_id`, and `training_pack_id`;
-3. API/UI surface for human feedback and false-pass escalation;
-4. sample-coverage gates so insufficient samples can enter `on_trial` only, not `active`;
-5. finalizer propagation of incidental findings that require human review;
-6. capture-quality precedence and documented fail-closed policy.
-
-### 3. Validate Tablet MNN runtime
-
-Once a physical Snapdragon Tablet / Pad test device is available:
-
-1. Provision the current local MNN model according to `docs/DEPLOYMENT_LOCAL_QWEN.md`.
-2. Run `./scripts/benchmark_mnn.sh` and record p50/p95 latency, cold-start time, and peak memory.
-3. Validate the full capture-to-result flow offline.
-4. If the latency or memory budget is not met, do not silently relax the budget; choose a mitigation such as smaller quantization, reduced input resolution, or narrower per-call scope.
-
-### 4. Validate real visual QC accuracy
-
-Use labeled real-world sample sets:
-
-1. qualified samples;
-2. true defect samples;
-3. boundary / pseudo-defect samples;
-4. capture-artifact samples;
-5. human-reviewed false-pass / false-fail cases.
-
-Do not treat mocked-provider tests as proof of production QC accuracy.
-
-## Development setup
-
-### Quick start
-
-```bash
-# Install runtime + dev tooling
-make sync-dev          # or: uv sync --group dev
-
-# Run the full test suite once
-make test              # or: uv run pytest tests/ -v
-
-# Run 5× consecutively before declaring a change done
-make test5
+```text
+approve visual rule memory
+apply approved visual rule memory
+reject non-approved memory
+conflict -> 409
+supervisor resolves conflict
+never silently overwrite confirmed rules
 ```
 
-> Do not use bare `uv sync` before running tests. Plain `uv sync` installs only runtime dependencies and may remove pytest from the virtual environment. Use `uv sync --group dev` or `make sync-dev` when running tests.
+---
 
-### Android Tablet
+## Readiness and Completeness Gate
 
-```bash
-# Create MNN stubs for CI, no real AAR needed
-bash scripts/download_mnn_android_libs.sh --ci-stubs
+Readiness is not structural only. `exam_ready`, `production_assisted` / L2, and `controlled_active` / L3 depend on confirmed, production-eligible QC knowledge.
 
-# Build padLocal debug APK + run unit tests
-cd apps/android-qc && ./gradlew :app:assemblePadLocalDebug :app:testPadLocalDebugUnitTest
+Readiness requires:
+
+```text
+confirmed detection points
+approved/applied visual rule memory or confirmed visual rule
+production-eligible provider
+sample coverage
+closed pseudo-defect rules
+closed capture-artifact rules
+closed unresolved questions or audited waiver
+qualification report for controlled_active
 ```
 
-### Admin UI
+Mock, fake, stub, or skeleton-derived memory can never satisfy production readiness.
 
-```bash
-uv sync --group dev
-uv run uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8080
+Unknown or cross-tenant packs fail closed.
 
-# Existing sample DB admin
-# http://127.0.0.1:8080/admin/samples
+---
 
-# Phase 1 visual QC training engine panel
-# http://127.0.0.1:8080/admin/qc-model
+## Physical Measurement Boundary
+
+If a ruler, fixture, gauge, caliper, scale, template, or other physical instrument is faster and more accurate, AI must not be the primary judge.
+
+AI may record, route, or assist review, but physical measurement checkpoints must not be converted into visual pass/fail hallucinations.
+
+---
+
+## Integration with Giraffe Stack
+
+```text
+giraffe-language-skill = canonicalizes multilingual QC text
+giraffe-db             = stores business evidence and audit links
+giraffe-agent / AIVAN  = routes workflow and approval
+giraffe-qc-model       = owns QC intelligence
+GLTG / GPM             = do not perform QC pass/fail
+human supervisor       = approves rules, resolves ambiguity, accepts risk
 ```
 
-### Qwen cloud integration tests, opt-in
+---
 
-The Qwen real-API integration tests are skipped by default unless all of the following environment variables are set:
+## Required Tests
 
-| Variable | Required value |
-|---|---|
-| `RUN_QWEN_INTEGRATION` | `1` |
-| `QC_ENGINE_MODE` | `cloud_qwen_dev` |
-| `LLM_ENABLE_REAL_CALLS` | `true` |
-| `QWEN_CLOUD_ENABLED` | `true` |
-| `ALLOW_SEND_IMAGES_TO_CLOUD_QWEN` | `true` |
-| `DASHSCOPE_API_KEY` or `QWEN_API_KEY` | real key |
+QC-related tests must prove:
 
-## Development principles
+```text
+non-English QC text calls giraffe-language-skill before rule extraction
+missing canonical packet blocks rule extraction
+LLM/VLM cannot fabricate missing count/tolerance/view/threshold
+physical-measurement guard forces record_only
+provider failure fails closed
+malformed JSON fails closed
+sample provenance is preserved
+approved and applied states are distinct
+readiness cannot be satisfied by mock/stub data
+controlled_active fails closed without qualification report
+```
 
-- Never commit model weights or large binary model artifacts into normal git history. Model provisioning must be scripted or sideloaded.
-- Never commit uploaded sample images. `data/qc_samples/` is ignored; only metadata should be stored in the DB.
-- Mock everything expensive in tests. Unit/CI tests must never call the real MNN model or a real cloud VLM provider unless explicitly gated.
-- Fake providers and fake inspectors are test-only. They must never produce production pass/fail results in default runtime.
-- A failing test is a defect. Do not rerun past a failure until it happens to pass.
-- Multi-tenant isolation is a hard requirement. Any endpoint or query touching tenant-scoped QC data must have cross-tenant-access-denied coverage.
-- Do not call Qwen API or DashScope from the Tablet QC inference path. Tablet-side QC inference must use local MNN runtime unless an explicit later design changes that boundary.
-- The sample DB and admin page are edition-agnostic. Only inference behavior may differ per runtime edition/profile.
-- Mocked-provider tests do not prove model visual accuracy. Accuracy must be validated with labeled real-world samples.
+---
 
-## Related documentation
+## Product Principle
 
-- `docs/QC_MODEL_PHASE1_VISUAL_QC.md` — Phase 1 visual QC training engine foundation
-- `docs/LOCAL_FIRST_QWEN_QC.md` — local-first Qwen QC product/architecture spec
-- `docs/DEPLOYMENT_LOCAL_QWEN.md` — on-device model provisioning and backend cloud-fallback configuration
-- `docs/ANDROID_QC_APP.md` — Android Tablet app module layout and capture flow
-- `docs/API_CONTRACT.md` — backend API contract for Android app and fleet aggregation consumers
-- `docs/QC_SAMPLE_DB_API.md` — QC sample catalog schema and SKU API reference
-- `docs/QC_SAMPLE_ADMIN_UI.md` — shared admin web interface for managing samples
+QC must inspect confirmed detection points against approved visual evidence. A model-level pass can never override a checkpoint-level fail.
+
+---
+
+## License
+
+See `LICENSE`.
