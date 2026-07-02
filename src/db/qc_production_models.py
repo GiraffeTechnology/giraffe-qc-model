@@ -125,6 +125,8 @@ class ProductionDetectionResult(Base):
     provider: Mapped[Optional[str]] = mapped_column(String(128))
     model: Mapped[Optional[str]] = mapped_column(String(128))
     prompt_schema_version: Mapped[Optional[str]] = mapped_column(String(64))
+    # Verbatim raw provider response, captured for audit (PR 26). Append-only.
+    raw_provider_response_json: Mapped[Optional[dict]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 
