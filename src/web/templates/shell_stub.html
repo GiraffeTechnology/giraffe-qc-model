@@ -1,0 +1,10 @@
+{% extends "shell_base.html" %}
+{% block title %}{{ t(title_key) }}{% endblock %}
+{% block content %}
+<div class="stub">
+  <a class="stub__back" href="/admin">← {{ t('nav.home') }}</a>
+  <h1 class="stub__title">{{ t(title_key) }}</h1>
+  <p class="stub__desc">{{ t(desc_key) }}</p>
+  <p class="stub__note">{{ t('stub.placeholder') }}</p>
+</div>
+{% endblock %}

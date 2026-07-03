@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_db_dep
+from src.web.i18n import install_i18n
 from src.db.sku_models import (
     QCDetectionPoint,
     QCInspectionRequirement,
@@ -30,6 +31,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "web" / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+install_i18n(templates)
 
 _DATA_DIR = Path("data/qc_samples")
 

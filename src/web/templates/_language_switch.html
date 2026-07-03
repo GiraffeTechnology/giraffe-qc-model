@@ -1,0 +1,17 @@
+{# Global language-switch component (S1).
+
+   Wired to the giraffe-language-skill seam via /admin/settings/language.
+   JS-optional: the <select> auto-submits when scripting is on, and a submit
+   button is shown otherwise. `next` returns the user to the current page. #}
+<form class="lang-switch" method="post" action="/admin/settings/language">
+  <input type="hidden" name="next" value="{{ request.url.path }}">
+  <span class="lang-switch__icon" aria-hidden="true">🌐</span>
+  <label class="sr-only" for="lang-switch-select">{{ t('language.switch') }}</label>
+  <select id="lang-switch-select" name="language" class="lang-switch__select"
+          aria-label="{{ t('language.switch') }}" onchange="this.form.submit()">
+    {% for code in supported_languages %}
+    <option value="{{ code }}" {% if code == current_language() %}selected{% endif %}>{{ language_labels[code] }}</option>
+    {% endfor %}
+  </select>
+  <noscript><button type="submit" class="btn lang-switch__go">OK</button></noscript>
+</form>

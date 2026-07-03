@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="{{ current_language() }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ t('app.title') }}</title>
+  <link rel="stylesheet" href="/static/shell.css">
+</head>
+<body class="shell-body welcome-body">
+  <div class="welcome-lang">
+    {% include "_language_switch.html" %}
+  </div>
+  <main class="welcome">
+    <div class="welcome__icon" aria-hidden="true">🦒</div>
+    <h1 class="welcome__title">{{ t('app.title') }}</h1>
+    <p class="welcome__tagline">{{ t('welcome.tagline') }}</p>
+    <div class="welcome__branches">
+      <a class="welcome__branch welcome__branch--admin" href="/admin">
+        <span class="welcome__branch-icon" aria-hidden="true">🛠️</span>
+        <span class="welcome__branch-label">{{ t('welcome.administrator') }}</span>
+        <span class="welcome__branch-hint">{{ t('welcome.administrator.hint') }}</span>
+      </a>
+      <a class="welcome__branch welcome__branch--operator" href="/pad/login">
+        <span class="welcome__branch-icon" aria-hidden="true">📋</span>
+        <span class="welcome__branch-label">{{ t('welcome.operator') }}</span>
+        <span class="welcome__branch-hint">{{ t('welcome.operator.hint') }}</span>
+      </a>
+    </div>
+  </main>
+</body>
+</html>
