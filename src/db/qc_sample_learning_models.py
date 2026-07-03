@@ -7,6 +7,8 @@ image (+ region). ``VisualRuleMemory`` is the aggregated, supervisor-approvable
 unit. ``QCConfirmedVisualRule`` is the ONLY Training-Pack write target (via the
 apply endpoint); it enforces no-silent-overwrite.
 """
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional
 

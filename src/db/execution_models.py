@@ -1,4 +1,6 @@
 """SQLAlchemy models for QC inspection execution pipeline."""
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, JSON, UniqueConstraint

@@ -8,6 +8,8 @@ suggested) and, once a QC supervisor confirms it, the confirmed category.
 A detection point whose classification is unconfirmed cannot drive active
 production inspection (enforced in :mod:`src.qc_model`).
 """
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional
 

@@ -11,6 +11,8 @@ Safety invariants:
   approved** (no re-run/edit that mutates an approved report).
 - False pass is treated as critical (default max false-pass rate = 0).
 """
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional
 

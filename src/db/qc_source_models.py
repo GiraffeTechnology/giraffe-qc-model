@@ -12,6 +12,8 @@ Safety invariants baked into this layer:
   ``rejected``. Activation only happens later via the Training Pack apply path
   (a different PR). Nothing in this module can update a Training Pack.
 """
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional
 

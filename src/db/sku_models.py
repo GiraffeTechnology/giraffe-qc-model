@@ -1,4 +1,6 @@
 """SQLAlchemy models for QC SKU catalog (shared by Pad and Server editions)."""
+from __future__ import annotations
+
 from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, JSON, UniqueConstraint

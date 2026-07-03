@@ -5,6 +5,8 @@ learned detection-point / visual-rule proposals, supervisor approvals, and the
 auditable learning report. Nothing here is active until a supervisor approves
 and applies it.
 """
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional
 

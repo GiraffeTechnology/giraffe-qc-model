@@ -9,6 +9,8 @@ stored in the *existing* PR 20 ``qc_learned_detection_point_proposals`` table
 Nothing here writes to a Training Pack table. Proposals are draft-only until a
 supervisor approves them; there is no apply path in PR 22.
 """
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional
 

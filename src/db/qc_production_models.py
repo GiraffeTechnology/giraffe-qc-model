@@ -12,6 +12,8 @@ Safety invariants baked into this layer:
 - A run only records *recommended* dispositions; it never writes a final
   pass/reject.
 """
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional
 

@@ -12,6 +12,8 @@ LLM_ENABLE_REAL_CALLS=true + LLM_PROVIDER=qwen/openai but no API key:
 LLM_ENABLE_REAL_CALLS=true + key present:
   Routes to the named LLM provider.
 """
+from __future__ import annotations
+
 import os
 from src.llm.base import LLMProvider
 

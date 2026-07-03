@@ -1,4 +1,6 @@
 """SQLAlchemy models for QC standard intake pipeline."""
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, JSON
