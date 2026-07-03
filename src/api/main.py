@@ -24,6 +24,7 @@ from src.api.qc_sample_learning_router import router as qc_sample_learning_route
 from src.api.qc_source_router import router as qc_source_router
 from src.api.sample_admin_router import router as sample_admin_router
 from src.api.sku_router import router as sku_router
+from src.api.web_shell_router import router as web_shell_router
 from src.db.session import init_db
 
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "static"
@@ -50,6 +51,7 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
+app.include_router(web_shell_router)
 app.include_router(pad_router)
 app.include_router(qc_router)
 app.include_router(sku_router)

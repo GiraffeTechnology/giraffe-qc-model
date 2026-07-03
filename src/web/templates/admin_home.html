@@ -1,0 +1,23 @@
+{% extends "shell_base.html" %}
+{% block title %}{{ t('admin.home.title') }}{% endblock %}
+{% block content %}
+<div class="admin-home">
+  <h1 class="admin-home__title">{{ t('admin.home.title') }}</h1>
+  <p class="admin-home__subtitle">{{ t('admin.home.subtitle') }}</p>
+  <div class="card-grid">
+    {% for card in cards %}
+    <a class="card" href="{{ card.href }}">
+      <div class="card__icon" aria-hidden="true">{{ card.icon }}</div>
+      <h2 class="card__title">{{ t(card.title_key) }}</h2>
+      <p class="card__desc">{{ t(card.desc_key) }}</p>
+      {% if card.count is not none and card.count_label_key %}
+      <div class="card__count">
+        <span class="card__count-num">{{ card.count }}</span>
+        <span class="card__count-label">{{ t(card.count_label_key) }}</span>
+      </div>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

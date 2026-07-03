@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}QC Sample Admin{% endblock %}</title>
   <link rel="stylesheet" href="/static/sample_admin.css">
+  <link rel="stylesheet" href="/static/shell.css">
 </head>
 <body>
   <header>
@@ -12,6 +13,9 @@
       <a href="/admin/samples" class="nav-brand">QC Sample Admin</a>
       <a href="/admin/qc-model" class="btn">Visual QC Model</a>
       <a href="/admin/samples/new" class="btn btn-primary">+ New Sample</a>
+      {% if current_language is defined %}
+      <span class="nav-lang">{% include "_language_switch.html" %}</span>
+      {% endif %}
     </nav>
   </header>
   <main>

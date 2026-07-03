@@ -1,0 +1,19 @@
+{% extends "shell_base.html" %}
+{% block title %}{{ t('settings.language.title') }}{% endblock %}
+{% block content %}
+<div class="settings">
+  <a class="stub__back" href="/admin">← {{ t('nav.home') }}</a>
+  <h1 class="settings__title">{{ t('settings.language.title') }}</h1>
+  <p class="settings__desc">{{ t('settings.language.desc') }}</p>
+  <form class="lang-form" method="post" action="/admin/settings/language">
+    <input type="hidden" name="next" value="/admin/settings/language">
+    {% for code in supported_languages %}
+    <label class="lang-form__option">
+      <input type="radio" name="language" value="{{ code }}" {% if code == current_language() %}checked{% endif %}>
+      <span class="lang-form__label">{{ language_labels[code] }}</span>
+    </label>
+    {% endfor %}
+    <button type="submit" class="btn btn-primary">{{ t('settings.language.save') }}</button>
+  </form>
+</div>
+{% endblock %}

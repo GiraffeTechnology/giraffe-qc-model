@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="{{ current_language() }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}{{ t('app.title') }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/shell.css">
+  {% block head %}{% endblock %}
+</head>
+<body class="shell-body {% block body_class %}{% endblock %}">
+  <header class="shell-header">
+    <a class="shell-brand" href="/admin">
+      <span class="shell-brand__icon" aria-hidden="true">🦒</span>
+      <span class="shell-brand__text">{{ t('app.title') }}</span>
+    </a>
+    <div class="shell-header__actions">
+      {% include "_language_switch.html" %}
+    </div>
+  </header>
+  <main class="shell-main">
+    {% block content %}{% endblock %}
+  </main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
