@@ -68,13 +68,15 @@ data class InstalledStandardRevision(
  * `DetectionPoint` component in `contracts/openapi.yaml`.
  */
 data class DetectionPoint(
+    /** Accepts UPPER_SNAKE, hyphenated (DP-FLOWER-FRONT-001), and lowercase codes. */
     val pointCode: String,
     val label: String,
-    val description: String,
-    val methodHint: String,
+    /** Free-text criteria fields are nullable — terse points may omit them. */
+    val description: String?,
+    val methodHint: String?,
     /** e.g. "3" for a count checkpoint; null when not applicable. */
     val expectedValue: String?,
-    val passCriteria: String,
+    val passCriteria: String?,
     val severity: DetectionSeverity,
     val requiredView: RequiredView,
     val evidenceRequired: Boolean,

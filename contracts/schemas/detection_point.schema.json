@@ -8,10 +8,6 @@
   "required": [
     "point_code",
     "label",
-    "description",
-    "method_hint",
-    "expected_value",
-    "pass_criteria",
     "severity",
     "required_view",
     "evidence_required",
@@ -20,8 +16,8 @@
   "properties": {
     "point_code": {
       "type": "string",
-      "description": "Stable machine identifier, UPPER_SNAKE_CASE (e.g. PEARL_COUNT). Unique within a standard revision.",
-      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "description": "Stable machine identifier, unique within a standard revision. Accepts the code styles already in use: UPPER_SNAKE (e.g. PEARL_COUNT), hyphenated (e.g. DP-FLOWER-FRONT-001, REQ-STAIN-001), and their lowercase variants (e.g. dp-bracelet-001).",
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
       "minLength": 1
     },
     "label": {
@@ -30,20 +26,20 @@
       "minLength": 1
     },
     "description": {
-      "type": "string",
-      "description": "Fuller explanation of what this checkpoint inspects."
+      "type": ["string", "null"],
+      "description": "Fuller explanation of what this checkpoint inspects. May be null/absent for terse points."
     },
     "method_hint": {
-      "type": "string",
-      "description": "How to inspect this point (e.g. 'count pearls in the center cluster')."
+      "type": ["string", "null"],
+      "description": "How to inspect this point (e.g. 'count pearls in the center cluster'). May be null/absent."
     },
     "expected_value": {
       "type": ["string", "null"],
       "description": "Expected observed value where meaningful, e.g. '3' for a count checkpoint. Null when not applicable."
     },
     "pass_criteria": {
-      "type": "string",
-      "description": "Explicit criterion that must hold for a pass."
+      "type": ["string", "null"],
+      "description": "Explicit criterion that must hold for a pass. May be null/absent when the pass condition is implicit (e.g. 'no defect visible')."
     },
     "severity": {
       "$ref": "#/$defs/severity"

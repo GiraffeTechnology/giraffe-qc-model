@@ -82,12 +82,12 @@ adds and types the final three: `required_view`, `evidence_required`,
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `point_code` | string `^[A-Z][A-Z0-9_]*$` | Stable id, unique within a revision |
+| `point_code` | string `^[A-Za-z][A-Za-z0-9_-]*$` | Stable id, unique within a revision. Accepts UPPER_SNAKE (`PEARL_COUNT`), hyphenated (`DP-FLOWER-FRONT-001`), and lowercase (`dp-bracelet-001`) |
 | `label` | string | Short display name |
-| `description` | string | Fuller explanation |
-| `method_hint` | string | How to inspect |
+| `description` | string \| null | Fuller explanation; may be omitted |
+| `method_hint` | string \| null | How to inspect; may be omitted |
 | `expected_value` | string \| null | e.g. `"3"`; null when N/A |
-| `pass_criteria` | string | Explicit pass condition |
+| `pass_criteria` | string \| null | Explicit pass condition; may be omitted when implicit |
 | `severity` | enum | `minor` \| `major` \| `critical` |
 | `required_view` | enum | `front, back, left_side, right_side, top, bottom, interior, detail, any` |
 | `evidence_required` | boolean | If true, a result needs an evidence image |
@@ -96,6 +96,15 @@ adds and types the final three: `required_view`, `evidence_required`,
 `incidental_finding_policy` semantics: `flag_for_review` escalates the item to
 `review_required`; `record_only` logs the finding without changing the verdict;
 `ignore` drops it.
+
+**Required vs. present.** The schema requires only the six fields that must
+always have a concrete value (`point_code`, `label`, `severity`,
+`required_view`, `evidence_required`, `incidental_finding_policy`); the four
+free-text criteria fields are nullable and may be omitted, so existing
+detection points that never captured them still validate. To satisfy §5.4
+("carry all fields verbatim"), **API responses SHOULD still emit all ten keys**,
+using `null` where a value was never authored — do not silently drop keys on the
+wire.
 
 ---
 

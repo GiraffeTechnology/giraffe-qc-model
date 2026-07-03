@@ -399,10 +399,6 @@ components:
       required:
         - point_code
         - label
-        - description
-        - method_hint
-        - expected_value
-        - pass_criteria
         - severity
         - required_view
         - evidence_required
@@ -410,15 +406,18 @@ components:
       properties:
         point_code:
           type: string
-          pattern: '^[A-Z][A-Z0-9_]*$'
-          description: Stable UPPER_SNAKE identifier, unique within a revision.
+          pattern: '^[A-Za-z][A-Za-z0-9_-]*$'
+          description: >-
+            Stable identifier, unique within a revision. Accepts existing code
+            styles: UPPER_SNAKE (PEARL_COUNT), hyphenated (DP-FLOWER-FRONT-001),
+            and lowercase variants (dp-bracelet-001).
         label: { type: string }
-        description: { type: string }
-        method_hint: { type: string }
+        description: { type: [string, 'null'] }
+        method_hint: { type: [string, 'null'] }
         expected_value:
           type: [string, 'null']
           description: Expected value where meaningful (e.g. "3"); null otherwise.
-        pass_criteria: { type: string }
+        pass_criteria: { type: [string, 'null'] }
         severity: { $ref: '#/components/schemas/Severity' }
         required_view: { $ref: '#/components/schemas/RequiredView' }
         evidence_required: { type: boolean }
