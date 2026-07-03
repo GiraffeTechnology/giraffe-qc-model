@@ -22,6 +22,7 @@ from src.api.qc_qualification_router import router as qc_qualification_router
 from src.api.qc_readiness_router import router as qc_readiness_router
 from src.api.qc_sample_learning_router import router as qc_sample_learning_router
 from src.api.qc_source_router import router as qc_source_router
+from src.api.qc_bundle_router import router as qc_bundle_router
 from src.api.sample_admin_router import router as sample_admin_router
 from src.api.sku_router import router as sku_router
 from src.db.session import init_db
@@ -65,6 +66,7 @@ app.include_router(qc_readiness_router)
 app.include_router(qc_production_router)
 app.include_router(qc_qualification_router)
 app.include_router(qc_incident_router)
+app.include_router(qc_bundle_router)
 
 
 @app.get("/health")
