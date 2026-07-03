@@ -16,6 +16,7 @@ import com.giraffetechnology.qc.sku.PadInspectionCoordinator
 import com.giraffetechnology.qc.sku.SkuMatcher
 import com.giraffetechnology.qc.sku.SkuRepository
 import com.giraffetechnology.qc.sku.TaskSelectionController
+import com.giraffetechnology.qc.sync.PadSyncManager
 import com.giraffetechnology.qc.BuildConfig
 
 /**
@@ -40,6 +41,7 @@ object PadRuntimeGraph {
     @Volatile private var _qwenInspector: QwenInspector? = null
     @Volatile private var _inspectionCoordinator: PadInspectionCoordinator? = null
     @Volatile private var _cameraXCaptureController: CameraXCaptureController? = null
+    @Volatile private var _syncManager: PadSyncManager? = null
 
     fun init(context: Context) {
         if (_initialized) return
@@ -74,6 +76,13 @@ object PadRuntimeGraph {
             // CameraX still-image capture — bind() is called from the capture screen composable.
             _cameraXCaptureController = CameraXCaptureController(context.applicationContext)
 
+            // Task 03 offline sync: signed-bundle import (inbox + sync-window pull)
+            // and the result outbox. No network is touched during inspection.
+            _syncManager = PadSyncManager(
+                context.applicationContext,
+                serverBaseUrl = BuildConfig.SKU_API_BASE_URL,
+            )
+
             _initialized = true
         }
     }
@@ -107,6 +116,9 @@ object PadRuntimeGraph {
 
     val cameraXCaptureController: CameraXCaptureController
         get() = checkNotNull(_cameraXCaptureController) { notInitMsg() }
+
+    val syncManager: PadSyncManager
+        get() = checkNotNull(_syncManager) { notInitMsg() }
 
     private fun notInitMsg() = "PadRuntimeGraph.init(context) must be called before accessing this"
 }

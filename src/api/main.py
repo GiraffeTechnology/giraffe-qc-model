@@ -22,9 +22,11 @@ from src.api.qc_qualification_router import router as qc_qualification_router
 from src.api.qc_readiness_router import router as qc_readiness_router
 from src.api.qc_sample_learning_router import router as qc_sample_learning_router
 from src.api.qc_source_router import router as qc_source_router
+from src.api.qc_sync_router import router as qc_sync_router
 from src.api.sample_admin_router import router as sample_admin_router
 from src.api.sku_router import router as sku_router
 from src.db.session import init_db
+from src.sync.bundle_signing import SigningKeyError, validate_signing_key_at_startup
 
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "static"
 
@@ -33,6 +35,16 @@ _STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "static"
 async def lifespan(app: FastAPI):
     """Application lifespan: initialize database on startup."""
     init_db()
+    # Bundle signing (Task 03): if a signing key is configured, validate it now so
+    # misconfiguration fails loudly at startup rather than at first export. When no
+    # key is set the endpoints return 503 on use — this keeps non-signing
+    # deployments (and the test harness) startable.
+    if os.getenv("QC_BUNDLE_SIGNING_KEY") or os.getenv("QC_BUNDLE_SIGNING_KEY_PEM"):
+        try:
+            validate_signing_key_at_startup()
+        except SigningKeyError:
+            if os.getenv("QC_BUNDLE_SIGNING_REQUIRED", "false").lower() == "true":
+                raise
     yield
 
 
@@ -59,6 +71,7 @@ app.include_router(qc_inspection_router)
 app.include_router(qc_model_router)
 app.include_router(qc_learning_router)
 app.include_router(qc_source_router)
+app.include_router(qc_sync_router)
 app.include_router(qc_authoring_router)
 app.include_router(qc_sample_learning_router)
 app.include_router(qc_readiness_router)

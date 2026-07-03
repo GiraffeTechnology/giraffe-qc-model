@@ -134,6 +134,11 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
+    // Ed25519 bundle-signature verification (Task 03). BouncyCastle's lightweight
+    // API works on all Android API levels (minSdk 26) and on the JVM (unit tests),
+    // unlike java.security Ed25519 which requires API 33+.
+    implementation("org.bouncycastle:bcprov-jdk18on:1.77")
+
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
     // Real org.json for JVM unit tests — android.jar stubs don't function for JSON ops
