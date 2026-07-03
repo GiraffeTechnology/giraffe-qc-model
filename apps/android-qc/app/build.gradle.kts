@@ -3,6 +3,14 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Native MNN JNI build (src/main/cpp) is opt-in so CI's stub assemble — which
+// uses empty --ci-stubs headers that cannot compile the bridge — keeps working.
+// Hardware builds enable it after fetching the real AAR:
+//   bash scripts/download_mnn_android_libs.sh   (sets real libMNN.so + headers)
+//   ./gradlew :app:assemblePadLocalDebug -PwithMnnNative=true
+val withMnnNative: Boolean =
+    (project.findProperty("withMnnNative") as String?)?.toBoolean() ?: false
+
 android {
     namespace = "com.giraffetechnology.qc"
     compileSdk = 34
@@ -22,6 +30,23 @@ android {
         buildConfigField("boolean", "ALLOW_SEND_IMAGES_TO_CLOUD_QWEN", "false")
         buildConfigField("boolean", "ALLOW_STUB_PASS",                 "false")
         buildConfigField("String",  "SKU_API_BASE_URL",                "\"http://192.168.1.10:8080\"")
+
+        if (withMnnNative) {
+            // Pad hardware is arm64-v8a only; MNN prebuilts ship for that ABI.
+            ndk { abiFilters += "arm64-v8a" }
+            externalNativeBuild {
+                cmake { cppFlags += "-std=c++17" }
+            }
+        }
+    }
+
+    if (withMnnNative) {
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
+                version = "3.22.1"
+            }
+        }
     }
 
     flavorDimensions += "target"
@@ -86,6 +111,40 @@ tasks.register("verifyMnnNativeDeps") {
                   "Run: bash scripts/download_mnn_android_libs.sh  (or --ci-stubs for CI)")
         } else {
             println("verifyMnnNativeDeps: all required MNN native artifacts present.")
+        }
+    }
+}
+
+tasks.register("auditNoCloudInference") {
+    group = "verification"
+    description = "Fails if any cloud VLM/LLM endpoint or SDK is referenced from src/main " +
+        "(padLocal inference must stay on-device)."
+    doLast {
+        val mainSrc = file("src/main")
+        // Cloud inference providers and their hostnames/SDK ids. SKU-data LAN
+        // HTTP is fine; these are inference/generation endpoints only.
+        val forbidden = listOf(
+            "dashscope", "aliyuncs", "generativelanguage", "api.openai.com",
+            "openai", "anthropic", "bedrock", "vertexai", "generateContent",
+            "qwen-vl-plus", "qwen-vl-max", "multimodal-generation",
+        )
+        val violations = mutableListOf<String>()
+        if (mainSrc.exists()) {
+            mainSrc.walkTopDown()
+                .filter { it.isFile && (it.extension == "kt" || it.extension == "cpp" || it.extension == "java") }
+                .forEach { f ->
+                    val text = f.readText()
+                    forbidden.forEach { needle ->
+                        if (text.contains(needle, ignoreCase = true)) {
+                            violations += "${f.relativeTo(mainSrc)}: references '$needle'"
+                        }
+                    }
+                }
+        }
+        if (violations.isNotEmpty()) {
+            error("Cloud inference reference in padLocal src/main:\n  ${violations.joinToString("\n  ")}")
+        } else {
+            println("auditNoCloudInference: no cloud inference endpoints/SDKs referenced in src/main.")
         }
     }
 }
