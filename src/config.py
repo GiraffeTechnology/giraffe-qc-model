@@ -29,6 +29,16 @@ def local_prefilter_threshold() -> float:
     return float(os.getenv("LOCAL_PREFILTER_THRESHOLD", "0.25"))
 
 
+def bundle_signing_secret() -> str:
+    """Shared secret used to sign/verify bundle manifests (§7.3).
+
+    The publisher (studio) and the bundle-management/verify path must agree on
+    this value. Read at call time so tests can set it per-case. A non-empty
+    default keeps dev/test self-contained; production must set BUNDLE_SIGNING_SECRET.
+    """
+    return os.getenv("BUNDLE_SIGNING_SECRET", "dev-bundle-signing-secret")
+
+
 def qc_engine_mode() -> str:
     """Return the active QC engine mode.
 

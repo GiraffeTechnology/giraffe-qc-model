@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Workstation Management{% endblock %}
+{% block content %}
+<section class="qcm-panel">
+  <h1>Workstation Management</h1>
+  <p class="qcm-note">
+    Register workstations, assign a signed bundle, and track assigned vs
+    installed version reported back by each Pad.
+    See also <a href="/admin/bundles?tenant_id={{ tenant_id }}">Bundle Management</a>.
+  </p>
+
+  <h2>Register workstation</h2>
+  <form method="post" action="/admin/workstations/register" class="qcm-inline-form">
+    <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+    <input type="text" name="workstation_id" placeholder="ws-line-1" required>
+    <input type="text" name="display_name" placeholder="Line 1 Pad" required>
+    <input type="text" name="site_or_line" placeholder="Site A / Line 1">
+    <button type="submit" class="btn btn-primary">Register</button>
+  </form>
+
+  <h2>Fleet</h2>
+  {% if workstations %}
+  <table class="qcm-table">
+    <thead>
+      <tr>
+        <th>Workstation</th><th>Site / line</th><th>Paired</th>
+        <th>Assigned</th><th>Installed</th><th>Last seen</th>
+        <th>Last sync</th><th>Outbox</th><th>Last error</th><th>Assign</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for w in workstations %}
+      <tr>
+        <td>{{ w.display_name }}<br><code>{{ w.workstation_id }}</code></td>
+        <td>{{ w.site_or_line or '—' }}</td>
+        <td>{{ w.paired_status }}
+          {% if w.paired_status != 'paired' and w.pairing_token %}
+          <br><small class="qcm-note">token/QR: <code>{{ w.pairing_token }}</code></small>{% endif %}</td>
+        <td>{{ w.assigned_bundle_version or '—' }}</td>
+        <td>{{ w.installed_bundle_version or '—' }}
+          {% if w.in_sync %}<span class="qcm-state">in sync</span>{% endif %}</td>
+        <td>{{ w.last_seen_at or '—' }}</td>
+        <td>{{ w.last_sync_status or '—' }}</td>
+        <td>{{ w.outbox_upload_status or '—' }}</td>
+        <td>{% if w.last_error %}<span class="qcm-pending">{{ w.last_error }}</span>{% else %}—{% endif %}</td>
+        <td>
+          {% if bundles %}
+          <form method="post" action="/admin/workstations/{{ w.id }}/assign" class="qcm-inline-form">
+            <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+            <select name="bundle_pk">
+              {% for b in bundles %}<option value="{{ b.id }}">{{ b.bundle_version }}</option>{% endfor %}
+            </select>
+            <button type="submit" class="btn btn-sm btn-primary">Assign</button>
+          </form>
+          {% else %}<span class="qcm-note">no bundles</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="qcm-note">No workstations registered yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

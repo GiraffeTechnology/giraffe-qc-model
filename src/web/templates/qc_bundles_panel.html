@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Bundle Management{% endblock %}
+{% block content %}
+<section class="qcm-panel">
+  <h1>Bundle Management</h1>
+  <p class="qcm-note qcm-boundary">
+    🔒 Every bundle is signed. Downloads and assignments are verified
+    <strong>fail-closed</strong> — a tampered manifest, bad checksum, or missing
+    signature is rejected and never served. There is no skip-verification path.
+  </p>
+
+  <h2>Bundle history</h2>
+  {% if bundles %}
+  <table class="qcm-table">
+    <thead>
+      <tr>
+        <th>Version</th><th>SKUs</th><th>Std revisions</th><th>Signature</th>
+        <th>Created by</th><th>Created</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for b in bundles %}
+      <tr>
+        <td><code>{{ b.bundle_version }}</code> <span class="qcm-state">{{ b.status }}</span></td>
+        <td>{{ b.sku_count }}</td>
+        <td>{{ b.standard_revision_count }}</td>
+        <td>{% if b.signed %}✅ {{ b.signature_algo }}{% else %}<span class="qcm-pending">unsigned</span>{% endif %}</td>
+        <td>{{ b.created_by or '—' }}</td>
+        <td>{{ b.created_at or '—' }}</td>
+        <td><a class="btn btn-sm" href="/api/qc/bundles/{{ b.id }}/download?tenant_id={{ tenant_id }}">Download</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="qcm-note">No bundles recorded yet. The studio publishes signed bundles via
+    <code>POST /api/qc/bundles</code>.</p>
+  {% endif %}
+
+  <h2>Assign to workstation</h2>
+  {% if workstations and bundles %}
+  <table class="qcm-table">
+    <thead><tr><th>Workstation</th><th>Assigned</th><th>Installed</th><th>Assign bundle</th></tr></thead>
+    <tbody>
+      {% for w in workstations %}
+      <tr>
+        <td>{{ w.display_name }} <code>{{ w.workstation_id }}</code></td>
+        <td>{{ w.assigned_bundle_version or '—' }}</td>
+        <td>{{ w.installed_bundle_version or '—' }}
+          {% if w.in_sync %}<span class="qcm-state">in sync</span>{% endif %}</td>
+        <td>
+          <form method="post" action="/admin/workstations/{{ w.id }}/assign" class="qcm-inline-form">
+            <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+            <select name="bundle_pk">
+              {% for b in bundles %}<option value="{{ b.id }}">{{ b.bundle_version }}</option>{% endfor %}
+            </select>
+            <button type="submit" class="btn btn-sm btn-primary">Assign</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="qcm-note">Register a workstation and record a bundle to enable assignment.
+    See <a href="/admin/workstations?tenant_id={{ tenant_id }}">Workstations</a>.</p>
+  {% endif %}
+</section>
+{% endblock %}
