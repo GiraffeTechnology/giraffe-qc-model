@@ -169,6 +169,10 @@ class QCDetectionPoint(Base):
     roi_json: Mapped[Optional[dict]] = mapped_column(JSON)
     expected_value: Mapped[Optional[str]] = mapped_column(String(256))
     method_hint: Mapped[Optional[str]] = mapped_column(String(128))
+    # Human-readable pass/fail criterion for this detection point.  Carried
+    # through Admin Studio confirmation so a checkpoint keeps all three
+    # semantic fields (method_hint / expected_value / pass_criteria).
+    pass_criteria: Mapped[Optional[str]] = mapped_column(Text)
     # "minor" | "major" | "critical"
     severity: Mapped[str] = mapped_column(String(32), nullable=False, default="major")
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

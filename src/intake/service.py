@@ -319,6 +319,7 @@ def confirm_standard_intake(
             method_hint=cp.get("method_hint"),
             severity=cp.get("severity", "major"),
             expected_value=cp.get("expected_value"),
+            pass_criteria=cp.get("pass_criteria"),
             sort_order=i + 1,
             is_active=True,
         )

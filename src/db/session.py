@@ -94,6 +94,7 @@ def init_db() -> None:
     import src.db.qc_verdict_models  # noqa: F401 — side-effect import registers tables
     import src.db.intake_models  # noqa: F401 — side-effect import registers tables
     import src.db.pad_models  # noqa: F401 — side-effect import registers tables
+    import src.db.studio_models  # noqa: F401 — side-effect import registers tables
     Base.metadata.create_all(bind=_get_engine())
 
 
