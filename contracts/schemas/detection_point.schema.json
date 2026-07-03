@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://giraffetechnology.com/contracts/detection_point.schema.json",
+  "title": "DetectionPoint",
+  "description": "Canonical detection point (PRD §5.4). Every API response that carries detection points, every bundle manifest entry, and every on-device store row uses exactly these ten fields, verbatim. This schema is the single source of truth; the OpenAPI DetectionPoint component and the Kotlin DetectionPoint data class mirror it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "point_code",
+    "label",
+    "severity",
+    "required_view",
+    "evidence_required",
+    "incidental_finding_policy"
+  ],
+  "properties": {
+    "point_code": {
+      "type": "string",
+      "description": "Stable machine identifier, unique within a standard revision. Accepts the code styles already in use: UPPER_SNAKE (e.g. PEARL_COUNT), hyphenated (e.g. DP-FLOWER-FRONT-001, REQ-STAIN-001), and their lowercase variants (e.g. dp-bracelet-001).",
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+      "minLength": 1
+    },
+    "label": {
+      "type": "string",
+      "description": "Short human-readable name shown to operators (localizable display text).",
+      "minLength": 1
+    },
+    "description": {
+      "type": ["string", "null"],
+      "description": "Fuller explanation of what this checkpoint inspects. May be null/absent for terse points."
+    },
+    "method_hint": {
+      "type": ["string", "null"],
+      "description": "How to inspect this point (e.g. 'count pearls in the center cluster'). May be null/absent."
+    },
+    "expected_value": {
+      "type": ["string", "null"],
+      "description": "Expected observed value where meaningful, e.g. '3' for a count checkpoint. Null when not applicable."
+    },
+    "pass_criteria": {
+      "type": ["string", "null"],
+      "description": "Explicit criterion that must hold for a pass. May be null/absent when the pass condition is implicit (e.g. 'no defect visible')."
+    },
+    "severity": {
+      "$ref": "#/$defs/severity"
+    },
+    "required_view": {
+      "$ref": "#/$defs/requiredView"
+    },
+    "evidence_required": {
+      "type": "boolean",
+      "description": "If true, a captured evidence image is required to record a result for this point."
+    },
+    "incidental_finding_policy": {
+      "$ref": "#/$defs/incidentalFindingPolicy"
+    }
+  },
+  "$defs": {
+    "severity": {
+      "type": "string",
+      "description": "Defect severity if this point fails.",
+      "enum": ["minor", "major", "critical"]
+    },
+    "requiredView": {
+      "type": "string",
+      "description": "Camera view the capture must present for this point. 'any' imposes no constraint.",
+      "enum": [
+        "front",
+        "back",
+        "left_side",
+        "right_side",
+        "top",
+        "bottom",
+        "interior",
+        "detail",
+        "any"
+      ]
+    },
+    "incidentalFindingPolicy": {
+      "type": "string",
+      "description": "How incidental findings near this checkpoint affect the verdict. flag_for_review escalates the item to review_required; record_only logs without changing the verdict; ignore drops them.",
+      "enum": ["flag_for_review", "record_only", "ignore"]
+    }
+  }
+}
