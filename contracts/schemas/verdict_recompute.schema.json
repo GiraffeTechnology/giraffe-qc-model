@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://giraffetechnology.com/contracts/verdict_recompute.schema.json",
+  "title": "VerdictRecompute",
+  "description": "Server-side verdict recomputation contract (PRD §9). Given the checkpoint results a Pad submitted plus the standard revision and bundle version they were computed against, the server independently recomputes the verdict and reports any disagreement with the Pad-submitted verdict. Used to detect false-pass / drift and to drive requalification. This file defines both the request and response objects.",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/response" }
+  ],
+  "$defs": {
+    "verdict": {
+      "type": "string",
+      "enum": ["pass", "fail", "review_required"],
+      "description": "The three terminal verdicts (fail-closed; review_required is never auto-promoted to pass)."
+    },
+    "checkpointResultStatus": {
+      "type": "string",
+      "description": "Per-checkpoint outcome status. Anything other than 'pass' contributes to review_required unless it is 'fail'.",
+      "enum": ["pass", "fail", "not_visible", "low_confidence", "unsupported"]
+    },
+    "request": {
+      "$id": "#recomputeRequest",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tenant_id",
+        "sku_id",
+        "standard_revision_id",
+        "bundle_version",
+        "submitted_verdict",
+        "checkpoint_results"
+      ],
+      "properties": {
+        "tenant_id": { "type": "string", "minLength": 1 },
+        "sku_id": { "type": "string", "minLength": 1 },
+        "inspection_id": {
+          "type": "string",
+          "description": "Optional id of the Pad inspection being audited."
+        },
+        "standard_revision_id": {
+          "type": "string",
+          "description": "Revision the Pad computed against; the server recomputes against this same revision.",
+          "minLength": 1
+        },
+        "bundle_version": {
+          "type": "string",
+          "description": "Bundle version installed on the Pad (from the signed manifest).",
+          "minLength": 1
+        },
+        "submitted_verdict": {
+          "$ref": "#/$defs/verdict",
+          "description": "The overall verdict the Pad submitted; the diff is measured against this."
+        },
+        "checkpoint_results": {
+          "type": "array",
+          "description": "The Pad-submitted per-checkpoint results the server recomputes from.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["point_code", "status"],
+            "properties": {
+              "point_code": { "type": "string", "minLength": 1 },
+              "status": { "$ref": "#/$defs/checkpointResultStatus" },
+              "observed_value": { "type": ["string", "null"] },
+              "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
+        "incidental_findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["severity"],
+            "properties": {
+              "severity": { "type": "string", "enum": ["minor", "major", "critical"] },
+              "description": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "response": {
+      "$id": "#recomputeResponse",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recomputed_verdict",
+        "submitted_verdict",
+        "agrees",
+        "standard_revision_id",
+        "bundle_version",
+        "diff"
+      ],
+      "properties": {
+        "recomputed_verdict": {
+          "$ref": "#/$defs/verdict",
+          "description": "Verdict the server independently recomputed from the submitted checkpoint results and the standard revision."
+        },
+        "submitted_verdict": { "$ref": "#/$defs/verdict" },
+        "agrees": {
+          "type": "boolean",
+          "description": "True iff recomputed_verdict == submitted_verdict."
+        },
+        "standard_revision_id": { "type": "string" },
+        "bundle_version": { "type": "string" },
+        "finalization_rule_applied": {
+          "type": "string",
+          "description": "Which no-guess rule produced recomputed_verdict."
+        },
+        "diff": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["verdict_changed", "checkpoint_diffs", "unknown_point_codes", "missing_point_codes"],
+          "description": "Structured disagreement between the Pad-submitted and server-recomputed evaluation.",
+          "properties": {
+            "verdict_changed": {
+              "type": "boolean",
+              "description": "True iff the overall verdict differs."
+            },
+            "false_pass_suspected": {
+              "type": "boolean",
+              "description": "True when the Pad submitted 'pass' but the server recomputed 'fail' or 'review_required' (PRD §9 false-pass trigger)."
+            },
+            "checkpoint_diffs": {
+              "type": "array",
+              "description": "Per-checkpoint disagreements only (points that agree are omitted).",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["point_code", "submitted_status", "recomputed_status"],
+                "properties": {
+                  "point_code": { "type": "string" },
+                  "submitted_status": { "$ref": "#/$defs/checkpointResultStatus" },
+                  "recomputed_status": { "$ref": "#/$defs/checkpointResultStatus" }
+                }
+              }
+            },
+            "unknown_point_codes": {
+              "type": "array",
+              "description": "Submitted point_codes not present in the standard revision (fail-closed: forces review_required).",
+              "items": { "type": "string" }
+            },
+            "missing_point_codes": {
+              "type": "array",
+              "description": "Point_codes required by the revision but absent from the submission (fail-closed: forces review_required).",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

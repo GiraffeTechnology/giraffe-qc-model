@@ -1,0 +1,552 @@
+openapi: 3.1.0
+info:
+  title: Giraffe QC — Admin Studio, Bundles & Workstations Contract
+  version: "1.0.0"
+  description: >-
+    S0 Foundation contract (PRD §14) for the five route groups that S1–S6 build
+    UI against: Admin Studio, Bundles, and Workstations. Every response that
+    carries detection points embeds the DetectionPoint component, which holds all
+    PRD §5.4 fields verbatim. This spec is authoritative for path, method,
+    request, and response shapes; the reusable object schemas mirror the JSON
+    Schema files under contracts/schemas/.
+servers:
+  - url: /api/v1
+    description: All routes are mounted under /api/v1 (existing convention).
+security:
+  - TenantHeader: []
+tags:
+  - name: admin-studio
+    description: PRD §14 — authoring studio (message intake, standard photos, confirm/reject/publish).
+  - name: bundles
+    description: PRD §14 — signed bundle export, history, download, workstation assignment.
+  - name: workstations
+    description: PRD §14 — workstation registry admin.
+
+paths:
+  # ── Group 1: Admin Studio ────────────────────────────────────────────────
+  /admin/studio/messages:
+    post:
+      operationId: adminStudioPostMessage
+      tags: [admin-studio]
+      summary: Submit an operator message into a standard's authoring thread.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StudioMessageRequest' }
+      responses:
+        '201':
+          description: Message accepted; returns the updated draft standard.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftStandard' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/studio/upload-standard-photo:
+    post:
+      operationId: adminStudioUploadStandardPhoto
+      tags: [admin-studio]
+      summary: Attach a standard reference photo to a draft standard.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [standard_id, required_view, file]
+              properties:
+                standard_id: { type: string }
+                required_view:
+                  $ref: '#/components/schemas/RequiredView'
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Photo stored; returns the updated draft standard.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftStandard' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/studio/confirm-standard:
+    post:
+      operationId: adminStudioConfirmStandard
+      tags: [admin-studio]
+      summary: Confirm a reviewed draft (ready_for_review → confirmed).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [standard_id, confirmed_by, detection_points]
+              properties:
+                standard_id: { type: string }
+                confirmed_by: { type: string }
+                operator_comment: { type: string }
+                detection_points:
+                  type: array
+                  minItems: 1
+                  items: { $ref: '#/components/schemas/DetectionPoint' }
+      responses:
+        '200':
+          description: Standard confirmed; returns the confirmed standard.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StandardRevision' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/studio/reject-standard:
+    post:
+      operationId: adminStudioRejectStandard
+      tags: [admin-studio]
+      summary: Reject a draft, sending it back for more information.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [standard_id, rejected_by]
+              properties:
+                standard_id: { type: string }
+                rejected_by: { type: string }
+                reason: { type: string }
+      responses:
+        '200':
+          description: Standard moved to needs_information.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftStandard' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/studio/publish:
+    post:
+      operationId: adminStudioPublish
+      tags: [admin-studio]
+      summary: Publish a confirmed standard (confirmed → published).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [standard_id, published_by]
+              properties:
+                standard_id: { type: string }
+                published_by: { type: string }
+      responses:
+        '200':
+          description: Standard published; returns the published revision.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StandardRevision' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Standard is not in a publishable (confirmed) state.
+
+  # ── Group 2: Bundles ─────────────────────────────────────────────────────
+  /bundles/export:
+    post:
+      operationId: bundlesExport
+      tags: [bundles]
+      summary: Export selected published SKUs into a new signed bundle.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sku_ids]
+              properties:
+                sku_ids:
+                  type: array
+                  minItems: 1
+                  items: { type: string }
+                note: { type: string }
+      responses:
+        '201':
+          description: Bundle built and signed; returns bundle metadata.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BundleSummary' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: One or more SKUs are not in the published state.
+
+  /bundles/history:
+    get:
+      operationId: bundlesHistory
+      tags: [bundles]
+      summary: List previously exported bundles (newest first).
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Page of bundle summaries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/BundleSummary' }
+                  next_cursor: { type: [string, 'null'] }
+
+  /bundles/{id}/download:
+    get:
+      operationId: bundlesDownload
+      tags: [bundles]
+      summary: Download the signed bundle archive.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The signed bundle archive. The manifest inside conforms to bundle_manifest.schema.json.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /bundles/{id}/assign-workstation:
+    post:
+      operationId: bundlesAssignWorkstation
+      tags: [bundles]
+      summary: Assign a bundle to a workstation (Pad) for install.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workstation_id]
+              properties:
+                workstation_id: { type: string }
+      responses:
+        '200':
+          description: Assignment recorded; returns the assignment.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BundleAssignment' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ── Group 3: Workstations (/admin/workstations*) ─────────────────────────
+  /admin/workstations:
+    get:
+      operationId: workstationsList
+      tags: [workstations]
+      summary: List workstations for the tenant.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Page of workstations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Workstation' }
+                  next_cursor: { type: [string, 'null'] }
+    post:
+      operationId: workstationsCreate
+      tags: [workstations]
+      summary: Register a workstation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WorkstationWrite' }
+      responses:
+        '201':
+          description: Workstation created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workstation' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /admin/workstations/{id}:
+    get:
+      operationId: workstationsGet
+      tags: [workstations]
+      summary: Get a workstation.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The workstation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workstation' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: workstationsUpdate
+      tags: [workstations]
+      summary: Update a workstation.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WorkstationWrite' }
+      responses:
+        '200':
+          description: Updated workstation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workstation' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: workstationsDelete
+      tags: [workstations]
+      summary: Retire a workstation.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Retired. }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    TenantHeader:
+      type: apiKey
+      in: header
+      name: X-Tenant-ID
+      description: Tenant scope. Cross-tenant access returns 404 (existing convention).
+
+  responses:
+    BadRequest:
+      description: Validation failure.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Not found or cross-tenant access denied.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [detail]
+      properties:
+        detail: { type: string }
+
+    # ── PRD §10 lifecycle state (mirrors contracts/state_model.py) ──────────
+    StandardState:
+      type: string
+      description: Standard lifecycle state (PRD §10). Wire values only.
+      enum:
+        - draft
+        - needs_information
+        - ready_for_review
+        - confirmed
+        - published
+        - installed_on_pad
+        - active_inspection
+        - needs_requalification
+
+    RequiredView:
+      type: string
+      enum: [front, back, left_side, right_side, top, bottom, interior, detail, any]
+
+    Severity:
+      type: string
+      enum: [minor, major, critical]
+
+    IncidentalFindingPolicy:
+      type: string
+      enum: [flag_for_review, record_only, ignore]
+
+    # ── PRD §5.4 detection point (mirrors detection_point.schema.json) ──────
+    DetectionPoint:
+      type: object
+      description: >-
+        Canonical detection point (PRD §5.4). Exactly these ten fields, carried
+        verbatim in every response that includes detection points.
+      additionalProperties: false
+      required:
+        - point_code
+        - label
+        - description
+        - method_hint
+        - expected_value
+        - pass_criteria
+        - severity
+        - required_view
+        - evidence_required
+        - incidental_finding_policy
+      properties:
+        point_code:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          description: Stable UPPER_SNAKE identifier, unique within a revision.
+        label: { type: string }
+        description: { type: string }
+        method_hint: { type: string }
+        expected_value:
+          type: [string, 'null']
+          description: Expected value where meaningful (e.g. "3"); null otherwise.
+        pass_criteria: { type: string }
+        severity: { $ref: '#/components/schemas/Severity' }
+        required_view: { $ref: '#/components/schemas/RequiredView' }
+        evidence_required: { type: boolean }
+        incidental_finding_policy: { $ref: '#/components/schemas/IncidentalFindingPolicy' }
+
+    StandardPhoto:
+      type: object
+      required: [photo_id, required_view, url]
+      properties:
+        photo_id: { type: string }
+        required_view: { $ref: '#/components/schemas/RequiredView' }
+        url: { type: string }
+        sha256: { type: [string, 'null'] }
+
+    DraftStandard:
+      type: object
+      description: A standard while it is being authored (draft/needs_information/ready_for_review).
+      required: [standard_id, sku_id, state, detection_points, photos, messages]
+      properties:
+        standard_id: { type: string }
+        sku_id: { type: string }
+        tenant_id: { type: string }
+        state: { $ref: '#/components/schemas/StandardState' }
+        detection_points:
+          type: array
+          items: { $ref: '#/components/schemas/DetectionPoint' }
+        photos:
+          type: array
+          items: { $ref: '#/components/schemas/StandardPhoto' }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/StudioMessage' }
+        open_questions:
+          type: array
+          items: { type: string }
+
+    StandardRevision:
+      type: object
+      description: A confirmed or published standard revision.
+      required: [standard_revision_id, sku_id, revision_no, state, detection_points, photos]
+      properties:
+        standard_revision_id: { type: string }
+        sku_id: { type: string }
+        tenant_id: { type: string }
+        revision_no: { type: integer, minimum: 1 }
+        state: { $ref: '#/components/schemas/StandardState' }
+        confirmed_by: { type: [string, 'null'] }
+        published_by: { type: [string, 'null'] }
+        detection_points:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/DetectionPoint' }
+        photos:
+          type: array
+          items: { $ref: '#/components/schemas/StandardPhoto' }
+
+    StudioMessage:
+      type: object
+      required: [message_id, role, text, created_at]
+      properties:
+        message_id: { type: string }
+        role:
+          type: string
+          enum: [operator, system]
+        text: { type: string }
+        created_at: { type: string, format: date-time }
+
+    StudioMessageRequest:
+      type: object
+      required: [sku_id, text]
+      properties:
+        sku_id: { type: string }
+        standard_id:
+          type: [string, 'null']
+          description: Existing draft to append to; omit to start a new draft.
+        text: { type: string }
+        operator_id: { type: string }
+
+    BundleSummary:
+      type: object
+      description: Bundle metadata. The downloadable archive's manifest conforms to bundle_manifest.schema.json.
+      required: [bundle_id, bundle_version, created_at, sku_ids, manifest_digest, signed]
+      properties:
+        bundle_id: { type: string }
+        bundle_version: { type: string }
+        created_at: { type: string, format: date-time }
+        created_by: { type: [string, 'null'] }
+        sku_ids:
+          type: array
+          items: { type: string }
+        manifest_digest:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        signed:
+          type: boolean
+          description: Always true — unsigned bundles are never emitted (§7 fail-closed).
+        note: { type: [string, 'null'] }
+
+    BundleAssignment:
+      type: object
+      required: [bundle_id, workstation_id, assigned_at]
+      properties:
+        bundle_id: { type: string }
+        workstation_id: { type: string }
+        assigned_at: { type: string, format: date-time }
+        assigned_by: { type: [string, 'null'] }
+
+    Workstation:
+      type: object
+      required: [workstation_id, name, state, created_at]
+      properties:
+        workstation_id: { type: string }
+        tenant_id: { type: string }
+        name: { type: string }
+        location: { type: [string, 'null'] }
+        device_id:
+          type: [string, 'null']
+          description: Android device identifier bound to this workstation, if paired.
+        state:
+          type: string
+          enum: [active, retired]
+        active_bundle_id: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+
+    WorkstationWrite:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        location: { type: string }
+        device_id: { type: string }

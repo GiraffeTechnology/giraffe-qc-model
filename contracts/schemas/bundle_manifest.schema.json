@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://giraffetechnology.com/contracts/bundle_manifest.schema.json",
+  "title": "SignedStandardBundleManifest",
+  "description": "Signed QC standard bundle manifest (PRD §7). Packages one or more published SKU standard revisions plus their reference photos for install on a Pad. Verification is fail-closed: there is deliberately NO skip-verification flag, and unknown top-level keys are rejected (additionalProperties=false). A Pad MUST verify the signature and every checksum before installing; any mismatch aborts the install.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifest_version",
+    "bundle_id",
+    "bundle_version",
+    "created_at",
+    "tenant_id",
+    "skus",
+    "checksums",
+    "signature"
+  ],
+  "properties": {
+    "manifest_version": {
+      "type": "string",
+      "description": "Schema version of this manifest format.",
+      "const": "1.0"
+    },
+    "bundle_id": {
+      "type": "string",
+      "description": "Stable unique id of this bundle (referenced by /bundles/{id}/*).",
+      "minLength": 1
+    },
+    "bundle_version": {
+      "type": "string",
+      "description": "Monotonic version string for this bundle's contents; echoed in the verdict-recompute contract (§9).",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "skus": {
+      "type": "array",
+      "description": "Every SKU standard revision packaged in this bundle.",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/bundleSku" }
+    },
+    "checksums": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "manifest_digest", "photos"],
+      "description": "Integrity block. manifest_digest is computed over the canonical JSON of this manifest with the checksums.manifest_digest and signature fields removed.",
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "enum": ["sha256"],
+          "description": "Digest algorithm for all checksums in this block."
+        },
+        "manifest_digest": {
+          "$ref": "#/$defs/hexDigest",
+          "description": "Digest of the manifest body (self-integrity)."
+        },
+        "photos": {
+          "type": "array",
+          "description": "One entry per reference photo file carried by the bundle.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "digest", "size_bytes"],
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Bundle-relative path of the photo file.",
+                "minLength": 1
+              },
+              "digest": { "$ref": "#/$defs/hexDigest" },
+              "size_bytes": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "key_id", "signed_digest", "value"],
+      "description": "Detached signature over checksums.manifest_digest. A Pad rejects the bundle if the signature does not verify against the trusted key_id.",
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "enum": ["ed25519", "ecdsa-p256"],
+          "description": "Signature algorithm."
+        },
+        "key_id": {
+          "type": "string",
+          "description": "Identifier of the signing key; must be in the Pad's trust store.",
+          "minLength": 1
+        },
+        "signed_digest": {
+          "$ref": "#/$defs/hexDigest",
+          "description": "The manifest_digest that was signed; must equal checksums.manifest_digest."
+        },
+        "value": {
+          "type": "string",
+          "description": "Base64-encoded signature bytes.",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hexDigest": {
+      "type": "string",
+      "description": "Lowercase hex SHA-256 digest.",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "bundleSku": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sku_id",
+        "item_number",
+        "standard_revision_id",
+        "revision_no",
+        "state",
+        "standard_photos",
+        "detection_points"
+      ],
+      "properties": {
+        "sku_id": { "type": "string", "minLength": 1 },
+        "item_number": { "type": "string", "minLength": 1 },
+        "standard_revision_id": { "type": "string", "minLength": 1 },
+        "revision_no": { "type": "integer", "minimum": 1 },
+        "state": {
+          "type": "string",
+          "description": "Lifecycle state wire value (PRD §10). Bundled standards are always 'published'.",
+          "const": "published"
+        },
+        "standard_photos": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "required_view"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "required_view": { "$ref": "detection_point.schema.json#/$defs/requiredView" }
+            }
+          }
+        },
+        "detection_points": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "detection_point.schema.json#" }
+        }
+      }
+    }
+  }
+}
