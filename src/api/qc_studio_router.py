@@ -37,11 +37,14 @@ from src.storage.upload_validation import (
     UploadValidationError,
     read_and_validate_upload,
 )
+from src.web.i18n import install_i18n
 
 router = APIRouter(tags=["admin-studio"])
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "web" / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+# Carry the shared web-shell language switch on the Studio page (S1 seam).
+install_i18n(templates)
 
 _STUDIO_DATA_DIR = Path("data/qc_studio")
 
@@ -190,7 +193,7 @@ async def studio_upload(
     return {
         "status": "uploaded",
         "photo_id": photo.id,
-        "url": f"/admin/studio/photos/{photo.id}",
+        "url": studio.photo_url(photo),
         "mime_type": validated.mime_type,
         "size_bytes": validated.size_bytes,
         "sha256": validated.sha256,

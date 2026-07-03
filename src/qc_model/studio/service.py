@@ -24,6 +24,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -238,10 +239,21 @@ def sku_summary(db: Session, sku: QCSkuItem) -> Dict[str, Any]:
     }
 
 
+def photo_url(p: QCStandardPhoto) -> str:
+    """Tenant-aware URL for serving a stored standard photo.
+
+    The serving route filters by ``tenant_id`` and defaults it to ``default``,
+    so the owning tenant must be carried explicitly or non-default previews
+    404. The photo knows its own tenant, so we always emit it here.
+    """
+    tenant = p.tenant_id or "default"
+    return f"/admin/studio/photos/{p.id}?tenant_id={quote(tenant, safe='')}"
+
+
 def _photo_view(p: QCStandardPhoto) -> Dict[str, Any]:
     return {
         "id": p.id,
-        "url": f"/admin/studio/photos/{p.id}",
+        "url": photo_url(p),
         "view_type": p.view_type,
         "angle": p.angle,
         "sha256": p.sha256,

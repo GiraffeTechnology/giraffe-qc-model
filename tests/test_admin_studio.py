@@ -246,8 +246,10 @@ def test_upload_valid_png_displayed(client):
     assert body["mime_type"] == "image/png"
     # Tied to current SKU and immediately previewable as the primary photo.
     assert body["sku"]["primary_photo"] is not None
+    # The upload response URL is tenant-aware and resolves as-is.
     photo_url = body["url"]
-    served = client.get(photo_url + "?tenant_id=default")
+    assert "tenant_id=default" in photo_url
+    served = client.get(photo_url)
     assert served.status_code == 200
 
 
@@ -272,6 +274,63 @@ def test_upload_rejects_oversize(client, monkeypatch):
         files={"image": ("big.png", _tiny_png(), "image/png")},
     )
     assert resp.status_code == 413
+
+
+# ── Tenant-aware standard-photo URLs (Codex P2 regression) ────────────────────
+
+
+def test_standard_photo_urls_are_tenant_aware_for_non_default_tenant(client):
+    """A non-default tenant's standard photo must preview without a 404.
+
+    Regression for the Codex P2: previously the generated preview URL omitted
+    ``tenant_id``, so the serving route (which defaults it to ``default``)
+    404'd on photos owned by another tenant.
+    """
+    tenant = "tenant_acme"
+
+    # 1. Create SKU FLW-001 under the non-default tenant (via chat).
+    created = client.post(
+        "/admin/studio/chat",
+        json={"tenant_id": tenant, "message": "create sku FLW-001 Flower Brooch"},
+    ).json()
+    assert created["action"] == "created_sku"
+    sku_id = created["sku"]["id"]
+
+    # 2. Upload one standard photo through the Studio upload path.
+    up = client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": tenant},
+        files={"image": ("acme.png", _tiny_png(), "image/png")},
+    )
+    assert up.status_code == 200, up.text
+    up_body = up.json()
+
+    # 3. The upload response preview URL carries the owning tenant.
+    upload_url = up_body["url"]
+    assert f"tenant_id={tenant}" in upload_url
+
+    # 4. The SKU summary/list used by the right panel carries the same URL.
+    summary = client.get(f"/admin/studio/skus/{sku_id}?tenant_id={tenant}").json()
+    summary_url = summary["primary_photo"]["url"]
+    assert f"tenant_id={tenant}" in summary_url
+    assert summary_url == upload_url
+    for p in summary["photos"]:
+        assert f"tenant_id={tenant}" in p["url"]
+
+    listed = client.get(f"/admin/studio/skus?tenant_id={tenant}").json()["items"]
+    listed_sku = next(i for i in listed if i["id"] == sku_id)
+    assert f"tenant_id={tenant}" in listed_sku["primary_photo"]["url"]
+
+    # 5. Fetching the tenant-aware URL resolves (200, not 404).
+    served = client.get(summary_url)
+    assert served.status_code == 200
+
+    # 6. Tenant isolation stays fail-closed: the same photo id under the wrong
+    #    tenant (or the route default) must not return the photo.
+    photo_id = up_body["photo_id"]
+    assert client.get(f"/admin/studio/photos/{photo_id}?tenant_id=default").status_code == 404
+    assert client.get(f"/admin/studio/photos/{photo_id}").status_code == 404
+    assert client.get(f"/admin/studio/photos/{photo_id}?tenant_id=other").status_code == 404
 
 
 # ── §5.6 Publish → signed bundle ──────────────────────────────────────────────
