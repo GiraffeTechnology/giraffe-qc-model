@@ -13,6 +13,11 @@ import com.giraffetechnology.qc.qwen.MnnQwenInspector
 import com.giraffetechnology.qc.qwen.MnnRuntimeConfig
 import com.giraffetechnology.qc.qwen.MnnRuntimeLoader
 import com.giraffetechnology.qc.qwen.QwenInspector
+import com.giraffetechnology.qc.contracts.SqliteStandardStore
+import com.giraffetechnology.qc.i18n.LanguageController
+import com.giraffetechnology.qc.operator.OperatorTaskSelectionController
+import com.giraffetechnology.qc.store.AndroidSqliteStandardStore
+import com.giraffetechnology.qc.store.BundleImporter
 import com.giraffetechnology.qc.sku.ApiSkuRepository
 import com.giraffetechnology.qc.sku.MnnSkuMatcher
 import com.giraffetechnology.qc.sku.PadInspectionCoordinator
@@ -73,6 +78,10 @@ object PadRuntimeGraph {
     @Volatile private var _qwenInspector: QwenInspector? = null
     @Volatile private var _inspectionCoordinator: PadInspectionCoordinator? = null
     @Volatile private var _cameraXCaptureController: CameraXCaptureController? = null
+    @Volatile private var _standardStore: AndroidSqliteStandardStore? = null
+    @Volatile private var _bundleImporter: BundleImporter? = null
+    @Volatile private var _operatorTaskSelectionController: OperatorTaskSelectionController? = null
+    @Volatile private var _languageController: LanguageController? = null
 
     fun init(context: Context) = init(context, PadRuntimeConfig())
 
@@ -112,6 +121,20 @@ object PadRuntimeGraph {
             _inspectionCoordinator = PadInspectionCoordinator(inspector, loader)
 
             _cameraXCaptureController = CameraXCaptureController(appContext)
+
+            // Offline on-device standards store (S5 §14) + its consumers.
+            val standardStore = AndroidSqliteStandardStore(appContext)
+            _standardStore = standardStore
+            _bundleImporter = BundleImporter(standardStore)
+            _operatorTaskSelectionController = OperatorTaskSelectionController(standardStore)
+
+            // i18n seam: resolve the initial locale from the device language list
+            // with English fallback; explicit operator selection takes over later.
+            val deviceTags = run {
+                val locales = appContext.resources.configuration.locales
+                (0 until locales.size()).map { locales.get(it).toLanguageTag() }
+            }
+            _languageController = LanguageController(deviceLanguageTags = deviceTags)
 
             _initialized = true
 
@@ -162,6 +185,18 @@ object PadRuntimeGraph {
 
     val cameraXCaptureController: CameraXCaptureController
         get() = checkNotNull(_cameraXCaptureController) { notInitMsg() }
+
+    val standardStore: SqliteStandardStore
+        get() = checkNotNull(_standardStore) { notInitMsg() }
+
+    val bundleImporter: BundleImporter
+        get() = checkNotNull(_bundleImporter) { notInitMsg() }
+
+    val operatorTaskSelectionController: OperatorTaskSelectionController
+        get() = checkNotNull(_operatorTaskSelectionController) { notInitMsg() }
+
+    val languageController: LanguageController
+        get() = checkNotNull(_languageController) { notInitMsg() }
 
     private fun notInitMsg() = "PadRuntimeGraph.init(context) must be called before accessing this"
 }

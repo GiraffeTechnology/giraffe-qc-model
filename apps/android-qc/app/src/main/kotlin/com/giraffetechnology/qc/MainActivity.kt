@@ -5,9 +5,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import androidx.compose.material3.MaterialTheme
+import com.giraffetechnology.qc.ui.AdministratorInfoScreen
+import com.giraffetechnology.qc.ui.OperatorTaskSelectionScreen
 import com.giraffetechnology.qc.ui.QcCaptureScreen
 import com.giraffetechnology.qc.ui.ResultScreen
-import com.giraffetechnology.qc.ui.TaskSelectionScreen
+import com.giraffetechnology.qc.ui.WelcomeScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -23,10 +25,29 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun PadApp() {
-    var screen by remember { mutableStateOf<PadScreen>(PadScreen.TaskSelection) }
+    var screen by remember { mutableStateOf<PadScreen>(PadScreen.Welcome) }
 
     when (val s = screen) {
-        is PadScreen.TaskSelection -> TaskSelectionScreen(
+        is PadScreen.Welcome -> WelcomeScreen(
+            languageController = PadRuntimeGraph.languageController,
+            onAdministrator    = { screen = PadScreen.AdministratorInfo },
+            onOperator         = { screen = PadScreen.OperatorTaskSelection },
+        )
+
+        is PadScreen.AdministratorInfo -> AdministratorInfoScreen(
+            languageController = PadRuntimeGraph.languageController,
+            onBack             = { screen = PadScreen.Welcome },
+        )
+
+        is PadScreen.OperatorTaskSelection -> OperatorTaskSelectionScreen(
+            controller         = PadRuntimeGraph.operatorTaskSelectionController,
+            languageController = PadRuntimeGraph.languageController,
+            onTaskConfirmed    = { task -> screen = PadScreen.QcCapture(task) },
+            onBack             = { screen = PadScreen.Welcome },
+        )
+
+        // Legacy backend-LAN SKU search flow, retained behind the online task path.
+        is PadScreen.TaskSelection -> com.giraffetechnology.qc.ui.TaskSelectionScreen(
             taskSelectionController = PadRuntimeGraph.taskSelectionController,
             runtimeLoader           = PadRuntimeGraph.runtimeLoader,
             skuRepository           = PadRuntimeGraph.skuRepository
@@ -41,14 +62,14 @@ private fun PadApp() {
             cameraXController     = PadRuntimeGraph.cameraXCaptureController,
             inspectionCoordinator = PadRuntimeGraph.inspectionCoordinator,
             onInspectionResult    = { result -> screen = PadScreen.Result(s.task, result) },
-            onBack                = { screen = PadScreen.TaskSelection },
+            onBack                = { screen = PadScreen.OperatorTaskSelection },
         )
 
         is PadScreen.Result -> ResultScreen(
             task     = s.task,
             result   = s.result,
             onRetake = { screen = PadScreen.QcCapture(s.task) },
-            onDone   = { screen = PadScreen.TaskSelection },
+            onDone   = { screen = PadScreen.OperatorTaskSelection },
         )
     }
 }
