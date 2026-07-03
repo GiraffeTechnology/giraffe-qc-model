@@ -28,7 +28,12 @@ from src.api.admin_auth import (
     require_admin_session,
 )
 from src.api.deps import get_db_dep
-from src.api.uploads import extension_for_mime, validate_image_upload, validate_safe_id
+from src.api.uploads import (
+    extension_for_mime,
+    read_upload_limited,
+    validate_image_upload,
+    validate_safe_id,
+)
 from src.db.sku_models import (
     QCDetectionPoint,
     QCInspectionRequirement,
@@ -277,8 +282,9 @@ async def add_photo(
 
     if photo_file and photo_file.filename:
         # Mode A: upload file to data/qc_samples/{tenant_id}/{sku_id}/photos/
-        content = await photo_file.read()
-        # Hardened upload (A3): size + MIME whitelist. Returns canonical MIME.
+        # Bounded streaming read (A3): reject oversize input before it is fully
+        # accumulated in memory, then MIME-whitelist by content sniff.
+        content = await read_upload_limited(photo_file)
         mime_type = validate_image_upload(content, photo_file.content_type)
         sha256_hash = hashlib.sha256(content).hexdigest()
 

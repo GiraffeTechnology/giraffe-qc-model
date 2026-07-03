@@ -37,7 +37,7 @@
       <form method="post" action="/admin/intakes/{{ intake.id }}/confirm">
         <table class="sample-table">
           <thead>
-            <tr><th>Code</th><th>Label</th><th>Severity</th><th>Pass criteria</th><th>Description</th></tr>
+            <tr><th>Code</th><th>Label</th><th>Severity</th><th>Expected value</th><th>Method</th><th>Pass criteria</th><th>Description</th></tr>
           </thead>
           <tbody>
             {% for cp in candidates %}
@@ -51,6 +51,10 @@
                   {% endfor %}
                 </select>
               </td>
+              {# Extracted count/measurement + verification method — editable so
+                 they survive extract → review/edit → confirm (Codex P1). #}
+              <td><input type="text" name="expected_value" value="{{ cp.expected_value or '' }}"></td>
+              <td><input type="text" name="method_hint" value="{{ cp.method_hint or '' }}"></td>
               <td><input type="text" name="pass_criteria" value="{{ cp.pass_criteria or '' }}"></td>
               <td><input type="text" name="description" value="{{ cp.description or '' }}"></td>
             </tr>
@@ -67,6 +71,8 @@
                   <option value="critical">critical</option>
                 </select>
               </td>
+              <td><input type="text" name="expected_value" value=""></td>
+              <td><input type="text" name="method_hint" value=""></td>
               <td><input type="text" name="pass_criteria" value=""></td>
               <td><input type="text" name="description" value=""></td>
             </tr>

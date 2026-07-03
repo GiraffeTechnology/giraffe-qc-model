@@ -1,6 +1,7 @@
 """Upload-hardening tests (task A3): size cap, MIME whitelist, path traversal."""
 from __future__ import annotations
 
+import io
 import pathlib
 
 import pytest
@@ -196,3 +197,74 @@ class TestPadUpload:
                 files={"image": ("x.txt", b"not an image", "text/plain")},
             )
             assert resp.status_code == 415
+
+    def test_pad_oversized_rejected(self, db_session_factory, monkeypatch):
+        """Pad upload path also enforces the size cap (bounded streaming read)."""
+        from src.db.pad_models import QCOperatorProfile
+
+        s = db_session_factory()
+        try:
+            if not s.query(QCOperatorProfile).filter_by(
+                tenant_id="demo", username="op_up"
+            ).first():
+                s.add(
+                    QCOperatorProfile(
+                        tenant_id="demo", username="op_up", display_name="Op",
+                        role="operator", preferred_language="en",
+                        password_hash=_make_password_hash("pw"), is_active=True,
+                    )
+                )
+                s.commit()
+        finally:
+            s.close()
+
+        monkeypatch.setenv("MAX_UPLOAD_BYTES", "16")
+        big = b"\x89PNG\r\n\x1a\n" + b"0" * 5000
+        with TestClient(app, follow_redirects=True) as c:
+            c.post("/pad/login", data={"username": "op_up", "password": "pw", "tenant_id": "demo"})
+            resp = c.post("/api/v1/pad/upload", files={"image": ("big.png", big, "image/png")})
+            assert resp.status_code == 413
+
+
+# ── Bounded streaming read (Codex P2): reject before full accumulation ───────────
+
+
+class _CountingBytesIO(io.BytesIO):
+    """BytesIO that records how many bytes were actually read."""
+
+    def __init__(self, data: bytes):
+        super().__init__(data)
+        self.bytes_read = 0
+
+    def read(self, size: int = -1) -> bytes:  # type: ignore[override]
+        chunk = super().read(size)
+        self.bytes_read += len(chunk)
+        return chunk
+
+
+class TestBoundedStreamingRead:
+    async def test_stops_before_reading_whole_file(self, monkeypatch):
+        from starlette.datastructures import UploadFile
+        from src.api import uploads
+
+        # Small chunk so the assertion is meaningful without huge memory.
+        monkeypatch.setattr(uploads, "_READ_CHUNK_BYTES", 8)
+        payload = _CountingBytesIO(b"x" * 200)
+        upload = UploadFile(filename="big.bin", file=payload)
+
+        with pytest.raises(Exception) as exc:
+            await uploads.read_upload_limited(upload, max_bytes=20)
+        assert getattr(exc.value, "status_code", None) == 413
+        # It must have stopped well before consuming all 200 bytes.
+        assert payload.bytes_read <= 20 + 8
+        assert payload.bytes_read < 200
+
+    async def test_small_upload_returned_intact(self, monkeypatch):
+        from starlette.datastructures import UploadFile
+        from src.api import uploads
+
+        monkeypatch.setattr(uploads, "_READ_CHUNK_BYTES", 8)
+        data = b"\x89PNG\r\n\x1a\n" + b"abc"
+        upload = UploadFile(filename="ok.png", file=io.BytesIO(data))
+        out = await uploads.read_upload_limited(upload, max_bytes=1024)
+        assert out == data

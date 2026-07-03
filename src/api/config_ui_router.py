@@ -206,6 +206,11 @@ def workbench_confirm(
     severity: List[str] = Form(default=[]),
     pass_criteria: List[str] = Form(default=[]),
     description: List[str] = Form(default=[]),
+    # Extracted semantics carried through the review form as hidden fields so a
+    # counting/tolerance rule (e.g. expected_value="3", method_hint="count") is
+    # not silently dropped on confirm.
+    method_hint: List[str] = Form(default=[]),
+    expected_value: List[str] = Form(default=[]),
     operator_comment: Optional[str] = Form(default=None),
     admin: AdminSession = Depends(require_admin_session),
     db: Session = Depends(get_db_dep),
@@ -222,13 +227,21 @@ def workbench_confirm(
         def _at(seq: List[str]) -> Optional[str]:
             return seq[i] if i < len(seq) else None
 
+        def _clean(seq: List[str]) -> Optional[str]:
+            v = _at(seq)
+            v = v.strip() if isinstance(v, str) else v
+            return v or None
+
         checkpoints.append(
             {
                 "point_code": code,
                 "label": (_at(label) or code).strip(),
                 "severity": (_at(severity) or "major").strip() or "major",
-                "pass_criteria": (_at(pass_criteria) or None),
-                "description": (_at(description) or None),
+                "pass_criteria": _clean(pass_criteria),
+                "description": _clean(description),
+                # Preserve extracted semantics through confirm (Codex P1).
+                "method_hint": _clean(method_hint),
+                "expected_value": _clean(expected_value),
             }
         )
 

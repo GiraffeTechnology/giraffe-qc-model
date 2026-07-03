@@ -169,6 +169,9 @@ class QCDetectionPoint(Base):
     roi_json: Mapped[Optional[dict]] = mapped_column(JSON)
     expected_value: Mapped[Optional[str]] = mapped_column(String(256))
     method_hint: Mapped[Optional[str]] = mapped_column(String(128))
+    # Operator-confirmed pass criteria for this point (free text). Preserved from
+    # extract → review/edit → confirm so counting/tolerance rules are not lost.
+    pass_criteria: Mapped[Optional[str]] = mapped_column(Text)
     # "minor" | "major" | "critical"
     severity: Mapped[str] = mapped_column(String(32), nullable=False, default="major")
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

@@ -10,7 +10,10 @@ import os
 import re
 from typing import Optional
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, UploadFile, status
+
+# Chunk size for bounded streaming reads (1 MiB).
+_READ_CHUNK_BYTES = 1024 * 1024
 
 # Allowed image MIME types (task A3).
 ALLOWED_IMAGE_MIME = {"image/jpeg", "image/png", "image/webp"}
@@ -121,3 +124,40 @@ def validate_image_upload(
 
 def extension_for_mime(mime: str) -> str:
     return MIME_EXTENSION.get(mime, ".bin")
+
+
+async def read_upload_limited(
+    upload: UploadFile, max_bytes: Optional[int] = None
+) -> bytes:
+    """Read an UploadFile in chunks, rejecting oversize input *while streaming*.
+
+    Unlike ``await upload.read()`` (which loads the entire body into memory before
+    any size check), this reads at most ``max_bytes + one chunk`` and raises 413 as
+    soon as the accumulated size exceeds the limit — so a huge upload can never
+    exhaust worker memory before validation returns. The upload is rewound to the
+    start on the way out so downstream code can re-read if needed.
+
+    Returns the fully-read bytes when within the limit.
+    """
+    limit = max_bytes if max_bytes is not None else max_upload_bytes()
+    chunks: list[bytes] = []
+    total = 0
+    try:
+        while True:
+            chunk = await upload.read(_READ_CHUNK_BYTES)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > limit:
+                raise HTTPException(
+                    status_code=413,  # Content Too Large
+                    detail=f"File too large: exceeds limit of {limit} bytes",
+                )
+            chunks.append(chunk)
+    finally:
+        # Best-effort rewind so a later reader isn't left at EOF.
+        try:
+            await upload.seek(0)
+        except Exception:
+            pass
+    return b"".join(chunks)

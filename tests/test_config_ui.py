@@ -155,6 +155,53 @@ def test_full_training_flow_marks_sku_trained(client, db_session_factory):
     assert "Trained" in dash.text
 
 
+def test_confirm_preserves_extracted_checkpoint_semantics(client, db_session_factory):
+    """Codex P1: extract → review/edit → confirm must not drop method_hint,
+    expected_value, or the operator-edited pass_criteria (e.g. "pearl count 3")."""
+    from src.db.sku_models import QCDetectionPoint
+
+    client.post("/admin/samples", data={"item_number": "COUNT-001", "name": "Pearl Brooch"})
+    sku_id = _sku_id(db_session_factory, "COUNT-001")
+
+    client.post(
+        f"/admin/samples/{sku_id}/intakes",
+        data={"raw_text": "珍珠数量必须为3颗。"},
+    )
+    intake_id = _latest_intake_id(db_session_factory, sku_id)
+    assert client.post(f"/admin/intakes/{intake_id}/extract").status_code == 200
+
+    # Operator reviews and confirms a counting rule with count value + method hint.
+    r = client.post(
+        f"/admin/intakes/{intake_id}/confirm",
+        data={
+            "point_code": ["PEARL_COUNT", ""],
+            "label": ["Pearl count", ""],
+            "severity": ["critical", "major"],
+            "expected_value": ["3", ""],
+            "method_hint": ["count", ""],
+            "pass_criteria": ["Exactly 3 pearls present", ""],
+            "description": ["", ""],
+            "operator_comment": "counting rule",
+        },
+    )
+    assert r.status_code == 200
+
+    s = db_session_factory()
+    try:
+        dp = (
+            s.query(QCDetectionPoint)
+            .filter_by(tenant_id=TENANT, sku_id=sku_id, point_code="PEARL_COUNT", is_active=True)
+            .first()
+        )
+        assert dp is not None, "confirmed detection point should exist"
+        # These three fail on the pre-fix router (fields dropped / no column).
+        assert dp.expected_value == "3"
+        assert dp.method_hint == "count"
+        assert dp.pass_criteria == "Exactly 3 pearls present"
+    finally:
+        s.close()
+
+
 def test_unconfirmed_intake_does_not_activate(client, db_session_factory):
     client.post("/admin/samples", data={"item_number": "TRAIN-002", "name": "Untrained"})
     sku_id = _sku_id(db_session_factory, "TRAIN-002")
