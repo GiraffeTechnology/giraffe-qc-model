@@ -18,6 +18,10 @@ import com.giraffetechnology.qc.i18n.LanguageController
 import com.giraffetechnology.qc.operator.OperatorTaskSelectionController
 import com.giraffetechnology.qc.store.AndroidSqliteStandardStore
 import com.giraffetechnology.qc.store.BundleImporter
+import com.giraffetechnology.qc.submit.AndroidSqliteOutboxStore
+import com.giraffetechnology.qc.submit.HttpSubmissionClient
+import com.giraffetechnology.qc.submit.OutboxUploader
+import com.giraffetechnology.qc.submit.PadOutbox
 import com.giraffetechnology.qc.sku.ApiSkuRepository
 import com.giraffetechnology.qc.sku.MnnSkuMatcher
 import com.giraffetechnology.qc.sku.PadInspectionCoordinator
@@ -82,6 +86,8 @@ object PadRuntimeGraph {
     @Volatile private var _bundleImporter: BundleImporter? = null
     @Volatile private var _operatorTaskSelectionController: OperatorTaskSelectionController? = null
     @Volatile private var _languageController: LanguageController? = null
+    @Volatile private var _outbox: PadOutbox? = null
+    @Volatile private var _outboxUploader: OutboxUploader? = null
 
     fun init(context: Context) = init(context, PadRuntimeConfig())
 
@@ -135,6 +141,13 @@ object PadRuntimeGraph {
                 (0 until locales.size()).map { locales.get(it).toLanguageTag() }
             }
             _languageController = LanguageController(deviceLanguageTags = deviceTags)
+
+            // Result outbox (S6 §9): offline-persisted results drained to the
+            // Server over the factory LAN. This carries result metadata only —
+            // never a cloud QC-inference call.
+            val outbox = PadOutbox(AndroidSqliteOutboxStore(appContext))
+            _outbox = outbox
+            _outboxUploader = OutboxUploader(outbox, HttpSubmissionClient(BuildConfig.SKU_API_BASE_URL))
 
             _initialized = true
 
@@ -197,6 +210,12 @@ object PadRuntimeGraph {
 
     val languageController: LanguageController
         get() = checkNotNull(_languageController) { notInitMsg() }
+
+    val outbox: PadOutbox
+        get() = checkNotNull(_outbox) { notInitMsg() }
+
+    val outboxUploader: OutboxUploader
+        get() = checkNotNull(_outboxUploader) { notInitMsg() }
 
     private fun notInitMsg() = "PadRuntimeGraph.init(context) must be called before accessing this"
 }

@@ -63,6 +63,7 @@ class OperatorTaskSelectionController(
                 confirmedByUser = true,
                 resolvedBy = SkuResolutionMethod.MANUAL_ITEM_NUMBER,
                 activeStandardRevisionId = revision.standardRevisionId,
+                bundleVersion = revision.bundleVersion,
             )
         )
     }

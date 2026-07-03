@@ -21,6 +21,13 @@ data class QcTask(
     val activeStandardRevisionId: String? = sku.activeStandardRevisionId,
     val standardPhotos: List<StandardPhotoInput> = sku.standardPhotos,
     val qcPoints: List<QcPointInput> = sku.detectionPoints,
+    /**
+     * Bundle version the selected standard was installed from (S6 §9). Carried so
+     * a submitted result records exactly which bundle produced the standard the
+     * Server can recompute against. Null for the online/backend task path, which
+     * has no installed bundle.
+     */
+    val bundleVersion: String? = null,
 )
 
 enum class SkuResolutionMethod { MANUAL_ITEM_NUMBER, MANUAL_REFERENCE_PHOTO, MNN_PHOTO_MATCH }
