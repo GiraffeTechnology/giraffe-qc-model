@@ -20,11 +20,14 @@ from src.api.deps import get_db_dep
 from src.qc_model.bundle import service
 from src.qc_model.bundle.manifest import BundleVerificationError, SignedBundle
 from src.qc_model.bundle.service import BundleNotFound, WorkstationNotFound
+from src.web.i18n import install_i18n
 
 router = APIRouter(tags=["qc-bundles"])
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "web" / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+# Carry the shared web-shell language switch on the bundle/workstation pages.
+install_i18n(templates)
 
 
 # ── request bodies ────────────────────────────────────────────────────────────

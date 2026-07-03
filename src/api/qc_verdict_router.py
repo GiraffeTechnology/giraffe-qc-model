@@ -18,11 +18,14 @@ from sqlalchemy.orm import Session
 from src.api.deps import get_db_dep
 from src.qc_model.verdict import service
 from src.qc_model.verdict.service import SubmissionNotFound
+from src.web.i18n import install_i18n
 
 router = APIRouter(tags=["qc-results"])
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "web" / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+# Carry the shared web-shell language switch on the Results page.
+install_i18n(templates)
 
 
 class CheckpointResultIn(BaseModel):
