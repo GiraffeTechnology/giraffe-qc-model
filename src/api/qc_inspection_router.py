@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from src.api.auth import Principal, require_principal
 from src.api.deps import get_db_dep
 from src.inspection.api_service import (
     attach_inspection_media,
@@ -16,7 +17,11 @@ from src.inspection.api_service import (
     ingest_model_output,
 )
 
-router = APIRouter(prefix="/api/v1/qc/inspection-jobs", tags=["qc-inspection"])
+router = APIRouter(
+    prefix="/api/v1/qc/inspection-jobs",
+    tags=["qc-inspection"],
+    dependencies=[Depends(require_principal)],
+)
 
 
 def _get_job_or_404(db: Session, job_id: str, tenant_id: str):
@@ -122,8 +127,10 @@ class TenantRequest(BaseModel):
 @router.post("", status_code=201)
 def create_job(
     body: CreateJobRequest,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> JobResponse:
+    body.tenant_id = principal.resolve_tenant(body.tenant_id)
     try:
         job = create_inspection_job_from_api(
             db,
@@ -149,9 +156,10 @@ def create_job(
 @router.get("/{job_id}")
 def get_job(
     job_id: str,
-    tenant_id: str = Query(min_length=1),
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> JobResponse:
+    tenant_id = principal.tenant_id
     job = _get_job_or_404(db, job_id, tenant_id)
     return JobResponse(
         id=job.id,
@@ -168,8 +176,10 @@ def get_job(
 def add_job_media(
     job_id: str,
     body: AttachMediaRequest,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> dict:
+    body.tenant_id = principal.resolve_tenant(body.tenant_id)
     _get_job_or_404(db, job_id, body.tenant_id)
     try:
         media = attach_inspection_media(
@@ -194,8 +204,10 @@ def add_job_media(
 def ingest_model_results(
     job_id: str,
     body: ModelOutputRequest,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> dict:
+    body.tenant_id = principal.resolve_tenant(body.tenant_id)
     _get_job_or_404(db, job_id, body.tenant_id)
     try:
         model_result = ingest_model_output(
@@ -218,9 +230,11 @@ def ingest_model_results(
 def submit_checkpoint(
     job_id: str,
     body: SubmitCheckpointRequest,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> dict:
     from src.inspection.service import submit_checkpoint_result
+    body.tenant_id = principal.resolve_tenant(body.tenant_id)
     _get_job_or_404(db, job_id, body.tenant_id)
     try:
         cr = submit_checkpoint_result(
@@ -242,9 +256,11 @@ def submit_checkpoint(
 def submit_finding(
     job_id: str,
     body: SubmitFindingRequest,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> dict:
     from src.inspection.service import submit_incidental_finding
+    body.tenant_id = principal.resolve_tenant(body.tenant_id)
     _get_job_or_404(db, job_id, body.tenant_id)
     try:
         finding = submit_incidental_finding(
@@ -265,8 +281,10 @@ def submit_finding(
 def finalize_job_endpoint(
     job_id: str,
     body: TenantRequest,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> ReportResponse:
+    body.tenant_id = principal.resolve_tenant(body.tenant_id)
     _get_job_or_404(db, job_id, body.tenant_id)
     try:
         report = finalize_inspection_job(db, job_id, tenant_id=body.tenant_id)
@@ -285,9 +303,10 @@ def finalize_job_endpoint(
 @router.get("/{job_id}/report")
 def get_report(
     job_id: str,
-    tenant_id: str = Query(min_length=1),
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> ReportResponse:
+    tenant_id = principal.tenant_id
     _get_job_or_404(db, job_id, tenant_id)
     try:
         report = get_inspection_report(db, job_id, tenant_id=tenant_id)

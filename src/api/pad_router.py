@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_db_dep
+from src.api.uploads import validate_image_upload
 from src.openclaw.qc_agent_bridge import QCAgentBridge, get_bridge
 from src.pad.agent_service import process_pad_message
 from src.pad.session_service import (
@@ -190,10 +191,13 @@ async def pad_upload(
     if operator_id is None:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     content = await image.read()
+    # Hardened upload path (A3): enforce MIME whitelist + size limit.
+    mime = validate_image_upload(content, image.content_type)
     return JSONResponse({
         "status": "received",
         "filename": image.filename,
         "size_bytes": len(content),
+        "mime_type": mime,
         "message": "Image uploaded successfully",
     })
 

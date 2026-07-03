@@ -12,8 +12,10 @@ from sqlalchemy.pool import StaticPool
 from src.db.models import Base
 import src.db.qc_models  # noqa: F401
 import src.db.sku_models  # noqa: F401
+import src.db.pad_models  # noqa: F401 — registers operator table
 from src.api.main import app
 from src.api.deps import get_db_dep
+from tests._auth_override import install_api_auth_override
 
 TENANT = "default"
 
@@ -45,7 +47,44 @@ def client(db_session_factory):
             session.close()
 
     app.dependency_overrides[get_db_dep] = override_get_db
+    install_api_auth_override(app)
+
+    # Seed an admin operator in the tenant and establish a real admin session so
+    # the /admin routes (which use session auth) are authenticated.
+    from src.db.pad_models import QCOperatorProfile
+    from src.pad.session_service import _make_password_hash
+
+    seed_session = db_session_factory()
+    try:
+        if not (
+            seed_session.query(QCOperatorProfile)
+            .filter_by(tenant_id=TENANT, username="admin_test")
+            .first()
+        ):
+            seed_session.add(
+                QCOperatorProfile(
+                    tenant_id=TENANT,
+                    username="admin_test",
+                    display_name="Admin Test",
+                    role="admin",
+                    preferred_language="en",
+                    password_hash=_make_password_hash("admin_test_pw"),
+                    is_active=True,
+                )
+            )
+            seed_session.commit()
+    finally:
+        seed_session.close()
+
     with TestClient(app, follow_redirects=True) as c:
+        c.post(
+            "/admin/login",
+            data={
+                "username": "admin_test",
+                "password": "admin_test_pw",
+                "tenant_id": TENANT,
+            },
+        )
         yield c
     app.dependency_overrides.clear()
 

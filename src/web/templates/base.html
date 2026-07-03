@@ -10,8 +10,15 @@
   <header>
     <nav>
       <a href="/admin/samples" class="nav-brand">QC Sample Admin</a>
+      <a href="/admin/training" class="btn">Training Dashboard</a>
       <a href="/admin/qc-model" class="btn">Visual QC Model</a>
       <a href="/admin/samples/new" class="btn btn-primary">+ New Sample</a>
+      {% if admin %}
+      <span class="nav-user">{{ admin.username }} ({{ admin.role }})</span>
+      <form method="post" action="/admin/logout" style="display:inline">
+        <button type="submit" class="btn btn-sm">Logout</button>
+      </form>
+      {% endif %}
     </nav>
   </header>
   <main>

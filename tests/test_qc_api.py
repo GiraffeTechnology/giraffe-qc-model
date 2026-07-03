@@ -18,6 +18,7 @@ from src.db.qc_models import (  # noqa: F401 — registers new tables with Base.
 )
 from src.api.main import app
 from src.api.deps import get_db_dep
+from tests._auth_override import install_api_auth_override
 
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -50,6 +51,7 @@ def client(db_session_factory):
             session.close()
 
     app.dependency_overrides[get_db_dep] = override_get_db
+    install_api_auth_override(app)
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

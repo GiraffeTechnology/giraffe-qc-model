@@ -22,8 +22,10 @@ from src.api.qc_qualification_router import router as qc_qualification_router
 from src.api.qc_readiness_router import router as qc_readiness_router
 from src.api.qc_sample_learning_router import router as qc_sample_learning_router
 from src.api.qc_source_router import router as qc_source_router
+from src.api.config_ui_router import router as config_ui_router
 from src.api.sample_admin_router import router as sample_admin_router
 from src.api.sku_router import router as sku_router
+from src.api.startup import validate_startup_config
 from src.db.session import init_db
 
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "static"
@@ -31,7 +33,8 @@ _STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "static"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan: initialize database on startup."""
+    """Application lifespan: validate config then initialize database."""
+    validate_startup_config()
     init_db()
     yield
 
@@ -54,6 +57,7 @@ app.include_router(pad_router)
 app.include_router(qc_router)
 app.include_router(sku_router)
 app.include_router(sample_admin_router)
+app.include_router(config_ui_router)
 app.include_router(qc_intake_router)
 app.include_router(qc_inspection_router)
 app.include_router(qc_model_router)

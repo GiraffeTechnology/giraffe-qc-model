@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in — QC Configuration</title>
+  <link rel="stylesheet" href="/static/sample_admin.css">
+</head>
+<body>
+  <main style="max-width: 420px; margin: 8vh auto;">
+    <div class="form-card">
+      <h1>QC Configuration</h1>
+      <p class="subtitle">数字质检员训练台 · Digital Inspector Configuration</p>
+      {% if error %}
+      <div class="alert alert-error">{{ error }}</div>
+      {% endif %}
+      <form method="post" action="/admin/login">
+        <div class="form-group">
+          <label for="username">Username 用户名</label>
+          <input type="text" id="username" name="username" required autofocus>
+        </div>
+        <div class="form-group">
+          <label for="password">Password 密码</label>
+          <input type="password" id="password" name="password" required>
+        </div>
+        <div class="form-group">
+          <label for="tenant_id">Tenant 租户</label>
+          <input type="text" id="tenant_id" name="tenant_id" value="demo">
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Sign in 登录</button>
+        </div>
+      </form>
+    </div>
+  </main>
+</body>
+</html>

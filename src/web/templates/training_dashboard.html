@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Training Dashboard — QC Configuration{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Digital Inspector Training</h1>
+    <p class="subtitle">
+      Training = configuring the SKU inspection standard (standard photos +
+      detection points + pass/fail criteria). Model weights are fixed; human
+      confirmation graduates a standard revision.
+    </p>
+  </div>
+  <div>
+    <strong>{{ trained_count }}/{{ total_count }}</strong> trained
+  </div>
+</div>
+
+{% if statuses %}
+<table class="sample-table">
+  <thead>
+    <tr>
+      <th>Item Number</th>
+      <th>Name</th>
+      <th>Standard Photos</th>
+      <th>Active Revision</th>
+      <th>Detection Points</th>
+      <th>Last Revision</th>
+      <th>Status</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in statuses %}
+    <tr>
+      <td><a href="/admin/samples/{{ s.sku_id }}">{{ s.item_number }}</a></td>
+      <td>{{ s.name }}</td>
+      <td>{% if s.has_photos %}✓ {{ s.photo_count }}{% else %}✗{% endif %}</td>
+      <td>{% if s.has_active_revision %}v{{ s.active_revision_no }}{% else %}✗{% endif %}</td>
+      <td>{% if s.detection_point_count >= 1 %}✓ {{ s.detection_point_count }}{% else %}✗{% endif %}</td>
+      <td>{{ s.last_revision_at.strftime('%Y-%m-%d') if s.last_revision_at else '—' }}</td>
+      <td>
+        {% if s.trained %}
+        <span class="badge badge-pass">Trained</span>
+        {% else %}
+        <span class="badge badge-pending">Not trained</span>
+        {% endif %}
+      </td>
+      <td><a href="/admin/samples/{{ s.sku_id }}/intakes" class="btn btn-sm">Train</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+  <p>No SKUs yet.</p>
+  <a href="/admin/samples/new" class="btn btn-primary">Create your first sample</a>
+</div>
+{% endif %}
+{% endblock %}

@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from src.api.auth import Principal, require_principal
 from src.api.deps import get_db_dep
 from src.db.sku_models import (
     QCDetectionPoint,
@@ -18,7 +19,11 @@ from src.db.sku_models import (
     QCStandardPhoto,
 )
 
-router = APIRouter(prefix="/api/v1/sku", tags=["sku"])
+router = APIRouter(
+    prefix="/api/v1/sku",
+    tags=["sku"],
+    dependencies=[Depends(require_principal)],
+)
 
 
 def _new_id() -> str:
@@ -33,7 +38,7 @@ def _utcnow() -> datetime:
 
 
 class CreateSkuRequest(BaseModel):
-    tenant_id: str = "default"
+    tenant_id: Optional[str] = None
     item_number: str
     name: str
     category: Optional[str] = None
@@ -116,7 +121,7 @@ class CreateSkuResponse(BaseModel):
 
 
 class AddPhotoRequest(BaseModel):
-    tenant_id: str = "default"
+    tenant_id: Optional[str] = None
     image_url: Optional[str] = None
     local_path: Optional[str] = None
     thumbnail_url: Optional[str] = None
@@ -130,7 +135,7 @@ class AddPhotoRequest(BaseModel):
 
 
 class AddRequirementRequest(BaseModel):
-    tenant_id: str = "default"
+    tenant_id: Optional[str] = None
     code: str
     title: str
     requirement_text: str
@@ -141,7 +146,7 @@ class AddRequirementRequest(BaseModel):
 
 
 class AddDetectionPointRequest(BaseModel):
-    tenant_id: str = "default"
+    tenant_id: Optional[str] = None
     requirement_id: Optional[str] = None
     point_code: str
     label: str
@@ -238,8 +243,10 @@ def _escape_like(value: str) -> str:
 @router.post("", response_model=CreateSkuResponse, status_code=status.HTTP_201_CREATED)
 def create_sku(
     body: CreateSkuRequest,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> CreateSkuResponse:
+    body.tenant_id = principal.resolve_tenant(body.tenant_id)
     # Reject duplicate (tenant_id, item_number)
     existing = (
         db.query(QCSkuItem)
@@ -284,9 +291,10 @@ def create_sku(
 @router.get("/search", response_model=SkuSearchResponse)
 def search_sku(
     q: str = Query(default=""),
-    tenant_id: str = Query(default="default"),
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> SkuSearchResponse:
+    tenant_id = principal.tenant_id
     if not q.strip():
         return SkuSearchResponse(items=[])
 
@@ -310,9 +318,10 @@ def search_sku(
 @router.get("/{sku_id}", response_model=SkuDetailResponse)
 def get_sku(
     sku_id: str,
-    tenant_id: str = Query(default="default"),
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> SkuDetailResponse:
+    tenant_id = principal.tenant_id
     sku = (
         db.query(QCSkuItem)
         .filter(QCSkuItem.id == sku_id, QCSkuItem.tenant_id == tenant_id)
@@ -327,8 +336,10 @@ def get_sku(
 def add_photo(
     sku_id: str,
     body: AddPhotoRequest,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> dict:
+    body.tenant_id = principal.resolve_tenant(body.tenant_id)
     sku = (
         db.query(QCSkuItem)
         .filter(QCSkuItem.id == sku_id, QCSkuItem.tenant_id == body.tenant_id)
@@ -372,8 +383,10 @@ def add_photo(
 def add_requirement(
     sku_id: str,
     body: AddRequirementRequest,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> dict:
+    body.tenant_id = principal.resolve_tenant(body.tenant_id)
     sku = (
         db.query(QCSkuItem)
         .filter(QCSkuItem.id == sku_id, QCSkuItem.tenant_id == body.tenant_id)
@@ -408,8 +421,10 @@ def add_requirement(
 def add_detection_point(
     sku_id: str,
     body: AddDetectionPointRequest,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> dict:
+    body.tenant_id = principal.resolve_tenant(body.tenant_id)
     sku = (
         db.query(QCSkuItem)
         .filter(QCSkuItem.id == sku_id, QCSkuItem.tenant_id == body.tenant_id)

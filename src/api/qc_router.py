@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
+from src.api.auth import Principal, require_principal
 from src.api.deps import get_db_dep
 from src.db.qc_models import (
     CapturePhoto,
@@ -39,7 +40,11 @@ from src.qwen.schema import (
 )
 from src.qwen.service import QwenQCService
 
-router = APIRouter(prefix="/api/v1/qc", tags=["qc"])
+router = APIRouter(
+    prefix="/api/v1/qc",
+    tags=["qc"],
+    dependencies=[Depends(require_principal)],
+)
 
 
 # ─── Request/Response Models ───────────────────────────────────────────────────
@@ -322,8 +327,10 @@ def _forced_review_required(
 @router.post("/standards", response_model=StandardResponse, status_code=status.HTTP_201_CREATED)
 def create_standard(
     body: CreateStandardRequest,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> StandardResponse:
+    body.tenant_id = principal.resolve_tenant(body.tenant_id)
     now = _utcnow()
     std = ProductStandard(
         id=_new_id(),
@@ -345,9 +352,10 @@ def create_standard(
 @router.get("/standards/{standard_id}", response_model=StandardResponse)
 def get_standard(
     standard_id: str,
-    tenant_id: str,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> StandardResponse:
+    tenant_id = principal.tenant_id
     std = (
         db.query(ProductStandard)
         .filter(ProductStandard.id == standard_id, ProductStandard.tenant_id == tenant_id)
@@ -361,9 +369,10 @@ def get_standard(
 @router.get("/standards/by-sku/{sku_id}", response_model=List[StandardResponse])
 def get_standards_by_sku(
     sku_id: str,
-    tenant_id: str,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> List[StandardResponse]:
+    tenant_id = principal.tenant_id
     return (
         db.query(ProductStandard)
         .filter(ProductStandard.sku_id == sku_id, ProductStandard.tenant_id == tenant_id)
@@ -382,8 +391,10 @@ def get_standards_by_sku(
 def add_standard_photo(
     standard_id: str,
     body: CreatePhotoRequest,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> PhotoResponse:
+    body.tenant_id = principal.resolve_tenant(body.tenant_id)
     std = (
         db.query(ProductStandard)
         .filter(ProductStandard.id == standard_id, ProductStandard.tenant_id == body.tenant_id)
@@ -412,9 +423,10 @@ def add_standard_photo(
 @router.get("/standards/{standard_id}/photos", response_model=List[PhotoResponse])
 def list_standard_photos(
     standard_id: str,
-    tenant_id: str,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> List[PhotoResponse]:
+    tenant_id = principal.tenant_id
     std = (
         db.query(ProductStandard)
         .filter(ProductStandard.id == standard_id, ProductStandard.tenant_id == tenant_id)
@@ -436,8 +448,10 @@ def list_standard_photos(
 def create_qc_point(
     standard_id: str,
     body: CreateQCPointRequest,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> QCPointResponse:
+    body.tenant_id = principal.resolve_tenant(body.tenant_id)
     std = (
         db.query(ProductStandard)
         .filter(ProductStandard.id == standard_id, ProductStandard.tenant_id == body.tenant_id)
@@ -468,9 +482,10 @@ def create_qc_point(
 @router.get("/standards/{standard_id}/qc-points", response_model=List[QCPointResponse])
 def list_qc_points(
     standard_id: str,
-    tenant_id: str,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> List[QCPointResponse]:
+    tenant_id = principal.tenant_id
     std = (
         db.query(ProductStandard)
         .filter(ProductStandard.id == standard_id, ProductStandard.tenant_id == tenant_id)
@@ -489,9 +504,10 @@ def list_qc_points(
 def update_qc_point(
     qc_point_id: str,
     body: UpdateQCPointRequest,
-    tenant_id: str,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> QCPointResponse:
+    tenant_id = principal.tenant_id
     point = (
         db.query(QCPoint)
         .filter(QCPoint.id == qc_point_id, QCPoint.tenant_id == tenant_id)
@@ -528,8 +544,10 @@ def update_qc_point(
 )
 def create_capture(
     body: CreateCaptureRequest,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> CaptureResponse:
+    body.tenant_id = principal.resolve_tenant(body.tenant_id)
     capture = CapturePhoto(
         id=_new_id(),
         tenant_id=body.tenant_id,
@@ -548,9 +566,10 @@ def create_capture(
 @router.get("/captures/{capture_id}", response_model=CaptureResponse)
 def get_capture(
     capture_id: str,
-    tenant_id: str,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> CaptureResponse:
+    tenant_id = principal.tenant_id
     capture = (
         db.query(CapturePhoto)
         .filter(CapturePhoto.id == capture_id, CapturePhoto.tenant_id == tenant_id)
@@ -572,6 +591,7 @@ def get_capture(
 )
 def run_inspection(
     body: RunInspectionRequest,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> InspectionCompletedEvent:
     """Run a QC inspection against a product standard.
@@ -584,6 +604,7 @@ def run_inspection(
     5. Register QCAsset
     6. Build and return the event
     """
+    body.tenant_id = principal.resolve_tenant(body.tenant_id)
     # 1. Load standard
     std = (
         db.query(ProductStandard)
@@ -840,9 +861,10 @@ def run_inspection(
 @router.get("/inspections/{inspection_id}", response_model=InspectionRunResponse)
 def get_inspection(
     inspection_id: str,
-    tenant_id: str,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> InspectionRunResponse:
+    tenant_id = principal.tenant_id
     run = (
         db.query(InspectionRun)
         .filter(
@@ -859,9 +881,10 @@ def get_inspection(
 @router.get("/inspections/{inspection_id}/results", response_model=InspectionResultResponse)
 def get_inspection_result(
     inspection_id: str,
-    tenant_id: str,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> InspectionResultResponse:
+    tenant_id = principal.tenant_id
     run = (
         db.query(InspectionRun)
         .filter(
@@ -923,9 +946,10 @@ def get_inspection_result(
 @router.get("/assets/{asset_id}", response_model=AssetResponse)
 def get_asset(
     asset_id: str,
-    tenant_id: str,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> AssetResponse:
+    tenant_id = principal.tenant_id
     asset = (
         db.query(QCAsset)
         .filter(QCAsset.id == asset_id, QCAsset.tenant_id == tenant_id)
@@ -939,9 +963,10 @@ def get_asset(
 @router.get("/assets/by-inspection/{inspection_id}", response_model=List[AssetResponse])
 def get_assets_by_inspection(
     inspection_id: str,
-    tenant_id: str,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> List[AssetResponse]:
+    tenant_id = principal.tenant_id
     # Verify tenant owns inspection
     run = (
         db.query(InspectionRun)
@@ -966,9 +991,10 @@ def get_assets_by_inspection(
 @router.get("/assets/by-sku/{sku_id}", response_model=List[AssetResponse])
 def get_assets_by_sku(
     sku_id: str,
-    tenant_id: str,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> List[AssetResponse]:
+    tenant_id = principal.tenant_id
     return (
         db.query(QCAsset)
         .filter(QCAsset.sku_id == sku_id, QCAsset.tenant_id == tenant_id)
@@ -982,9 +1008,10 @@ def get_assets_by_sku(
 @router.get("/sku/{sku_id}/latest-result", response_model=LatestResultResponse)
 def get_latest_sku_result(
     sku_id: str,
-    tenant_id: str,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> LatestResultResponse:
+    tenant_id = principal.tenant_id
     run = (
         db.query(InspectionRun)
         .filter(
@@ -1026,8 +1053,10 @@ def get_latest_sku_result(
 )
 def create_sync_target(
     body: CreateSyncTargetRequest,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> SyncTargetResponse:
+    body.tenant_id = principal.resolve_tenant(body.tenant_id)
     target = SyncTarget(
         id=_new_id(),
         tenant_id=body.tenant_id,
@@ -1045,9 +1074,10 @@ def create_sync_target(
 
 @router.get("/sync-targets", response_model=List[SyncTargetResponse])
 def list_sync_targets(
-    tenant_id: str,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> List[SyncTargetResponse]:
+    tenant_id = principal.tenant_id
     return (
         db.query(SyncTarget)
         .filter(SyncTarget.tenant_id == tenant_id, SyncTarget.is_active == True)
@@ -1065,10 +1095,11 @@ def list_sync_targets(
 )
 def trigger_asset_sync(
     asset_id: str,
-    tenant_id: str,
     target_id: str,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> SyncJobResponse:
+    tenant_id = principal.tenant_id
     asset = (
         db.query(QCAsset)
         .filter(QCAsset.id == asset_id, QCAsset.tenant_id == tenant_id)
@@ -1102,9 +1133,10 @@ def trigger_asset_sync(
 @router.get("/sync-jobs/{job_id}", response_model=SyncJobResponse)
 def get_sync_job(
     job_id: str,
-    tenant_id: str,
+    principal: Principal = Depends(require_principal),
     db: Session = Depends(get_db_dep),
 ) -> SyncJobResponse:
+    tenant_id = principal.tenant_id
     job = (
         db.query(SyncJob)
         .filter(SyncJob.id == job_id, SyncJob.tenant_id == tenant_id)

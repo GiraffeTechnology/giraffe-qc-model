@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Intake {{ intake.id[:8] }} — Training{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Training workbench — {{ sku.item_number }}</h1>
+    <p class="subtitle">Intake {{ intake.id }} · status <span class="badge badge-pending">{{ intake.status }}</span></p>
+  </div>
+  <div>
+    <a href="/admin/samples/{{ sku.id }}/intakes" class="btn btn-sm">Back to intakes</a>
+  </div>
+</div>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="workbench-grid" style="display:flex; gap:1.5rem; flex-wrap:wrap;">
+  <div class="form-card" style="flex:1; min-width:280px;">
+    <h2>Raw requirement text</h2>
+    <pre style="white-space:pre-wrap;">{{ intake.raw_text or '(empty)' }}</pre>
+  </div>
+
+  <div class="form-card" style="flex:1; min-width:320px;">
+    <h2>Candidate detection points</h2>
+    {% if intake.status in ('received',) %}
+      <p class="subtitle">No extraction yet. Trigger AI extraction to propose candidate detection points from the raw text.</p>
+      <form method="post" action="/admin/intakes/{{ intake.id }}/extract">
+        <button type="submit" class="btn btn-primary">Extract candidates</button>
+      </form>
+    {% elif intake.status == 'confirmed' %}
+      <p class="subtitle">This intake has been confirmed and a standard revision was activated.</p>
+    {% elif intake.status == 'rejected' %}
+      <p class="subtitle">This intake was rejected. No standard revision was created.</p>
+    {% else %}
+      <p class="subtitle">Review and edit candidates. Set severity and pass/fail criteria per point. Empty rows are ignored. Nothing activates until you confirm.</p>
+      <form method="post" action="/admin/intakes/{{ intake.id }}/confirm">
+        <table class="sample-table">
+          <thead>
+            <tr><th>Code</th><th>Label</th><th>Severity</th><th>Pass criteria</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            {% for cp in candidates %}
+            <tr>
+              <td><input type="text" name="point_code" value="{{ cp.point_code or '' }}"></td>
+              <td><input type="text" name="label" value="{{ cp.label or '' }}"></td>
+              <td>
+                <select name="severity">
+                  {% for sev in ['minor','major','critical'] %}
+                  <option value="{{ sev }}" {% if cp.severity == sev %}selected{% endif %}>{{ sev }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td><input type="text" name="pass_criteria" value="{{ cp.pass_criteria or '' }}"></td>
+              <td><input type="text" name="description" value="{{ cp.description or '' }}"></td>
+            </tr>
+            {% endfor %}
+            {# Two blank rows for adding new points #}
+            {% for _ in range(2) %}
+            <tr>
+              <td><input type="text" name="point_code" value=""></td>
+              <td><input type="text" name="label" value=""></td>
+              <td>
+                <select name="severity">
+                  <option value="minor">minor</option>
+                  <option value="major" selected>major</option>
+                  <option value="critical">critical</option>
+                </select>
+              </td>
+              <td><input type="text" name="pass_criteria" value=""></td>
+              <td><input type="text" name="description" value=""></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="form-group">
+          <label for="operator_comment">Confirmation comment</label>
+          <input type="text" id="operator_comment" name="operator_comment" placeholder="Optional note for the revision history">
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Confirm &amp; activate revision</button>
+        </div>
+      </form>
+
+      <form method="post" action="/admin/intakes/{{ intake.id }}/reject" style="margin-top:1rem;">
+        <input type="text" name="reason" placeholder="Rejection reason">
+        <button type="submit" class="btn btn-sm">Reject intake</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

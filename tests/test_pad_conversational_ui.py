@@ -34,6 +34,7 @@ from sqlalchemy.pool import StaticPool
 
 from src.api.main import app
 from src.api.deps import get_db_dep
+from tests._auth_override import install_api_auth_override
 from src.db.models import Base
 import src.db.pad_models  # noqa: F401 — registers tables
 import src.db.models  # noqa: F401
@@ -79,6 +80,7 @@ def client(db_session):
             pass
 
     app.dependency_overrides[get_db_dep] = override_db
+    install_api_auth_override(app)
     with TestClient(app, raise_server_exceptions=True) as c:
         yield c
     app.dependency_overrides.clear()
@@ -268,14 +270,19 @@ def test_15_voice_endpoint_transcript_required(auth_client):
 # Test 16: Image upload endpoint
 # ---------------------------------------------------------------------------
 def test_16_image_upload(auth_client):
+    import pathlib
+
+    png_bytes = (
+        pathlib.Path(__file__).parent / "fixtures" / "red_square.png"
+    ).read_bytes()
     resp = auth_client.post(
         "/api/v1/pad/upload",
-        files={"image": ("test.jpg", b"fake-image-bytes", "image/jpeg")},
+        files={"image": ("test.png", png_bytes, "image/png")},
     )
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "received"
-    assert data["filename"] == "test.jpg"
+    assert data["filename"] == "test.png"
 
 
 # ---------------------------------------------------------------------------

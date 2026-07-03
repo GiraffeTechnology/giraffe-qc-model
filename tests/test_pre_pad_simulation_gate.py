@@ -36,6 +36,7 @@ from src.db.execution_models import QCCheckpointResult, QCIncidentalFinding, QCM
 from src.db.seed_data import seed_flower_brooch
 
 from src.api.deps import get_db_dep
+from tests._auth_override import install_api_auth_override
 from src.api.main import app
 
 from src.inspection.service import (
@@ -115,6 +116,7 @@ def client(http_session_factory):
             session.close()
 
     app.dependency_overrides[get_db_dep] = override_get_db
+    install_api_auth_override(app)
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
