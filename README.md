@@ -117,6 +117,7 @@ fail-closed review_required behavior
 human feedback schema
 false-pass P0 escalation skeleton
 admin UI at /admin/qc-model
+chat-first Admin Studio at /admin/studio
 ```
 
 Phase 1 validates structure and safety guardrails. It does not certify real-world visual accuracy, defect recall, or production readiness.

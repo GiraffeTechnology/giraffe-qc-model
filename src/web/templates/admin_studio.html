@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QC Admin Studio</title>
+  <link rel="stylesheet" href="/static/admin_studio.css">
+</head>
+<body data-tenant="{{ tenant_id }}">
+  <header class="studio-header">
+    <a href="/admin/samples" class="brand">Giraffe QC</a>
+    <span class="studio-title">Admin Studio</span>
+    <nav class="studio-nav">
+      <a href="/admin/qc-model">Visual QC Model</a>
+      <a href="/admin/samples">Sample Admin</a>
+    </nav>
+    <div class="studio-header__actions">
+      {% include "_language_switch.html" %}
+    </div>
+  </header>
+
+  <div class="studio-layout">
+    <!-- LEFT: SKU list / search / status filter -->
+    <aside class="panel panel-left">
+      <div class="panel-head">
+        <h2>SKUs</h2>
+      </div>
+      <div class="sku-controls">
+        <input type="search" id="sku-search" placeholder="Search SKU / name…" autocomplete="off">
+        <select id="sku-status-filter">
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+          <option value="archived">Archived</option>
+        </select>
+      </div>
+      <ul id="sku-list" class="sku-list"></ul>
+    </aside>
+
+    <!-- CENTER: conversation + input -->
+    <section class="panel panel-center">
+      <div class="panel-head">
+        <h2>Conversation</h2>
+        <span id="active-sku-chip" class="chip hidden"></span>
+      </div>
+      <div id="conversation" class="conversation" aria-live="polite"></div>
+
+      <form id="chat-form" class="chat-input">
+        <button type="button" id="voice-toggle" class="icon-btn" title="Voice input">🎤</button>
+        <label class="icon-btn" title="Upload standard photo">
+          📎
+          <input type="file" id="photo-input" accept="image/*" hidden>
+        </label>
+        <input type="text" id="chat-text" placeholder="Create a SKU or describe QC requirements…" autocomplete="off">
+        <button type="submit" class="send-btn">Send</button>
+      </form>
+    </section>
+
+    <!-- RIGHT: SKU card + standard preview + detection points + status -->
+    <aside class="panel panel-right">
+      <div class="panel-head">
+        <h2>Standard</h2>
+      </div>
+      <div id="sku-card" class="sku-card empty">
+        <p class="muted">Select or create a SKU to see its standard.</p>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Confirmation card template rendered into the conversation -->
+  <template id="confirm-card-template">
+    <div class="confirm-card">
+      <div class="confirm-head">Candidate detection points</div>
+      <div class="confirm-body"></div>
+      <div class="confirm-actions">
+        <button type="button" class="btn btn-primary confirm-yes">Confirm &amp; save</button>
+        <button type="button" class="btn confirm-no">Reject</button>
+      </div>
+    </div>
+  </template>
+
+  <script src="/static/admin_studio.js"></script>
+</body>
+</html>

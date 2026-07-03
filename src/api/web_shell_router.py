@@ -108,26 +108,16 @@ def admin_home(request: Request, db: Session = Depends(get_db_dep)):
     return _render(request, "admin_home.html", cards=cards)
 
 
-# --- Scaffold stubs owned by S2-S4 ----------------------------------------
+# --- Feature routes formerly scaffolded here (S2-S4) -----------------------
 #
-# These render a non-blank placeholder so navigation never 404s or lands on a
-# blank page. Feature sessions replace them with the real surface; until then
-# the route + language switch stay here.
-#
-# Bundles / Workstations (S3) and Results (S4) now own their routes — the real
-# pages are served by qc_bundle_router / qc_verdict_router and carry the shared
-# language switch via base.html. Their stubs are intentionally gone. The Studio
-# (S2) stub remains until S2 lands its real /admin/studio page.
-
-
-@router.get("/admin/studio", response_class=HTMLResponse)
-def studio_stub(request: Request):
-    return _render(
-        request,
-        "shell_stub.html",
-        title_key="admin.card.studio.title",
-        desc_key="admin.card.studio.desc",
-    )
+# The shell scaffold used to render placeholder pages here so navigation never
+# 404'd before the feature sessions landed. All of them have now landed and own
+# their real routes, each carrying the shared language switch via base.html:
+#   * /admin/studio          — S2, qc_studio_router
+#   * /admin/bundles         — S3, qc_bundle_router
+#   * /admin/workstations    — S3, qc_bundle_router
+#   * /admin/results         — S4, qc_verdict_router
+# so no stub routes remain.
 
 
 # --- Language settings -----------------------------------------------------
