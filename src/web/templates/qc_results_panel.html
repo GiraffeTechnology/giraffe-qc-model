@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}QC Results — Server Recomputed Verdict{% endblock %}
+{% block content %}
+<section class="qcm-panel">
+  <h1>Results — Server Verdict</h1>
+  <p class="qcm-note qcm-boundary">
+    ⚠ The server <strong>never trusts</strong> the Pad's claimed verdict. Each row
+    shows the Pad-submitted result next to the server-recomputed result,
+    evaluated against the standard revision / bundle version the Pad actually
+    used. A missing or non-passing checkpoint can never be a PASS.
+  </p>
+
+  {% if results %}
+  <table class="qcm-table">
+    <thead>
+      <tr>
+        <th>Job</th><th>Pad said</th><th>Server verdict</th><th>Agree?</th>
+        <th>Rule</th><th>Std revision</th><th>Bundle</th>
+        <th>Missing / failing</th><th>Warnings</th><th>Human decision</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in results %}
+      <tr>
+        <td><code>{{ r.submission_id[:8] }}</code></td>
+        <td>{{ r.pad_overall_result }}</td>
+        <td>
+          <strong>{{ r.server_overall_result }}</strong>
+          {% if r.review_required %}<span class="qcm-state">review</span>{% endif %}
+        </td>
+        <td>{% if r.agrees %}✅{% else %}<span class="qcm-pending">⚠ differs</span>{% endif %}</td>
+        <td><code>{{ r.rule_applied }}</code></td>
+        <td><code>{{ r.standard_revision_id }}</code></td>
+        <td>{{ r.bundle_version or '—' }}</td>
+        <td>
+          {% if r.failing_checkpoints %}<div>fail: {{ r.failing_checkpoints|join(', ') }}</div>{% endif %}
+          {% if r.missing_checkpoints %}<div>missing: {{ r.missing_checkpoints|join(', ') }}</div>{% endif %}
+          {% if not r.failing_checkpoints and not r.missing_checkpoints %}—{% endif %}
+        </td>
+        <td>{% for w in r.warnings %}<div class="qcm-pending">{{ w }}</div>{% else %}—{% endfor %}</td>
+        <td>
+          {% if r.human_final_decision %}
+            <strong>{{ r.human_final_decision }}</strong>
+            <br><small class="qcm-note">by {{ r.human_decided_by }}</small>
+          {% else %}
+          <form method="post" action="/admin/results/{{ r.submission_id }}/final-decision" class="qcm-inline-form">
+            <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+            <input type="text" name="decided_by" placeholder="reviewer" size="8" required>
+            <select name="decision">
+              <option value="pass">pass</option>
+              <option value="reject">reject</option>
+              <option value="review">review</option>
+              <option value="escalate">escalate</option>
+            </select>
+            <button type="submit" class="btn btn-sm">Record</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="qcm-note">No results yet. Pads submit via
+    <code>POST /api/qc/results/submissions</code>.</p>
+  {% endif %}
+</section>
+{% endblock %}
