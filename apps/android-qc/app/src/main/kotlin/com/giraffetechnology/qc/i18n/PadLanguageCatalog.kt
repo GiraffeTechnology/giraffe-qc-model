@@ -57,6 +57,15 @@ object PadLanguageCatalog {
         "pad.work.voice" to "Voice",
         "pad.work.text" to "Text",
         "pad.work.capture" to "Capture",
+        "pad.work.selected_sku" to "SKU: {item} — {name}",
+        "pad.work.instruction" to
+            "Place the item in the frame, then capture. Auto-capture triggers when the item is stable.",
+        "pad.work.checkpoint" to "Checkpoint {code}: {name}",
+        "pad.work.progress" to "Inspected {done}/{total} checkpoints",
+        "pad.work.missing_view" to "Missing required view: {view}. Please capture it.",
+        "pad.work.detection_result" to "{code}: {verdict} — {reason}",
+        "pad.work.result_overall" to "Overall: {verdict} — {reason}",
+        "pad.work.no_standard_selected" to "No standard revision selected.",
 
         // ── runtime readiness (S6 §8.3) — EXACT spec strings ───────────────
         "readiness.mnn_native_ready_model_pending" to "MNN native ready; model pending",
