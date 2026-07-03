@@ -93,7 +93,7 @@ class SubmissionTest {
         assertFalse(client.called)
     }
 
-    @Test fun `encodeBody includes revision and bundle; parseAcceptedIds falls back to submitted`() {
+    @Test fun `encodeBody includes revision and bundle, parseAcceptedIds falls back to submitted`() {
         val batch = listOf(submission("job-1"), submission("job-2"))
         val body = HttpSubmissionClient.encodeBody(batch)
         assertTrue(body.contains("standard_revision_id"))
