@@ -37,7 +37,7 @@ class RecordBundleBody(BaseModel):
     tenant_id: str = "default"
     manifest: dict
     signature: str
-    signature_algo: str = "hmac-sha256"
+    signature_algo: str = "ed25519"
     manifest_sha256: str = ""
     created_by: str = ""
 

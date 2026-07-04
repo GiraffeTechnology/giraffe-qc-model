@@ -29,7 +29,6 @@ SECRET = "test-secret"
 
 @pytest.fixture()
 def db_session(monkeypatch):
-    monkeypatch.setenv("BUNDLE_SIGNING_SECRET", SECRET)
     engine = create_engine(
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
@@ -53,13 +52,12 @@ def client(db_session):
     app.dependency_overrides.clear()
 
 
-def _signed(tenant=T1, version="1.0.0", secret=SECRET):
+def _signed(tenant=T1, version="1.0.0"):
     return m.create_signed_bundle(
         bundle_version=version,
         tenant_id=tenant,
         skus=[{"sku_id": "sku1", "item_number": "SKU-1", "standard_revision_id": "rev1", "revision_no": 2}],
         photos=[{"photo_id": "p1", "sku_id": "sku1", "sha256": "a" * 64, "path": "photos/p1.jpg"}],
-        secret=secret,
         created_by="studio@t1",
     )
 
@@ -75,14 +73,14 @@ def test_manifest_counts_are_derived_not_trusted():
 
 def test_verify_bundle_accepts_valid():
     signed = _signed()
-    m.verify_bundle(signed, SECRET)  # no raise
+    m.verify_bundle(signed)  # no raise
 
 
 def test_verify_bundle_rejects_missing_signature():
     signed = _signed()
     signed.signature = ""
     with pytest.raises(m.BundleVerificationError) as exc:
-        m.verify_bundle(signed, SECRET)
+        m.verify_bundle(signed)
     assert exc.value.reason == "missing_signature"
 
 
@@ -90,24 +88,30 @@ def test_verify_bundle_rejects_tampered_manifest():
     signed = _signed()
     signed.manifest["bundle_version"] = "9.9.9"  # signature no longer matches
     with pytest.raises(m.BundleVerificationError) as exc:
-        m.verify_bundle(signed, SECRET)
+        m.verify_bundle(signed)
     # checksum recomputed from tampered manifest won't match stored sha256
     assert exc.value.reason in ("manifest_checksum_mismatch", "invalid_signature")
 
 
-def test_verify_bundle_rejects_wrong_secret():
+def test_verify_bundle_rejects_wrong_key():
+    """A signature from a different Ed25519 key is rejected (fail-closed)."""
+    from src.qc_model.bundle import ed25519 as ed
+
     signed = _signed()
+    foreign_priv, _ = ed.generate_keypair_pem()
+    foreign = ed.BundleSigner(ed._load_private_from_pem(foreign_priv))
+    signed.signature = foreign.sign(m.canonical_json(signed.manifest).encode("utf-8"))
     with pytest.raises(m.BundleVerificationError) as exc:
-        m.verify_bundle(signed, "other-secret")
+        m.verify_bundle(signed)
     assert exc.value.reason == "invalid_signature"
 
 
 def test_verify_bundle_rejects_photo_checksum_mismatch():
     signed = _signed()
     # sign over a manifest that declares one digest, present a different one
-    m.verify_bundle(signed, SECRET)  # baseline ok with no actual checksums
+    m.verify_bundle(signed)  # baseline ok with no actual checksums
     with pytest.raises(m.BundleVerificationError) as exc:
-        m.verify_bundle(signed, SECRET, actual_photo_checksums={"p1": "b" * 64})
+        m.verify_bundle(signed, actual_photo_checksums={"p1": "b" * 64})
     assert exc.value.reason == "photo_checksum_mismatch"
 
 
@@ -115,20 +119,20 @@ def test_verify_bundle_rejects_missing_photo_checksum():
     signed = _signed()
     signed.manifest["photos"][0]["sha256"] = ""
     # re-sign so signature is valid but photo checksum is empty
-    signed.signature = m.sign_manifest(signed.manifest, SECRET)
+    signed.signature = m.sign_manifest(signed.manifest)
     signed.manifest_sha256 = m.compute_manifest_sha256(signed.manifest)
     with pytest.raises(m.BundleVerificationError) as exc:
-        m.verify_bundle(signed, SECRET)
+        m.verify_bundle(signed)
     assert exc.value.reason == "photo_checksum_missing"
 
 
 def test_verify_bundle_rejects_forged_counts():
     signed = _signed()
     signed.manifest["sku_count"] = 99
-    signed.signature = m.sign_manifest(signed.manifest, SECRET)
+    signed.signature = m.sign_manifest(signed.manifest)
     signed.manifest_sha256 = m.compute_manifest_sha256(signed.manifest)
     with pytest.raises(m.BundleVerificationError) as exc:
-        m.verify_bundle(signed, SECRET)
+        m.verify_bundle(signed)
     assert exc.value.reason == "sku_count_mismatch"
 
 
