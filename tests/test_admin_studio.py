@@ -488,6 +488,42 @@ def test_publish_archive_fails_closed_on_stale_photo(client, db_session_factory)
         session.close()
 
 
+def test_publish_endpoint_fails_closed_on_missing_photo(client, db_session_factory):
+    """The real /admin/studio/publish endpoint (not just the helper) rejects a
+    missing photo — the archive validation is wired into publish."""
+    import os
+    from src.db.sku_models import QCStandardPhoto
+
+    sku_id = _create_flw(client)
+    up = client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": "default"},
+        files={"image": ("flw.png", _tiny_png(), "image/png")},
+    ).json()
+    card = client.post(
+        "/admin/studio/chat",
+        json={"message": "pearl count 3, rhinestone count 8", "sku_id": sku_id},
+    ).json()["confirmation_card"]
+    client.post(
+        "/admin/studio/confirm",
+        json={"intake_id": card["intake_id"], "confirmed_by": "a", "checkpoints": card["checkpoints"]},
+    )
+
+    # The photo file disappears from disk, then publish is attempted via the API.
+    session = db_session_factory()
+    try:
+        path = session.query(QCStandardPhoto).filter_by(id=up["photo_id"]).one().local_path
+    finally:
+        session.close()
+    os.remove(path)
+
+    resp = client.post("/admin/studio/publish", json={"sku_id": sku_id})
+    assert resp.status_code == 400, resp.text
+    assert "missing" in resp.json()["error"].lower()
+    # And nothing was persisted.
+    assert client.get(f"/admin/studio/skus/{sku_id}/bundles").json()["bundles"] == []
+
+
 # ── §5.1 Minimum Admin Happy Path (FLW-001) end-to-end ────────────────────────
 
 

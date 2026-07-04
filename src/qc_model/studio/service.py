@@ -593,7 +593,12 @@ def publish_bundle(
     if sku is None:
         raise ValueError("SKU not found.")
 
-    manifest = build_bundle_manifest(db, sku, tenant_id)
+    # Build the canonical signed .tar.gz first. This is the real publish gate:
+    # it fail-closes when a declared standard photo file is missing or its bytes
+    # have drifted from the recorded sha256, so a bundle is never persisted with
+    # missing/stale photo payloads. We reuse its (validated) manifest.
+    archive = build_publish_archive(db, sku_id, tenant_id)
+    manifest = archive.manifest
     signed = sign_manifest(manifest)
 
     bundle = QCPublishBundle(
