@@ -320,7 +320,12 @@ def test_e2e_tampered_bundle_signature_rejected(client):
     """S3 re-verifies signed bundles fail-closed on ingest."""
     ctx = _studio_create_confirm(client)
     body = _s3_signed_bundle_body(ctx["sku_id"], ctx["revision_id"])
-    body["signature"] = "00" + body["signature"][2:]  # tamper
+    # Deterministically flip the first hex nibble so the signature is *always*
+    # changed — even on the ~1/256 run where the HMAC already starts with "0"
+    # (the manifest timestamp varies run to run). Keeps the same valid hex
+    # length; only the value differs, so verification always fails.
+    sig = body["signature"]
+    body["signature"] = ("1" if sig[0] == "0" else "0") + sig[1:]  # tamper
     rec = client.post("/api/qc/bundles", json=body)
     assert rec.status_code == 400
 
