@@ -21,6 +21,7 @@ import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
@@ -44,6 +45,16 @@ def _uid() -> str:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+# On-disk home for the canonical signed ``.tar.gz`` a publish produces. Mirrors
+# the Studio photo store (``data/qc_studio/{tenant}/...``) so a bundle's payload
+# lives beside the photos it embeds and stays tenant-scoped on disk.
+_STUDIO_DATA_DIR = Path("data/qc_studio")
+
+
+def _bundle_archive_path(tenant_id: str, bundle_id: str) -> Path:
+    return _STUDIO_DATA_DIR / tenant_id / "bundles" / f"{bundle_id}.tar.gz"
 
 
 # ── Chat result ───────────────────────────────────────────────────────────────
@@ -551,8 +562,6 @@ def build_publish_archive(db: Session, sku_id: str, tenant_id: str):
     manifest + checksum. Fail-closed: raises ValueError if the SKU/standard is
     not publishable. Returns a :class:`ed25519.SignedArchive`.
     """
-    from pathlib import Path
-
     sku = db.query(QCSkuItem).filter_by(id=sku_id, tenant_id=tenant_id).first()
     if sku is None:
         raise ValueError("SKU not found.")
@@ -560,8 +569,9 @@ def build_publish_archive(db: Session, sku_id: str, tenant_id: str):
 
     # Fail-closed on the payload: every photo the manifest declares must be
     # present on disk and match its recorded checksum. A bundle is never built
-    # with a missing photo file (missing payload) or a photo whose bytes have
-    # drifted from the sha256 recorded at upload (stale payload).
+    # with a missing photo file (missing payload), a photo that carries no
+    # recorded checksum to verify against (unverifiable payload), or a photo
+    # whose bytes have drifted from the sha256 recorded at upload (stale payload).
     photos: List[tuple] = []
     for p in sku.photos:
         if not p.local_path or not Path(p.local_path).is_file():
@@ -570,7 +580,12 @@ def build_publish_archive(db: Session, sku_id: str, tenant_id: str):
                 f"({p.local_path!r}). Re-upload it before publishing."
             )
         data = Path(p.local_path).read_bytes()
-        if p.sha256 and hashlib.sha256(data).hexdigest() != p.sha256:
+        if not p.sha256:
+            raise ValueError(
+                f"Cannot publish: standard photo {p.id} has no recorded sha256, so "
+                f"its payload cannot be verified. Re-upload it before publishing."
+            )
+        if hashlib.sha256(data).hexdigest() != p.sha256:
             raise ValueError(
                 f"Cannot publish: standard photo {p.id} on disk does not match "
                 f"its recorded checksum (stale payload). Re-upload it before publishing."
@@ -601,8 +616,18 @@ def publish_bundle(
     manifest = archive.manifest
     signed = sign_manifest(manifest)
 
+    bundle_id = _uid()
+
+    # Persist the canonical photo-carrying archive to disk *before* recording the
+    # row, so the history row is never visible without its downloadable payload.
+    # This is what a Pad actually imports; the DB row only carries the manifest +
+    # manifest-level signature for the admin API.
+    archive_path = _bundle_archive_path(tenant_id, bundle_id)
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    archive_path.write_bytes(archive.archive_bytes)
+
     bundle = QCPublishBundle(
-        id=_uid(),
+        id=bundle_id,
         tenant_id=tenant_id,
         sku_id=sku.id,
         standard_revision_id=manifest["standard_revision"]["id"],
@@ -624,6 +649,38 @@ def publish_bundle(
     return bundle
 
 
+def download_publish_bundle(
+    db: Session, tenant_id: str, bundle_id: str
+) -> tuple[bytes, QCPublishBundle]:
+    """Return the canonical signed ``.tar.gz`` for a published bundle, re-verified.
+
+    Tenant-scoped and fail-closed: a bundle from another tenant is ``LookupError``
+    (404); a missing on-disk payload or an archive that no longer verifies against
+    the Ed25519 public key is a ``ValueError`` (409) and the bytes are never served.
+    """
+    bundle = (
+        db.query(QCPublishBundle)
+        .filter_by(id=bundle_id, tenant_id=tenant_id)
+        .first()
+    )
+    if bundle is None:
+        raise LookupError("Bundle not found.")
+
+    path = _bundle_archive_path(tenant_id, bundle_id)
+    if not path.is_file():
+        raise ValueError(
+            "Bundle archive payload is missing on disk; re-publish before download."
+        )
+    archive_bytes = path.read_bytes()
+    try:
+        # Re-verify the signed archive envelope (signature → checksums → manifest)
+        # before serving. Never hand out a payload we cannot vouch for.
+        _ed.verify_signed_archive(archive_bytes)
+    except _ed.BundleVerifyError as exc:
+        raise ValueError(f"Bundle failed verification: {exc}") from exc
+    return archive_bytes, bundle
+
+
 def bundle_view(bundle: QCPublishBundle) -> Dict[str, Any]:
     return {
         "id": bundle.id,
@@ -639,4 +696,8 @@ def bundle_view(bundle: QCPublishBundle) -> Dict[str, Any]:
         "detection_point_count": bundle.detection_point_count,
         "published_by": bundle.published_by,
         "created_at": bundle.created_at.isoformat() if bundle.created_at else None,
+        "download_url": (
+            f"/admin/studio/bundles/{bundle.id}/download"
+            f"?tenant_id={quote(bundle.tenant_id, safe='')}"
+        ),
     }
