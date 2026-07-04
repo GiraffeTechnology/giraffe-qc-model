@@ -557,10 +557,25 @@ def build_publish_archive(db: Session, sku_id: str, tenant_id: str):
     if sku is None:
         raise ValueError("SKU not found.")
     manifest = build_bundle_manifest(db, sku, tenant_id)
+
+    # Fail-closed on the payload: every photo the manifest declares must be
+    # present on disk and match its recorded checksum. A bundle is never built
+    # with a missing photo file (missing payload) or a photo whose bytes have
+    # drifted from the sha256 recorded at upload (stale payload).
     photos: List[tuple] = []
     for p in sku.photos:
-        if p.local_path and Path(p.local_path).is_file():
-            photos.append((f"photos/{p.id}", Path(p.local_path).read_bytes()))
+        if not p.local_path or not Path(p.local_path).is_file():
+            raise ValueError(
+                f"Cannot publish: standard photo {p.id} file is missing "
+                f"({p.local_path!r}). Re-upload it before publishing."
+            )
+        data = Path(p.local_path).read_bytes()
+        if p.sha256 and hashlib.sha256(data).hexdigest() != p.sha256:
+            raise ValueError(
+                f"Cannot publish: standard photo {p.id} on disk does not match "
+                f"its recorded checksum (stale payload). Re-upload it before publishing."
+            )
+        photos.append((f"photos/{p.id}", data))
     return _ed.build_signed_archive(manifest, photos)
 
 

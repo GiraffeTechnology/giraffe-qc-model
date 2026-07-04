@@ -286,6 +286,15 @@ def verify_signed_archive(archive_bytes: bytes, public_key: Optional[Ed25519Publ
                 expected[path] = digest
             if expected.get(MANIFEST_NAME) != _sha256(manifest_bytes):
                 raise BundleVerifyError("manifest checksum mismatch")
+            present = {n for n in members
+                       if n not in (CHECKSUM_NAME, SIGNATURE_NAME)}
+            # Every checksum-listed file must actually be in the archive — a
+            # dropped payload (missing photo file) is rejected, not silently
+            # ignored.
+            missing = sorted(set(expected) - present)
+            if missing:
+                raise BundleVerifyError(f"missing payload files: {missing}")
+            # ...and no file may be present that the checksum does not cover.
             for name, member in members.items():
                 if name in (MANIFEST_NAME, CHECKSUM_NAME, SIGNATURE_NAME):
                     continue

@@ -68,6 +68,15 @@ def test_extra_unlisted_payload_rejected(signer):
         b.verify_signed_archive(smuggled, signer.public_key)
 
 
+def test_missing_payload_file_rejected(signer):
+    """A checksum-listed photo dropped from the archive is rejected (not ignored)."""
+    arch = b.build_signed_archive(_manifest(), [("photos/p1.jpg", b"data")], signer)
+    dropped = _repack(arch.archive_bytes, drop={"photos/p1.jpg"})
+    with pytest.raises(b.BundleVerifyError) as exc:
+        b.verify_signed_archive(dropped, signer.public_key)
+    assert "missing payload" in str(exc.value).lower()
+
+
 def test_load_signer_fails_closed_without_key(monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
     for var in (

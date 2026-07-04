@@ -424,6 +424,70 @@ def test_publish_builds_verifiable_ed25519_tar_gz(client, db_session_factory):
     assert any(n.startswith("photos/") for n in names)
 
 
+def test_publish_archive_fails_closed_on_missing_photo_file(client, db_session_factory):
+    """A declared standard photo whose file is gone blocks publish (no partial bundle)."""
+    import os
+    from src.qc_model.studio.service import build_publish_archive
+    from src.db.sku_models import QCStandardPhoto
+
+    sku_id = _create_flw(client)
+    up = client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": "default"},
+        files={"image": ("flw.png", _tiny_png(), "image/png")},
+    ).json()
+    card = client.post(
+        "/admin/studio/chat",
+        json={"message": "pearl count 3", "sku_id": sku_id},
+    ).json()["confirmation_card"]
+    client.post(
+        "/admin/studio/confirm",
+        json={"intake_id": card["intake_id"], "confirmed_by": "a", "checkpoints": card["checkpoints"]},
+    )
+
+    session = db_session_factory()
+    try:
+        photo = session.query(QCStandardPhoto).filter_by(id=up["photo_id"]).one()
+        os.remove(photo.local_path)  # the file disappears from disk
+        with pytest.raises(ValueError) as exc:
+            build_publish_archive(session, sku_id, "default")
+        assert "missing" in str(exc.value).lower()
+    finally:
+        session.close()
+
+
+def test_publish_archive_fails_closed_on_stale_photo(client, db_session_factory):
+    """A standard photo whose bytes drifted from its recorded checksum blocks publish."""
+    from src.qc_model.studio.service import build_publish_archive
+    from src.db.sku_models import QCStandardPhoto
+
+    sku_id = _create_flw(client)
+    up = client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": "default"},
+        files={"image": ("flw.png", _tiny_png(), "image/png")},
+    ).json()
+    card = client.post(
+        "/admin/studio/chat",
+        json={"message": "pearl count 3", "sku_id": sku_id},
+    ).json()["confirmation_card"]
+    client.post(
+        "/admin/studio/confirm",
+        json={"intake_id": card["intake_id"], "confirmed_by": "a", "checkpoints": card["checkpoints"]},
+    )
+
+    session = db_session_factory()
+    try:
+        photo = session.query(QCStandardPhoto).filter_by(id=up["photo_id"]).one()
+        with open(photo.local_path, "wb") as fh:
+            fh.write(b"different bytes than the recorded sha256")
+        with pytest.raises(ValueError) as exc:
+            build_publish_archive(session, sku_id, "default")
+        assert "stale" in str(exc.value).lower() or "checksum" in str(exc.value).lower()
+    finally:
+        session.close()
+
+
 # ── §5.1 Minimum Admin Happy Path (FLW-001) end-to-end ────────────────────────
 
 
