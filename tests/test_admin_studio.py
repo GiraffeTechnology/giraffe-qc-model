@@ -357,7 +357,7 @@ def test_publish_creates_signed_bundle(client, db_session_factory):
     resp = client.post("/admin/studio/publish", json={"sku_id": sku_id})
     assert resp.status_code == 200, resp.text
     bundle = resp.json()["bundle"]
-    assert bundle["signature_algorithm"] == "HMAC-SHA256"
+    assert bundle["signature_algorithm"] == "ed25519"
     assert bundle["bundle_hash"]
     assert bundle["signature"]
     assert bundle["detection_point_count"] == 3
@@ -383,6 +383,45 @@ def test_publish_fails_closed_without_confirmed_standard(client):
     resp = client.post("/admin/studio/publish", json={"sku_id": sku_id})
     assert resp.status_code == 400
     assert "publish" in resp.json()["error"].lower()
+
+
+def test_publish_builds_verifiable_ed25519_tar_gz(client, db_session_factory):
+    """The canonical bundle is an Ed25519-signed .tar.gz embedding the photos."""
+    from src.qc_model.studio.service import build_publish_archive
+    from src.qc_model.bundle import ed25519
+
+    sku_id = _create_flw(client)
+    client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": "default"},
+        files={"image": ("flw.png", _tiny_png(), "image/png")},
+    )
+    card = client.post(
+        "/admin/studio/chat",
+        json={"message": "pearl count 3, rhinestone count 8", "sku_id": sku_id},
+    ).json()["confirmation_card"]
+    client.post(
+        "/admin/studio/confirm",
+        json={"intake_id": card["intake_id"], "confirmed_by": "a", "checkpoints": card["checkpoints"]},
+    )
+
+    session = db_session_factory()
+    try:
+        archive = build_publish_archive(session, sku_id, "default")
+    finally:
+        session.close()
+
+    # The archive verifies fail-closed and carries the manifest + a photo payload.
+    manifest = ed25519.verify_signed_archive(archive.archive_bytes)
+    assert manifest["sku"]["item_number"] == "FLW-001"
+    assert len(manifest["detection_points"]) == 2
+
+    import io
+    import tarfile
+    with tarfile.open(fileobj=io.BytesIO(archive.archive_bytes), mode="r:gz") as tar:
+        names = tar.getnames()
+    assert "manifest.json" in names and "checksum.sha256" in names and "bundle.sig" in names
+    assert any(n.startswith("photos/") for n in names)
 
 
 # ── §5.1 Minimum Admin Happy Path (FLW-001) end-to-end ────────────────────────

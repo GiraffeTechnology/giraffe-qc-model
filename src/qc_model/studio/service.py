@@ -16,9 +16,7 @@ signed publish bundle manifest.
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
-import os
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -37,6 +35,7 @@ from src.db.sku_models import (
 )
 from src.db.studio_models import QCPublishBundle
 from src.intake.service import create_standard_intake, extract_standard_draft
+from src.qc_model.bundle import ed25519 as _ed
 
 
 def _uid() -> str:
@@ -442,14 +441,6 @@ def process_studio_chat(
 # ── Publish: signed L2 bundle (§5.6) ──────────────────────────────────────────
 
 
-def _signing_key() -> bytes:
-    return os.getenv("QC_BUNDLE_SIGNING_KEY", "dev-bundle-signing-key").encode("utf-8")
-
-
-def _signing_key_id() -> str:
-    return os.getenv("QC_BUNDLE_SIGNING_KEY_ID", "default")
-
-
 def _canonical(manifest: Dict[str, Any]) -> str:
     return json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -529,23 +520,48 @@ def build_bundle_manifest(db: Session, sku: QCSkuItem, tenant_id: str) -> Dict[s
 
 
 def sign_manifest(manifest: Dict[str, Any]) -> Dict[str, str]:
-    """Return {bundle_hash, signature, signature_algorithm, signing_key_id}."""
+    """Sign the canonical manifest with the server Ed25519 key.
+
+    Returns ``{bundle_hash, signature, signature_algorithm, signing_key_id}``.
+    Ed25519 (not HMAC) is the single production bundle format so a deployed Pad
+    verifies with a public key it can hold safely; see
+    :mod:`src.qc_model.bundle.ed25519`.
+    """
     canonical = _canonical(manifest).encode("utf-8")
     bundle_hash = hashlib.sha256(canonical).hexdigest()
-    signature = hmac.new(_signing_key(), canonical, hashlib.sha256).hexdigest()
+    signer = _ed.load_signer()
     return {
         "bundle_hash": bundle_hash,
-        "signature": signature,
-        "signature_algorithm": "HMAC-SHA256",
-        "signing_key_id": _signing_key_id(),
+        "signature": signer.sign(canonical),
+        "signature_algorithm": _ed.SIGNATURE_ALGO,
+        "signing_key_id": signer.fingerprint,
     }
 
 
 def verify_bundle(manifest: Dict[str, Any], signature: str) -> bool:
-    """Constant-time verification that ``signature`` matches ``manifest``."""
-    expected = hmac.new(_signing_key(), _canonical(manifest).encode("utf-8"),
-                        hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature)
+    """Verify an Ed25519 manifest signature with the verify-side public key."""
+    canonical = _canonical(manifest).encode("utf-8")
+    return _ed.verify_signature(_ed.load_public_key(), canonical, signature)
+
+
+def build_publish_archive(db: Session, sku_id: str, tenant_id: str):
+    """Build the canonical Ed25519-signed ``.tar.gz`` bundle for a SKU.
+
+    Embeds the standard photos as payload files under ``photos/`` and signs the
+    manifest + checksum. Fail-closed: raises ValueError if the SKU/standard is
+    not publishable. Returns a :class:`ed25519.SignedArchive`.
+    """
+    from pathlib import Path
+
+    sku = db.query(QCSkuItem).filter_by(id=sku_id, tenant_id=tenant_id).first()
+    if sku is None:
+        raise ValueError("SKU not found.")
+    manifest = build_bundle_manifest(db, sku, tenant_id)
+    photos: List[tuple] = []
+    for p in sku.photos:
+        if p.local_path and Path(p.local_path).is_file():
+            photos.append((f"photos/{p.id}", Path(p.local_path).read_bytes()))
+    return _ed.build_signed_archive(manifest, photos)
 
 
 def publish_bundle(
