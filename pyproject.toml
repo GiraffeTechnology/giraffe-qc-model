@@ -5,9 +5,9 @@ build-backend = "hatchling.build"
 [project]
 name = "giraffe-qc-model"
 version = "0.1.0"
-description = "Standalone QC comparison service: image comparison + video capture pipeline"
+description = "Digital QC worker skill service for SKU-specific visual QC authoring, qualification, and runtime"
 requires-python = ">=3.11"
-license = { text = "LGPL-2.1" }
+license = { text = "LicenseRef-Giraffe-QC-Model" }
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
