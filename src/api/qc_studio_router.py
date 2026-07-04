@@ -10,6 +10,7 @@ Mounts the three-panel ``/admin/studio`` page and its backend routes:
 * ``GET  /admin/studio/photos/{photo_id}``   — serve a stored standard photo
 * ``POST /admin/studio/confirm``             — confirm / reject detection points
 * ``POST /admin/studio/publish``             — publish signed L2 bundle
+* ``GET  /admin/studio/bundles/{bundle_id}/download`` — download signed .tar.gz (re-verified)
 * ``GET  /admin/studio/skus/{sku_id}/bundles`` — bundle history (S3 owns the UI)
 
 Extraction, confirmation and upload validation are reused from existing
@@ -22,7 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -329,6 +330,31 @@ def studio_publish(body: PublishRequest, db: Session = Depends(get_db_dep)):
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     return {"status": "published", "bundle": studio.bundle_view(bundle)}
+
+
+@router.get("/admin/studio/bundles/{bundle_id}/download")
+def download_bundle(
+    bundle_id: str,
+    tenant_id: str = "default",
+    db: Session = Depends(get_db_dep),
+):
+    """Serve the canonical signed ``.tar.gz`` for a published bundle (re-verified).
+
+    Fail-closed: a tenant-foreign or unknown bundle is 404; a missing on-disk
+    payload or an archive that no longer verifies is 409 (the bytes never leave).
+    """
+    try:
+        archive_bytes, bundle = studio.download_publish_bundle(db, tenant_id, bundle_id)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Bundle not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    filename = f"{bundle.sku_id}-r{bundle.revision_no}-{bundle.id}.tar.gz"
+    return Response(
+        content=archive_bytes,
+        media_type="application/gzip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/admin/studio/skus/{sku_id}/bundles")

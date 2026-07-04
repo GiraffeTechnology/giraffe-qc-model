@@ -25,7 +25,6 @@ SECRET = "test-secret"
 
 @pytest.fixture()
 def db_session(monkeypatch):
-    monkeypatch.setenv("BUNDLE_SIGNING_SECRET", SECRET)
     engine = create_engine(
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
@@ -55,7 +54,6 @@ def _record_bundle(client, tenant=T1, version="1.0.0"):
         tenant_id=tenant,
         skus=[{"sku_id": "s1", "item_number": "SKU-1", "standard_revision_id": "r1", "revision_no": 1}],
         photos=[{"photo_id": "p1", "sku_id": "s1", "sha256": "a" * 64, "path": "p1.jpg"}],
-        secret=SECRET,
     )
     return client.post(
         "/api/qc/bundles",

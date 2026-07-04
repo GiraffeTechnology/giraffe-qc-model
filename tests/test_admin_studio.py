@@ -357,7 +357,7 @@ def test_publish_creates_signed_bundle(client, db_session_factory):
     resp = client.post("/admin/studio/publish", json={"sku_id": sku_id})
     assert resp.status_code == 200, resp.text
     bundle = resp.json()["bundle"]
-    assert bundle["signature_algorithm"] == "HMAC-SHA256"
+    assert bundle["signature_algorithm"] == "ed25519"
     assert bundle["bundle_hash"]
     assert bundle["signature"]
     assert bundle["detection_point_count"] == 3
@@ -383,6 +383,252 @@ def test_publish_fails_closed_without_confirmed_standard(client):
     resp = client.post("/admin/studio/publish", json={"sku_id": sku_id})
     assert resp.status_code == 400
     assert "publish" in resp.json()["error"].lower()
+
+
+def test_publish_builds_verifiable_ed25519_tar_gz(client, db_session_factory):
+    """The canonical bundle is an Ed25519-signed .tar.gz embedding the photos."""
+    from src.qc_model.studio.service import build_publish_archive
+    from src.qc_model.bundle import ed25519
+
+    sku_id = _create_flw(client)
+    client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": "default"},
+        files={"image": ("flw.png", _tiny_png(), "image/png")},
+    )
+    card = client.post(
+        "/admin/studio/chat",
+        json={"message": "pearl count 3, rhinestone count 8", "sku_id": sku_id},
+    ).json()["confirmation_card"]
+    client.post(
+        "/admin/studio/confirm",
+        json={"intake_id": card["intake_id"], "confirmed_by": "a", "checkpoints": card["checkpoints"]},
+    )
+
+    session = db_session_factory()
+    try:
+        archive = build_publish_archive(session, sku_id, "default")
+    finally:
+        session.close()
+
+    # The archive verifies fail-closed and carries the manifest + a photo payload.
+    manifest = ed25519.verify_signed_archive(archive.archive_bytes)
+    assert manifest["sku"]["item_number"] == "FLW-001"
+    assert len(manifest["detection_points"]) == 2
+
+    import io
+    import tarfile
+    with tarfile.open(fileobj=io.BytesIO(archive.archive_bytes), mode="r:gz") as tar:
+        names = tar.getnames()
+    assert "manifest.json" in names and "checksum.sha256" in names and "bundle.sig" in names
+    assert any(n.startswith("photos/") for n in names)
+
+
+def test_publish_archive_fails_closed_on_missing_photo_file(client, db_session_factory):
+    """A declared standard photo whose file is gone blocks publish (no partial bundle)."""
+    import os
+    from src.qc_model.studio.service import build_publish_archive
+    from src.db.sku_models import QCStandardPhoto
+
+    sku_id = _create_flw(client)
+    up = client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": "default"},
+        files={"image": ("flw.png", _tiny_png(), "image/png")},
+    ).json()
+    card = client.post(
+        "/admin/studio/chat",
+        json={"message": "pearl count 3", "sku_id": sku_id},
+    ).json()["confirmation_card"]
+    client.post(
+        "/admin/studio/confirm",
+        json={"intake_id": card["intake_id"], "confirmed_by": "a", "checkpoints": card["checkpoints"]},
+    )
+
+    session = db_session_factory()
+    try:
+        photo = session.query(QCStandardPhoto).filter_by(id=up["photo_id"]).one()
+        os.remove(photo.local_path)  # the file disappears from disk
+        with pytest.raises(ValueError) as exc:
+            build_publish_archive(session, sku_id, "default")
+        assert "missing" in str(exc.value).lower()
+    finally:
+        session.close()
+
+
+def test_publish_archive_fails_closed_on_stale_photo(client, db_session_factory):
+    """A standard photo whose bytes drifted from its recorded checksum blocks publish."""
+    from src.qc_model.studio.service import build_publish_archive
+    from src.db.sku_models import QCStandardPhoto
+
+    sku_id = _create_flw(client)
+    up = client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": "default"},
+        files={"image": ("flw.png", _tiny_png(), "image/png")},
+    ).json()
+    card = client.post(
+        "/admin/studio/chat",
+        json={"message": "pearl count 3", "sku_id": sku_id},
+    ).json()["confirmation_card"]
+    client.post(
+        "/admin/studio/confirm",
+        json={"intake_id": card["intake_id"], "confirmed_by": "a", "checkpoints": card["checkpoints"]},
+    )
+
+    session = db_session_factory()
+    try:
+        photo = session.query(QCStandardPhoto).filter_by(id=up["photo_id"]).one()
+        with open(photo.local_path, "wb") as fh:
+            fh.write(b"different bytes than the recorded sha256")
+        with pytest.raises(ValueError) as exc:
+            build_publish_archive(session, sku_id, "default")
+        assert "stale" in str(exc.value).lower() or "checksum" in str(exc.value).lower()
+    finally:
+        session.close()
+
+
+def test_publish_endpoint_fails_closed_on_missing_photo(client, db_session_factory):
+    """The real /admin/studio/publish endpoint (not just the helper) rejects a
+    missing photo — the archive validation is wired into publish."""
+    import os
+    from src.db.sku_models import QCStandardPhoto
+
+    sku_id = _create_flw(client)
+    up = client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": "default"},
+        files={"image": ("flw.png", _tiny_png(), "image/png")},
+    ).json()
+    card = client.post(
+        "/admin/studio/chat",
+        json={"message": "pearl count 3, rhinestone count 8", "sku_id": sku_id},
+    ).json()["confirmation_card"]
+    client.post(
+        "/admin/studio/confirm",
+        json={"intake_id": card["intake_id"], "confirmed_by": "a", "checkpoints": card["checkpoints"]},
+    )
+
+    # The photo file disappears from disk, then publish is attempted via the API.
+    session = db_session_factory()
+    try:
+        path = session.query(QCStandardPhoto).filter_by(id=up["photo_id"]).one().local_path
+    finally:
+        session.close()
+    os.remove(path)
+
+    resp = client.post("/admin/studio/publish", json={"sku_id": sku_id})
+    assert resp.status_code == 400, resp.text
+    assert "missing" in resp.json()["error"].lower()
+    # And nothing was persisted.
+    assert client.get(f"/admin/studio/skus/{sku_id}/bundles").json()["bundles"] == []
+
+
+def test_publish_archive_fails_closed_on_missing_sha256(client, db_session_factory):
+    """A standard photo with no recorded sha256 cannot be published — its payload
+    would be unverifiable at import time (Codex P2)."""
+    from src.qc_model.studio.service import build_publish_archive
+    from src.db.sku_models import QCStandardPhoto
+
+    sku_id = _create_flw(client)
+    up = client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": "default"},
+        files={"image": ("flw.png", _tiny_png(), "image/png")},
+    ).json()
+    card = client.post(
+        "/admin/studio/chat",
+        json={"message": "pearl count 3", "sku_id": sku_id},
+    ).json()["confirmation_card"]
+    client.post(
+        "/admin/studio/confirm",
+        json={"intake_id": card["intake_id"], "confirmed_by": "a", "checkpoints": card["checkpoints"]},
+    )
+
+    session = db_session_factory()
+    try:
+        photo = session.query(QCStandardPhoto).filter_by(id=up["photo_id"]).one()
+        photo.sha256 = ""  # checksum lost / never recorded
+        session.commit()
+        with pytest.raises(ValueError) as exc:
+            build_publish_archive(session, sku_id, "default")
+        assert "sha256" in str(exc.value).lower()
+    finally:
+        session.close()
+
+
+def _publish_flw(client, sku_id):
+    card = client.post(
+        "/admin/studio/chat",
+        json={"message": "pearl count 3, rhinestone count 8", "sku_id": sku_id},
+    ).json()["confirmation_card"]
+    client.post(
+        "/admin/studio/confirm",
+        json={"intake_id": card["intake_id"], "confirmed_by": "a", "checkpoints": card["checkpoints"]},
+    )
+    return client.post("/admin/studio/publish", json={"sku_id": sku_id}).json()["bundle"]
+
+
+def test_publish_persists_downloadable_verified_archive(client, db_session_factory):
+    """Publish persists the canonical signed .tar.gz; the download endpoint serves
+    it and it re-verifies fail-closed (Codex P1 — archive must not be discarded)."""
+    import io
+    import tarfile
+    from src.qc_model.bundle import ed25519
+
+    sku_id = _create_flw(client)
+    client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": "default"},
+        files={"image": ("flw.png", _tiny_png(), "image/png")},
+    )
+    bundle = _publish_flw(client, sku_id)
+    assert bundle["download_url"].startswith(f"/admin/studio/bundles/{bundle['id']}/download")
+
+    dl = client.get(bundle["download_url"])
+    assert dl.status_code == 200, dl.text
+    assert dl.headers["content-type"].startswith("application/gzip")
+
+    # The bytes we serve are the canonical archive: they verify against the
+    # Ed25519 public key and carry the embedded photo payload.
+    manifest = ed25519.verify_signed_archive(dl.content)
+    assert manifest["sku"]["item_number"] == "FLW-001"
+    with tarfile.open(fileobj=io.BytesIO(dl.content), mode="r:gz") as tar:
+        names = tar.getnames()
+    assert any(n.startswith("photos/") for n in names)
+
+
+def test_download_bundle_is_tenant_scoped(client, db_session_factory):
+    """A bundle published under one tenant is not downloadable under another."""
+    sku_id = _create_flw(client)
+    client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": "default"},
+        files={"image": ("flw.png", _tiny_png(), "image/png")},
+    )
+    bundle = _publish_flw(client, sku_id)
+    resp = client.get(f"/admin/studio/bundles/{bundle['id']}/download?tenant_id=other")
+    assert resp.status_code == 404
+
+
+def test_download_bundle_fails_closed_on_tampered_payload(client, db_session_factory):
+    """If the stored archive is corrupted at rest, download refuses to serve it."""
+    from src.qc_model.studio.service import _bundle_archive_path
+
+    sku_id = _create_flw(client)
+    client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": "default"},
+        files={"image": ("flw.png", _tiny_png(), "image/png")},
+    )
+    bundle = _publish_flw(client, sku_id)
+
+    # Corrupt the archive on disk (simulate at-rest tampering).
+    path = _bundle_archive_path("default", bundle["id"])
+    path.write_bytes(b"not a valid tar.gz")
+
+    resp = client.get(bundle["download_url"])
+    assert resp.status_code == 409
 
 
 # ── §5.1 Minimum Admin Happy Path (FLW-001) end-to-end ────────────────────────

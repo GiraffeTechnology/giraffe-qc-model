@@ -39,10 +39,11 @@ bundle). Sessions must not define a competing format — build manifests through
 * Each photo carries its own SHA-256; :func:`verify_photo_checksums` compares
   the manifest's declared digests against the digests actually present.
 
-The reference signer is HMAC-SHA256 (``algo="hmac-sha256"``) which needs no
-third-party crypto dependency and is sufficient for the simulated/test
-environment. The verifier is written against an ``algo`` field so an asymmetric
-signer (e.g. ed25519) can be added later without changing callers.
+Signing/verification delegates to the canonical Ed25519 signer in
+:mod:`src.qc_model.bundle.ed25519` — the single production bundle format. The
+server signs with its private key and a deployed Pad verifies with the matching
+public key it can hold safely; there is no HMAC production path (which would
+require the verifier to hold the signing secret) and no unsigned path.
 """
 from __future__ import annotations
 
@@ -53,9 +54,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping, Optional
 
+from src.qc_model.bundle import ed25519 as _ed
+
 MANIFEST_VERSION = 1
-DEFAULT_SIGNATURE_ALGO = "hmac-sha256"
-_SUPPORTED_ALGOS = {"hmac-sha256"}
+# The single production signature format. Ed25519 lets a deployed Pad verify
+# with a public key it can hold safely; HMAC (which would require the verifier
+# to hold the signing secret) is not a supported production format.
+DEFAULT_SIGNATURE_ALGO = "ed25519"
+_SUPPORTED_ALGOS = {"ed25519"}
 
 
 class BundleVerificationError(Exception):
@@ -134,12 +140,11 @@ def compute_manifest_sha256(manifest: Mapping[str, Any]) -> str:
 # ── Signing ──────────────────────────────────────────────────────────────────
 
 
-def sign_manifest(manifest: Mapping[str, Any], secret: str, algo: str = DEFAULT_SIGNATURE_ALGO) -> str:
-    """Return a hex signature over the manifest's canonical SHA-256 digest."""
+def sign_manifest(manifest: Mapping[str, Any], algo: str = DEFAULT_SIGNATURE_ALGO) -> str:
+    """Return a base64 Ed25519 signature over the canonical manifest bytes."""
     if algo not in _SUPPORTED_ALGOS:
         raise BundleVerificationError("unknown_signature_algo", algo)
-    digest = compute_manifest_sha256(manifest)
-    return hmac.new(secret.encode("utf-8"), digest.encode("utf-8"), hashlib.sha256).hexdigest()
+    return _ed.load_signer().sign(canonical_json(manifest).encode("utf-8"))
 
 
 @dataclass
@@ -162,7 +167,6 @@ def create_signed_bundle(
     tenant_id: str,
     skus: Iterable[Mapping[str, Any]],
     photos: Iterable[Mapping[str, Any]],
-    secret: str,
     created_by: str = "",
     created_at: Optional[datetime] = None,
     algo: str = DEFAULT_SIGNATURE_ALGO,
@@ -176,7 +180,7 @@ def create_signed_bundle(
         created_by=created_by,
         created_at=created_at,
     )
-    signature = sign_manifest(manifest, secret, algo=algo)
+    signature = sign_manifest(manifest, algo=algo)
     return SignedBundle(manifest=manifest, signature=signature, signature_algo=algo)
 
 
@@ -186,7 +190,6 @@ def create_signed_bundle(
 def verify_signature(
     manifest: Mapping[str, Any],
     signature: Optional[str],
-    secret: str,
     algo: str = DEFAULT_SIGNATURE_ALGO,
 ) -> None:
     """Raise :class:`BundleVerificationError` unless the signature is valid.
@@ -197,8 +200,9 @@ def verify_signature(
         raise BundleVerificationError("missing_signature")
     if algo not in _SUPPORTED_ALGOS:
         raise BundleVerificationError("unknown_signature_algo", algo)
-    expected = sign_manifest(manifest, secret, algo=algo)
-    if not hmac.compare_digest(expected, signature):
+    if not _ed.verify_signature(
+        _ed.load_public_key(), canonical_json(manifest).encode("utf-8"), signature
+    ):
         raise BundleVerificationError("invalid_signature")
 
 
@@ -233,7 +237,6 @@ def verify_photo_checksums(
 
 def verify_bundle(
     bundle: SignedBundle,
-    secret: str,
     *,
     expected_manifest_sha256: Optional[str] = None,
     actual_photo_checksums: Optional[Mapping[str, str]] = None,
@@ -257,5 +260,5 @@ def verify_bundle(
         raise BundleVerificationError("standard_revision_count_mismatch")
 
     verify_manifest_checksum(manifest, expected_manifest_sha256 or bundle.manifest_sha256)
-    verify_signature(manifest, bundle.signature, secret, algo=bundle.signature_algo)
+    verify_signature(manifest, bundle.signature, algo=bundle.signature_algo)
     verify_photo_checksums(manifest, actual_photo_checksums)

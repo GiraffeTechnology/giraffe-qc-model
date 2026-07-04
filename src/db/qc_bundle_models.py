@@ -53,7 +53,7 @@ class QCBundle(Base):
     manifest_json: Mapped[dict] = mapped_column(JSON, nullable=False)
     manifest_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     signature: Mapped[str] = mapped_column(String(256), nullable=False)
-    signature_algo: Mapped[str] = mapped_column(String(32), nullable=False, default="hmac-sha256")
+    signature_algo: Mapped[str] = mapped_column(String(32), nullable=False, default="ed25519")
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 

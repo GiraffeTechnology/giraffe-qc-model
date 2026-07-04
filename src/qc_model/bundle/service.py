@@ -13,7 +13,6 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src import config
 from src.db.qc_bundle_models import (
     BUNDLE_STATUS_SIGNED,
     PAIRED_STATUS_PAIRED,
@@ -42,10 +41,6 @@ def _uid() -> str:
     return uuid.uuid4().hex
 
 
-def _secret() -> str:
-    return config.bundle_signing_secret()
-
-
 # ── Bundle recording (publisher hand-off) ─────────────────────────────────────
 
 
@@ -63,7 +58,7 @@ def record_signed_bundle(
     """
     if signed.manifest.get("tenant_id") != tenant_id:
         raise BundleVerificationError("tenant_mismatch", str(signed.manifest.get("tenant_id")))
-    verify_bundle(signed, _secret())
+    verify_bundle(signed)
 
     version = signed.manifest["bundle_version"]
     existing = db.scalar(
@@ -130,7 +125,7 @@ def download_bundle(db: Session, tenant_id: str, bundle_pk: str) -> SignedBundle
     """
     bundle = get_bundle(db, tenant_id, bundle_pk)
     signed = _as_signed(bundle)
-    verify_bundle(signed, _secret(), expected_manifest_sha256=bundle.manifest_sha256)
+    verify_bundle(signed, expected_manifest_sha256=bundle.manifest_sha256)
     return signed
 
 
@@ -214,7 +209,7 @@ def assign_bundle(
     """
     ws = get_workstation(db, tenant_id, workstation_pk)
     bundle = get_bundle(db, tenant_id, bundle_pk)
-    verify_bundle(_as_signed(bundle), _secret(), expected_manifest_sha256=bundle.manifest_sha256)
+    verify_bundle(_as_signed(bundle), expected_manifest_sha256=bundle.manifest_sha256)
 
     ws.assigned_bundle_version = bundle.bundle_version
     db.add(

@@ -16,13 +16,12 @@ signed publish bundle manifest.
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
-import os
 import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
@@ -37,6 +36,7 @@ from src.db.sku_models import (
 )
 from src.db.studio_models import QCPublishBundle
 from src.intake.service import create_standard_intake, extract_standard_draft
+from src.qc_model.bundle import ed25519 as _ed
 
 
 def _uid() -> str:
@@ -45,6 +45,16 @@ def _uid() -> str:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+# On-disk home for the canonical signed ``.tar.gz`` a publish produces. Mirrors
+# the Studio photo store (``data/qc_studio/{tenant}/...``) so a bundle's payload
+# lives beside the photos it embeds and stays tenant-scoped on disk.
+_STUDIO_DATA_DIR = Path("data/qc_studio")
+
+
+def _bundle_archive_path(tenant_id: str, bundle_id: str) -> Path:
+    return _STUDIO_DATA_DIR / tenant_id / "bundles" / f"{bundle_id}.tar.gz"
 
 
 # ── Chat result ───────────────────────────────────────────────────────────────
@@ -442,14 +452,6 @@ def process_studio_chat(
 # ── Publish: signed L2 bundle (§5.6) ──────────────────────────────────────────
 
 
-def _signing_key() -> bytes:
-    return os.getenv("QC_BUNDLE_SIGNING_KEY", "dev-bundle-signing-key").encode("utf-8")
-
-
-def _signing_key_id() -> str:
-    return os.getenv("QC_BUNDLE_SIGNING_KEY_ID", "default")
-
-
 def _canonical(manifest: Dict[str, Any]) -> str:
     return json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -529,23 +531,67 @@ def build_bundle_manifest(db: Session, sku: QCSkuItem, tenant_id: str) -> Dict[s
 
 
 def sign_manifest(manifest: Dict[str, Any]) -> Dict[str, str]:
-    """Return {bundle_hash, signature, signature_algorithm, signing_key_id}."""
+    """Sign the canonical manifest with the server Ed25519 key.
+
+    Returns ``{bundle_hash, signature, signature_algorithm, signing_key_id}``.
+    Ed25519 (not HMAC) is the single production bundle format so a deployed Pad
+    verifies with a public key it can hold safely; see
+    :mod:`src.qc_model.bundle.ed25519`.
+    """
     canonical = _canonical(manifest).encode("utf-8")
     bundle_hash = hashlib.sha256(canonical).hexdigest()
-    signature = hmac.new(_signing_key(), canonical, hashlib.sha256).hexdigest()
+    signer = _ed.load_signer()
     return {
         "bundle_hash": bundle_hash,
-        "signature": signature,
-        "signature_algorithm": "HMAC-SHA256",
-        "signing_key_id": _signing_key_id(),
+        "signature": signer.sign(canonical),
+        "signature_algorithm": _ed.SIGNATURE_ALGO,
+        "signing_key_id": signer.fingerprint,
     }
 
 
 def verify_bundle(manifest: Dict[str, Any], signature: str) -> bool:
-    """Constant-time verification that ``signature`` matches ``manifest``."""
-    expected = hmac.new(_signing_key(), _canonical(manifest).encode("utf-8"),
-                        hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature)
+    """Verify an Ed25519 manifest signature with the verify-side public key."""
+    canonical = _canonical(manifest).encode("utf-8")
+    return _ed.verify_signature(_ed.load_public_key(), canonical, signature)
+
+
+def build_publish_archive(db: Session, sku_id: str, tenant_id: str):
+    """Build the canonical Ed25519-signed ``.tar.gz`` bundle for a SKU.
+
+    Embeds the standard photos as payload files under ``photos/`` and signs the
+    manifest + checksum. Fail-closed: raises ValueError if the SKU/standard is
+    not publishable. Returns a :class:`ed25519.SignedArchive`.
+    """
+    sku = db.query(QCSkuItem).filter_by(id=sku_id, tenant_id=tenant_id).first()
+    if sku is None:
+        raise ValueError("SKU not found.")
+    manifest = build_bundle_manifest(db, sku, tenant_id)
+
+    # Fail-closed on the payload: every photo the manifest declares must be
+    # present on disk and match its recorded checksum. A bundle is never built
+    # with a missing photo file (missing payload), a photo that carries no
+    # recorded checksum to verify against (unverifiable payload), or a photo
+    # whose bytes have drifted from the sha256 recorded at upload (stale payload).
+    photos: List[tuple] = []
+    for p in sku.photos:
+        if not p.local_path or not Path(p.local_path).is_file():
+            raise ValueError(
+                f"Cannot publish: standard photo {p.id} file is missing "
+                f"({p.local_path!r}). Re-upload it before publishing."
+            )
+        data = Path(p.local_path).read_bytes()
+        if not p.sha256:
+            raise ValueError(
+                f"Cannot publish: standard photo {p.id} has no recorded sha256, so "
+                f"its payload cannot be verified. Re-upload it before publishing."
+            )
+        if hashlib.sha256(data).hexdigest() != p.sha256:
+            raise ValueError(
+                f"Cannot publish: standard photo {p.id} on disk does not match "
+                f"its recorded checksum (stale payload). Re-upload it before publishing."
+            )
+        photos.append((f"photos/{p.id}", data))
+    return _ed.build_signed_archive(manifest, photos)
 
 
 def publish_bundle(
@@ -562,11 +608,26 @@ def publish_bundle(
     if sku is None:
         raise ValueError("SKU not found.")
 
-    manifest = build_bundle_manifest(db, sku, tenant_id)
+    # Build the canonical signed .tar.gz first. This is the real publish gate:
+    # it fail-closes when a declared standard photo file is missing or its bytes
+    # have drifted from the recorded sha256, so a bundle is never persisted with
+    # missing/stale photo payloads. We reuse its (validated) manifest.
+    archive = build_publish_archive(db, sku_id, tenant_id)
+    manifest = archive.manifest
     signed = sign_manifest(manifest)
 
+    bundle_id = _uid()
+
+    # Persist the canonical photo-carrying archive to disk *before* recording the
+    # row, so the history row is never visible without its downloadable payload.
+    # This is what a Pad actually imports; the DB row only carries the manifest +
+    # manifest-level signature for the admin API.
+    archive_path = _bundle_archive_path(tenant_id, bundle_id)
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    archive_path.write_bytes(archive.archive_bytes)
+
     bundle = QCPublishBundle(
-        id=_uid(),
+        id=bundle_id,
         tenant_id=tenant_id,
         sku_id=sku.id,
         standard_revision_id=manifest["standard_revision"]["id"],
@@ -588,6 +649,38 @@ def publish_bundle(
     return bundle
 
 
+def download_publish_bundle(
+    db: Session, tenant_id: str, bundle_id: str
+) -> tuple[bytes, QCPublishBundle]:
+    """Return the canonical signed ``.tar.gz`` for a published bundle, re-verified.
+
+    Tenant-scoped and fail-closed: a bundle from another tenant is ``LookupError``
+    (404); a missing on-disk payload or an archive that no longer verifies against
+    the Ed25519 public key is a ``ValueError`` (409) and the bytes are never served.
+    """
+    bundle = (
+        db.query(QCPublishBundle)
+        .filter_by(id=bundle_id, tenant_id=tenant_id)
+        .first()
+    )
+    if bundle is None:
+        raise LookupError("Bundle not found.")
+
+    path = _bundle_archive_path(tenant_id, bundle_id)
+    if not path.is_file():
+        raise ValueError(
+            "Bundle archive payload is missing on disk; re-publish before download."
+        )
+    archive_bytes = path.read_bytes()
+    try:
+        # Re-verify the signed archive envelope (signature → checksums → manifest)
+        # before serving. Never hand out a payload we cannot vouch for.
+        _ed.verify_signed_archive(archive_bytes)
+    except _ed.BundleVerifyError as exc:
+        raise ValueError(f"Bundle failed verification: {exc}") from exc
+    return archive_bytes, bundle
+
+
 def bundle_view(bundle: QCPublishBundle) -> Dict[str, Any]:
     return {
         "id": bundle.id,
@@ -603,4 +696,8 @@ def bundle_view(bundle: QCPublishBundle) -> Dict[str, Any]:
         "detection_point_count": bundle.detection_point_count,
         "published_by": bundle.published_by,
         "created_at": bundle.created_at.isoformat() if bundle.created_at else None,
+        "download_url": (
+            f"/admin/studio/bundles/{bundle.id}/download"
+            f"?tenant_id={quote(bundle.tenant_id, safe='')}"
+        ),
     }
