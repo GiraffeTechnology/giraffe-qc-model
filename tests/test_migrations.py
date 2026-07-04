@@ -174,3 +174,47 @@ def test_upgrade_head_fails_on_missing_unique_constraint(tmp_path, monkeypatch):
     msg = str(exc.value)
     assert "qc_bundles" in msg
     assert "unique constraint" in msg.lower() or "missing index" in msg.lower()
+
+
+def test_upgrade_head_fails_on_wrong_column_definition(tmp_path, monkeypatch):
+    """A table with the right column *names* but a nullable, non-PK `id` is rejected.
+
+    Names alone are not enough — a plain nullable `id` (not the primary key)
+    would allow duplicate/null ids, so adoption must fail on the definition.
+    """
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'wrongdef.db'}"
+    monkeypatch.setenv("QC_DB_URL", url)
+    cfg = _alembic_config(url)
+
+    command.upgrade(cfg, "018")
+    # qc_bundles with every column, unique constraint and indexes present, but
+    # `id` is a plain nullable column with no primary key.
+    ddl = text(
+        "CREATE TABLE qc_bundles ("
+        " id VARCHAR(64),"
+        " tenant_id VARCHAR(64) NOT NULL,"
+        " bundle_version VARCHAR(64) NOT NULL,"
+        " status VARCHAR(32) NOT NULL,"
+        " sku_count INTEGER NOT NULL,"
+        " standard_revision_count INTEGER NOT NULL,"
+        " created_by VARCHAR(128),"
+        " manifest_json JSON NOT NULL,"
+        " manifest_sha256 VARCHAR(64) NOT NULL,"
+        " signature VARCHAR(256) NOT NULL,"
+        " signature_algo VARCHAR(32) NOT NULL,"
+        " created_at DATETIME NOT NULL,"
+        " CONSTRAINT uq_bundle_tenant_version UNIQUE (tenant_id, bundle_version))"
+    )
+    with create_engine(url).begin() as conn:
+        conn.execute(ddl)
+        conn.execute(text("CREATE INDEX ix_qc_bundles_tenant_id ON qc_bundles (tenant_id)"))
+        conn.execute(text("CREATE INDEX ix_qc_bundles_bundle_version ON qc_bundles (bundle_version)"))
+
+    with pytest.raises(Exception) as exc:
+        command.upgrade(cfg, "head")
+    msg = str(exc.value)
+    assert "qc_bundles" in msg
+    assert "primary key" in msg.lower()
+    assert "not null" in msg.lower()  # names the nullable id problem

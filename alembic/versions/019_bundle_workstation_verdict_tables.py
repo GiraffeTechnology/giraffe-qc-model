@@ -183,6 +183,7 @@ _TABLES = [
             'standard_revision_count', 'created_by', 'manifest_json',
             'manifest_sha256', 'signature', 'signature_algo', 'created_at',
         },
+        "not_null": {'id', 'tenant_id', 'bundle_version', 'status', 'sku_count', 'standard_revision_count', 'manifest_json', 'manifest_sha256', 'signature', 'signature_algo', 'created_at'},
         "uniques": [("tenant_id", "bundle_version")],
         "indexes": [("tenant_id",), ("bundle_version",)],
         "fks": [],
@@ -195,6 +196,7 @@ _TABLES = [
             'last_seen_at', 'last_sync_status', 'last_error', 'pairing_token',
             'outbox_upload_status', 'created_at', 'updated_at',
         },
+        "not_null": {'id', 'tenant_id', 'workstation_id', 'display_name', 'paired_status', 'created_at', 'updated_at'},
         "uniques": [("tenant_id", "workstation_id")],
         "indexes": [("tenant_id",), ("workstation_id",)],
         "fks": [],
@@ -205,6 +207,7 @@ _TABLES = [
             'id', 'tenant_id', 'workstation_pk', 'bundle_pk', 'bundle_version',
             'assigned_by', 'created_at',
         },
+        "not_null": {'id', 'tenant_id', 'workstation_pk', 'bundle_pk', 'bundle_version', 'created_at'},
         "uniques": [],
         "indexes": [("tenant_id",), ("workstation_pk",), ("bundle_pk",)],
         "fks": [(("workstation_pk",), "qc_workstations"), (("bundle_pk",), "qc_bundles")],
@@ -215,6 +218,7 @@ _TABLES = [
             'id', 'tenant_id', 'job_ref', 'standard_revision_id', 'bundle_version',
             'workstation_id', 'pad_overall_result', 'raw_json', 'submitted_at',
         },
+        "not_null": {'id', 'tenant_id', 'job_ref', 'standard_revision_id', 'pad_overall_result', 'submitted_at'},
         "uniques": [],
         "indexes": [("tenant_id",), ("job_ref",), ("standard_revision_id",), ("workstation_id",)],
         "fks": [],
@@ -222,6 +226,7 @@ _TABLES = [
     {
         "name": "qc_submitted_checkpoints", "build": _create_qc_submitted_checkpoints,
         "columns": {'id', 'submission_id', 'tenant_id', 'checkpoint_id', 'result'},
+        "not_null": {'id', 'submission_id', 'tenant_id', 'checkpoint_id', 'result'},
         "uniques": [],
         "indexes": [("submission_id",), ("tenant_id",)],
         "fks": [(("submission_id",), "qc_pad_submissions")],
@@ -236,6 +241,7 @@ _TABLES = [
             'human_final_decision', 'human_decided_by', 'human_decision_comment',
             'human_decided_at', 'recomputed_at',
         },
+        "not_null": {'id', 'submission_id', 'tenant_id', 'server_overall_result', 'pad_overall_result', 'agrees', 'review_required', 'rule_applied', 'standard_revision_id', 'recomputed_at'},
         "uniques": [("submission_id",)],  # enforced by a unique index
         "indexes": [("submission_id",), ("tenant_id",)],
         "fks": [(("submission_id",), "qc_pad_submissions")],
@@ -248,10 +254,23 @@ def _incompatibilities(insp, spec: dict) -> list:
     name = spec["name"]
     problems: list[str] = []
 
-    actual_cols = {c["name"] for c in insp.get_columns(name)}
+    columns = {c["name"]: c for c in insp.get_columns(name)}
+    actual_cols = set(columns)
     missing_cols = sorted(spec["columns"] - actual_cols)
     if missing_cols:
         problems.append(f"missing columns {missing_cols}")
+
+    # Column *definitions*, not just names: the primary key must be exactly
+    # ``id`` and every NOT-NULL column must reflect as NOT NULL. This rejects a
+    # table that has the right column names but e.g. a plain nullable ``id``
+    # (which would permit duplicate/null ids) instead of the primary key.
+    pk_cols = tuple(insp.get_pk_constraint(name).get("constrained_columns") or ())
+    if pk_cols != ("id",):
+        problems.append(f"primary key is {list(pk_cols)}, expected ['id']")
+    for col in sorted(spec.get("not_null", set())):
+        c = columns.get(col)
+        if c is not None and c.get("nullable", True):
+            problems.append(f"column '{col}' must be NOT NULL")
 
     # Unique enforcement: a unique constraint OR a unique index over the columns.
     unique_sets = {tuple(u["column_names"]) for u in insp.get_unique_constraints(name)}
