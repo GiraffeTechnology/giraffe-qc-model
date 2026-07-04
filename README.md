@@ -328,4 +328,10 @@ A mature QC skill is an industrial knowledge asset. The value of Giraffe QC Mode
 
 ## License
 
-See `LICENSE`.
+Proprietary. All rights reserved.
+
+This repository is not open-source software. No copying, cloning, forking, redistribution, modification, deployment, use, benchmarking, integration, or derivative work is permitted without prior written authorization from Giraffe Technology.
+
+Public visibility on GitHub, if enabled, grants only limited viewing through GitHub's standard web interface. It does not grant a license to reproduce, use, or redistribute the code or the digital QC worker skill logic.
+
+See [`LICENSE`](LICENSE).
