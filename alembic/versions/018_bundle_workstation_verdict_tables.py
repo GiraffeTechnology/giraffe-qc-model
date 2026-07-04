@@ -6,6 +6,15 @@ via ``Base.metadata.create_all`` (test-only); this migration makes a production
 ``alembic upgrade`` provision them. Schema mirrors ``src.db.qc_bundle_models``
 and ``src.db.qc_verdict_models`` exactly.
 
+Idempotent / adoptive: a deployment that already ran with ``create_all`` will
+have these tables. For each table we therefore:
+
+  1. check whether it already exists;
+  2. if it exists, verify its columns match what this migration creates;
+  3. if compatible, adopt it (do not re-create) so ``upgrade head`` succeeds;
+  4. if incompatible, fail with a clear remediation message rather than leave a
+     silently-diverged schema.
+
 Revision ID: 018
 Revises: 017
 Create Date: 2026-07-04
@@ -19,8 +28,10 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade() -> None:
-    # ── S3: bundles ───────────────────────────────────────────────────────────
+# ── Table builders ────────────────────────────────────────────────────────────
+
+
+def _create_qc_bundles() -> None:
     op.create_table(
         'qc_bundles',
         sa.Column('id', sa.String(length=64), nullable=False),
@@ -42,7 +53,8 @@ def upgrade() -> None:
     op.create_index('ix_qc_bundles_tenant_id', 'qc_bundles', ['tenant_id'])
     op.create_index('ix_qc_bundles_bundle_version', 'qc_bundles', ['bundle_version'])
 
-    # ── S3: workstations ──────────────────────────────────────────────────────
+
+def _create_qc_workstations() -> None:
     op.create_table(
         'qc_workstations',
         sa.Column('id', sa.String(length=64), nullable=False),
@@ -68,7 +80,8 @@ def upgrade() -> None:
     op.create_index('ix_qc_workstations_tenant_id', 'qc_workstations', ['tenant_id'])
     op.create_index('ix_qc_workstations_workstation_id', 'qc_workstations', ['workstation_id'])
 
-    # ── S3: bundle assignments ────────────────────────────────────────────────
+
+def _create_qc_bundle_assignments() -> None:
     op.create_table(
         'qc_bundle_assignments',
         sa.Column('id', sa.String(length=64), nullable=False),
@@ -87,7 +100,8 @@ def upgrade() -> None:
     op.create_index('ix_qc_bundle_assignments_workstation_pk', 'qc_bundle_assignments', ['workstation_pk'])
     op.create_index('ix_qc_bundle_assignments_bundle_pk', 'qc_bundle_assignments', ['bundle_pk'])
 
-    # ── S4: pad submissions ───────────────────────────────────────────────────
+
+def _create_qc_pad_submissions() -> None:
     op.create_table(
         'qc_pad_submissions',
         sa.Column('id', sa.String(length=64), nullable=False),
@@ -107,7 +121,8 @@ def upgrade() -> None:
     op.create_index('ix_qc_pad_submissions_standard_revision_id', 'qc_pad_submissions', ['standard_revision_id'])
     op.create_index('ix_qc_pad_submissions_workstation_id', 'qc_pad_submissions', ['workstation_id'])
 
-    # ── S4: submitted checkpoints ─────────────────────────────────────────────
+
+def _create_qc_submitted_checkpoints() -> None:
     op.create_table(
         'qc_submitted_checkpoints',
         sa.Column('id', sa.String(length=64), nullable=False),
@@ -121,7 +136,8 @@ def upgrade() -> None:
     op.create_index('ix_qc_submitted_checkpoints_submission_id', 'qc_submitted_checkpoints', ['submission_id'])
     op.create_index('ix_qc_submitted_checkpoints_tenant_id', 'qc_submitted_checkpoints', ['tenant_id'])
 
-    # ── S4: server verdicts ───────────────────────────────────────────────────
+
+def _create_qc_server_verdicts() -> None:
     op.create_table(
         'qc_server_verdicts',
         sa.Column('id', sa.String(length=64), nullable=False),
@@ -150,6 +166,73 @@ def upgrade() -> None:
     op.create_index('ix_qc_server_verdicts_submission_id', 'qc_server_verdicts',
                     ['submission_id'], unique=True)
     op.create_index('ix_qc_server_verdicts_tenant_id', 'qc_server_verdicts', ['tenant_id'])
+
+
+# tablename -> (builder, expected column-name set). The expected columns are the
+# columns this migration creates, which equal the ORM model columns (the same
+# ones create_all would have made) — so an adopted create_all table matches.
+_TABLES = [
+    ('qc_bundles', _create_qc_bundles, {
+        'id', 'tenant_id', 'bundle_version', 'status', 'sku_count',
+        'standard_revision_count', 'created_by', 'manifest_json', 'manifest_sha256',
+        'signature', 'signature_algo', 'created_at',
+    }),
+    ('qc_workstations', _create_qc_workstations, {
+        'id', 'tenant_id', 'workstation_id', 'display_name', 'site_or_line',
+        'paired_status', 'assigned_bundle_version', 'installed_bundle_version',
+        'last_seen_at', 'last_sync_status', 'last_error', 'pairing_token',
+        'outbox_upload_status', 'created_at', 'updated_at',
+    }),
+    ('qc_bundle_assignments', _create_qc_bundle_assignments, {
+        'id', 'tenant_id', 'workstation_pk', 'bundle_pk', 'bundle_version',
+        'assigned_by', 'created_at',
+    }),
+    ('qc_pad_submissions', _create_qc_pad_submissions, {
+        'id', 'tenant_id', 'job_ref', 'standard_revision_id', 'bundle_version',
+        'workstation_id', 'pad_overall_result', 'raw_json', 'submitted_at',
+    }),
+    ('qc_submitted_checkpoints', _create_qc_submitted_checkpoints, {
+        'id', 'submission_id', 'tenant_id', 'checkpoint_id', 'result',
+    }),
+    ('qc_server_verdicts', _create_qc_server_verdicts, {
+        'id', 'submission_id', 'tenant_id', 'server_overall_result',
+        'pad_overall_result', 'agrees', 'review_required', 'rule_applied',
+        'standard_revision_id', 'bundle_version', 'missing_checkpoints_json',
+        'failing_checkpoints_json', 'warnings_json', 'differences_json',
+        'human_final_decision', 'human_decided_by', 'human_decision_comment',
+        'human_decided_at', 'recomputed_at',
+    }),
+]
+
+
+def _ensure_table(name: str, build, expected_cols: set) -> None:
+    """Create the table, or adopt a compatible pre-existing one, or fail clearly."""
+    insp = sa.inspect(op.get_bind())  # fresh inspector each call — reflects prior creates
+    if name not in insp.get_table_names():
+        build()
+        return
+
+    actual_cols = {c["name"] for c in insp.get_columns(name)}
+    if actual_cols == expected_cols:
+        return  # pre-existing (e.g. via create_all) and compatible → adopt
+
+    missing = sorted(expected_cols - actual_cols)
+    unexpected = sorted(actual_cols - expected_cols)
+    raise RuntimeError(
+        f"Cannot upgrade to 018: table '{name}' already exists but its schema is "
+        f"incompatible with the model this migration creates "
+        f"(missing columns={missing}, unexpected columns={unexpected}). "
+        f"Remediation: align '{name}' to src.db.qc_bundle_models / "
+        f"src.db.qc_verdict_models (add the missing columns), or drop the table if "
+        f"it holds no data, then re-run `alembic upgrade head`."
+    )
+
+
+def upgrade() -> None:
+    # Dependency order: parents (bundles, workstations, pad_submissions) before
+    # children (assignments, checkpoints, verdicts).
+    for name, build, expected_cols in _TABLES:
+        _ensure_table(name, build, expected_cols)
 
 
 def downgrade() -> None:

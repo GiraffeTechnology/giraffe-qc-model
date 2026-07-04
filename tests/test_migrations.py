@@ -96,3 +96,53 @@ def test_single_head_no_revision_collision(migrated_db):
 
     script = ScriptDirectory.from_config(_alembic_config(migrated_db))
     assert len(script.get_heads()) == 1, f"expected a single head, got {script.get_heads()}"
+
+
+def test_upgrade_head_adopts_create_all_tables(tmp_path, monkeypatch):
+    """A create_all deployment (tables already present at 017) upgrades cleanly.
+
+    Simulates a server that ran with Base.metadata.create_all before 018 existed:
+    the S3/S4 tables are already there at revision 017. `upgrade head` must adopt
+    them, not fail with 'table already exists'.
+    """
+    url = f"sqlite:///{tmp_path / 'create_all.db'}"
+    monkeypatch.setenv("QC_DB_URL", url)
+    cfg = _alembic_config(url)
+    engine = create_engine(url)
+
+    command.upgrade(cfg, "017")
+    # A create_all deployment materialised the S3/S4 tables already.
+    Base.metadata.create_all(
+        engine, tables=[Base.metadata.tables[t] for t in _MIGRATED_TABLES]
+    )
+
+    command.upgrade(cfg, "head")  # must not raise 'table already exists'
+
+    insp = inspect(create_engine(url))
+    assert set(_MIGRATED_TABLES) <= set(insp.get_table_names())
+    from alembic.script import ScriptDirectory
+    from alembic.runtime.migration import MigrationContext
+
+    head = ScriptDirectory.from_config(cfg).get_current_head()
+    with create_engine(url).connect() as conn:
+        assert MigrationContext.configure(conn).get_current_revision() == head
+
+
+def test_upgrade_head_fails_clearly_on_incompatible_existing_table(tmp_path, monkeypatch):
+    """An incompatible pre-existing table fails with a clear remediation message."""
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'incompat.db'}"
+    monkeypatch.setenv("QC_DB_URL", url)
+    cfg = _alembic_config(url)
+
+    command.upgrade(cfg, "017")
+    # A diverged qc_bundles (wrong columns) already exists.
+    with create_engine(url).begin() as conn:
+        conn.execute(text("CREATE TABLE qc_bundles (id VARCHAR(64) PRIMARY KEY, wrong_col TEXT)"))
+
+    with pytest.raises(Exception) as exc:
+        command.upgrade(cfg, "head")
+    msg = str(exc.value)
+    assert "qc_bundles" in msg and "incompatible" in msg.lower()
+    assert "Remediation" in msg
