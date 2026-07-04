@@ -218,3 +218,72 @@ def test_upgrade_head_fails_on_wrong_column_definition(tmp_path, monkeypatch):
     assert "qc_bundles" in msg
     assert "primary key" in msg.lower()
     assert "not null" in msg.lower()  # names the nullable id problem
+
+
+def test_upgrade_head_fails_on_optional_column_made_not_null(tmp_path, monkeypatch):
+    """A column the model expects nullable but the DB made NOT NULL is rejected."""
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'notnulldrift.db'}"
+    monkeypatch.setenv("QC_DB_URL", url)
+    cfg = _alembic_config(url)
+
+    command.upgrade(cfg, "018")
+    # qc_workstations, fully correct except last_sync_status is NOT NULL (should
+    # be nullable) — register_workstation() omits it, so an insert would fail.
+    with create_engine(url).begin() as conn:
+        conn.execute(text(
+            "CREATE TABLE qc_workstations ("
+            " id VARCHAR(64) NOT NULL, tenant_id VARCHAR(64) NOT NULL,"
+            " workstation_id VARCHAR(128) NOT NULL, display_name VARCHAR(256) NOT NULL,"
+            " site_or_line VARCHAR(256), paired_status VARCHAR(32) NOT NULL,"
+            " assigned_bundle_version VARCHAR(64), installed_bundle_version VARCHAR(64),"
+            " last_seen_at DATETIME, last_sync_status VARCHAR(64) NOT NULL,"
+            " last_error TEXT, pairing_token VARCHAR(128), outbox_upload_status VARCHAR(64),"
+            " created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL,"
+            " PRIMARY KEY (id),"
+            " CONSTRAINT uq_workstation_tenant_id UNIQUE (tenant_id, workstation_id))"
+        ))
+        conn.execute(text("CREATE INDEX ix_qc_workstations_tenant_id ON qc_workstations (tenant_id)"))
+        conn.execute(text("CREATE INDEX ix_qc_workstations_workstation_id ON qc_workstations (workstation_id)"))
+
+    with pytest.raises(Exception) as exc:
+        command.upgrade(cfg, "head")
+    msg = str(exc.value)
+    assert "last_sync_status" in msg and "must be nullable" in msg.lower()
+
+
+def test_upgrade_head_fails_on_foreign_key_to_wrong_column(tmp_path, monkeypatch):
+    """An FK to the right parent table but the wrong parent column is rejected."""
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'fkdrift.db'}"
+    monkeypatch.setenv("QC_DB_URL", url)
+    cfg = _alembic_config(url)
+    engine = create_engine(url)
+
+    command.upgrade(cfg, "018")
+    # Correct parent tables via create_all; then a child whose workstation_pk FK
+    # points at qc_workstations.workstation_id instead of the primary key id.
+    Base.metadata.create_all(
+        engine, tables=[Base.metadata.tables[t] for t in ("qc_bundles", "qc_workstations")]
+    )
+    with engine.begin() as conn:
+        conn.execute(text(
+            "CREATE TABLE qc_bundle_assignments ("
+            " id VARCHAR(64) NOT NULL, tenant_id VARCHAR(64) NOT NULL,"
+            " workstation_pk VARCHAR(64) NOT NULL, bundle_pk VARCHAR(64) NOT NULL,"
+            " bundle_version VARCHAR(64) NOT NULL, assigned_by VARCHAR(128),"
+            " created_at DATETIME NOT NULL, PRIMARY KEY (id),"
+            " FOREIGN KEY (workstation_pk) REFERENCES qc_workstations (workstation_id),"
+            " FOREIGN KEY (bundle_pk) REFERENCES qc_bundles (id))"
+        ))
+        for col in ("tenant_id", "workstation_pk", "bundle_pk"):
+            conn.execute(text(
+                f"CREATE INDEX ix_qc_bundle_assignments_{col} ON qc_bundle_assignments ({col})"))
+
+    with pytest.raises(Exception) as exc:
+        command.upgrade(cfg, "head")
+    msg = str(exc.value)
+    assert "qc_bundle_assignments" in msg and "foreign key" in msg.lower()
+    assert "qc_workstations" in msg  # names the parent whose column is wrong

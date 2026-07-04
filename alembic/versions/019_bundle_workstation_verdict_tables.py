@@ -210,7 +210,7 @@ _TABLES = [
         "not_null": {'id', 'tenant_id', 'workstation_pk', 'bundle_pk', 'bundle_version', 'created_at'},
         "uniques": [],
         "indexes": [("tenant_id",), ("workstation_pk",), ("bundle_pk",)],
-        "fks": [(("workstation_pk",), "qc_workstations"), (("bundle_pk",), "qc_bundles")],
+        "fks": [(("workstation_pk",), "qc_workstations", ("id",)), (("bundle_pk",), "qc_bundles", ("id",))],
     },
     {
         "name": "qc_pad_submissions", "build": _create_qc_pad_submissions,
@@ -229,7 +229,7 @@ _TABLES = [
         "not_null": {'id', 'submission_id', 'tenant_id', 'checkpoint_id', 'result'},
         "uniques": [],
         "indexes": [("submission_id",), ("tenant_id",)],
-        "fks": [(("submission_id",), "qc_pad_submissions")],
+        "fks": [(("submission_id",), "qc_pad_submissions", ("id",))],
     },
     {
         "name": "qc_server_verdicts", "build": _create_qc_server_verdicts,
@@ -244,7 +244,7 @@ _TABLES = [
         "not_null": {'id', 'submission_id', 'tenant_id', 'server_overall_result', 'pad_overall_result', 'agrees', 'review_required', 'rule_applied', 'standard_revision_id', 'recomputed_at'},
         "uniques": [("submission_id",)],  # enforced by a unique index
         "indexes": [("submission_id",), ("tenant_id",)],
-        "fks": [(("submission_id",), "qc_pad_submissions")],
+        "fks": [(("submission_id",), "qc_pad_submissions", ("id",))],
     },
 ]
 
@@ -271,6 +271,12 @@ def _incompatibilities(insp, spec: dict) -> list:
         c = columns.get(col)
         if c is not None and c.get("nullable", True):
             problems.append(f"column '{col}' must be NOT NULL")
+    # ...and the reverse: a column the model expects nullable must not be a
+    # divergent NOT NULL (which would break inserts that omit it).
+    for col in sorted(spec["columns"] - spec.get("not_null", set())):
+        c = columns.get(col)
+        if c is not None and not c.get("nullable", True):
+            problems.append(f"column '{col}' must be nullable")
 
     # Unique enforcement: a unique constraint OR a unique index over the columns.
     unique_sets = {tuple(u["column_names"]) for u in insp.get_unique_constraints(name)}
@@ -285,11 +291,15 @@ def _incompatibilities(insp, spec: dict) -> list:
         if tuple(cols) not in indexed_sets:
             problems.append(f"missing index on {list(cols)}")
 
-    actual_fks = {(tuple(f["constrained_columns"]), f["referred_table"])
-                  for f in insp.get_foreign_keys(name)}
-    for cols, referred in spec["fks"]:
-        if (tuple(cols), referred) not in actual_fks:
-            problems.append(f"missing foreign key {list(cols)} -> {referred}")
+    actual_fks = {
+        (tuple(f["constrained_columns"]), f["referred_table"], tuple(f["referred_columns"]))
+        for f in insp.get_foreign_keys(name)
+    }
+    for cols, referred, ref_cols in spec["fks"]:
+        if (tuple(cols), referred, tuple(ref_cols)) not in actual_fks:
+            problems.append(
+                f"missing foreign key {list(cols)} -> {referred}.{list(ref_cols)}"
+            )
 
     return problems
 
