@@ -1,12 +1,41 @@
 # Giraffe QC Model — AI-Native Visual QC Intelligence
 
-`Tablet / Pad` | `Server` | `Training Pack` | `Rule Learning` | `Sample Learning` | `Readiness Gate` | `giraffe-language-skill` | `Fail Closed`
+`Tablet / Pad` | `Server` | `Digital QC Worker Skill` | `Mature Skill Package` | `Training Pack` | `Rule Learning` | `Sample Learning` | `Readiness Gate` | `giraffe-language-skill` | `Fail Closed`
 
 Giraffe QC Model is an AI-native quality control inference system for industrial procurement.
 
 The repository contains a Tablet / Pad-side QC path, a server-side QC service, and a shared visual QC training foundation for SKU-specific inspection workflows.
 
-At the product level, Giraffe QC Model is a general-purpose, provider-compatible, LLM/VLM-driven visual QC training and execution framework. It is product-category agnostic at the framework layer, but every production digital inspector is SKU-specific, workstation-specific, and bound to a confirmed Training Pack, Playbook, capture protocol, and qualification state.
+At the product level, Giraffe QC Model is a trainable digital QC worker skill for LLM/VLM-based industrial inspection. It trains a digital QC worker for a specific SKU until the inspection skill reaches a mature, verified state. Once mature, the skill can be packaged, signed, and replicated across many Pad workstations, production lines, shifts, or factories without retraining each human operator or each device.
+
+The product optimizes for per-SKU inspection accuracy, checkpoint-level evidence quality, human-AI agreement, false-pass reduction, traceability, and safe replication. It does not optimize for raw SKU count in the early phase.
+
+---
+
+## Digital QC Worker Skill Objective
+
+Human QC workers must be trained individually. Their inspection quality varies by person, shift, fatigue, factory context, and experience. When a trained worker leaves, accumulated know-how is difficult to preserve or copy.
+
+Giraffe QC Model turns SKU-specific QC know-how into a mature, signed, deployable digital worker skill:
+
+```text
+Train once
+Verify once
+Package once
+Replicate many times
+```
+
+A mature QC skill package may include standard photos, process-card-derived facts, confirmed detection points, expected values, pass criteria, region annotations, required views, evidence requirements, known defect examples, provider/runtime requirements, qualification status, checksum, and signature.
+
+The skill lifecycle is:
+
+```text
+Author -> Configure -> Confirm -> Publish -> Install -> Probation -> Mature -> Replicate -> Monitor -> Requalify
+```
+
+Only mature skills should be eligible for large-scale replication. New or changed skills must pass through assisted inspection, human final confirmation, agreement monitoring, and requalification gates before solo operation.
+
+This is the core product goal: build reliable per-SKU QC skill maturity first, then replicate mature skills safely across many workstations.
 
 ---
 
@@ -292,6 +321,8 @@ controlled_active fails closed without qualification report
 ## Product Principle
 
 QC must inspect confirmed detection points against approved visual evidence. A model-level pass can never override a checkpoint-level fail.
+
+A mature QC skill is an industrial knowledge asset. The value of Giraffe QC Model is not that one Pad can inspect one item; the value is that a verified digital QC worker skill can be safely replicated across many workstations while preserving the same standard, evidence discipline, and qualification state.
 
 ---
 
