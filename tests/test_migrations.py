@@ -128,8 +128,8 @@ def test_upgrade_head_adopts_create_all_tables(tmp_path, monkeypatch):
         assert MigrationContext.configure(conn).get_current_revision() == head
 
 
-def test_upgrade_head_fails_clearly_on_incompatible_existing_table(tmp_path, monkeypatch):
-    """An incompatible pre-existing table fails with a clear remediation message."""
+def test_upgrade_head_fails_clearly_on_missing_column(tmp_path, monkeypatch):
+    """An existing table missing a required column fails, naming the table+column."""
     from sqlalchemy import text
 
     url = f"sqlite:///{tmp_path / 'incompat.db'}"
@@ -137,7 +137,7 @@ def test_upgrade_head_fails_clearly_on_incompatible_existing_table(tmp_path, mon
     cfg = _alembic_config(url)
 
     command.upgrade(cfg, "017")
-    # A diverged qc_bundles (wrong columns) already exists.
+    # A diverged qc_bundles (missing required columns like manifest_json) exists.
     with create_engine(url).begin() as conn:
         conn.execute(text("CREATE TABLE qc_bundles (id VARCHAR(64) PRIMARY KEY, wrong_col TEXT)"))
 
@@ -145,4 +145,32 @@ def test_upgrade_head_fails_clearly_on_incompatible_existing_table(tmp_path, mon
         command.upgrade(cfg, "head")
     msg = str(exc.value)
     assert "qc_bundles" in msg and "incompatible" in msg.lower()
+    assert "missing columns" in msg and "manifest_json" in msg  # names the column
     assert "Remediation" in msg
+    # The bad schema must not have been stamped as 018.
+    from alembic.runtime.migration import MigrationContext
+    with create_engine(url).connect() as conn:
+        assert MigrationContext.configure(conn).get_current_revision() == "017"
+
+
+def test_upgrade_head_fails_on_missing_unique_constraint(tmp_path, monkeypatch):
+    """An existing table with all columns but missing its unique constraint fails."""
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'noconstraint.db'}"
+    monkeypatch.setenv("QC_DB_URL", url)
+    cfg = _alembic_config(url)
+
+    command.upgrade(cfg, "017")
+    # qc_bundles with every column but NO uq_bundle_tenant_version / indexes.
+    cols = ", ".join(
+        f"{c} TEXT" for c in Base.metadata.tables["qc_bundles"].columns.keys()
+    )
+    with create_engine(url).begin() as conn:
+        conn.execute(text(f"CREATE TABLE qc_bundles ({cols})"))
+
+    with pytest.raises(Exception) as exc:
+        command.upgrade(cfg, "head")
+    msg = str(exc.value)
+    assert "qc_bundles" in msg
+    assert "unique constraint" in msg.lower() or "missing index" in msg.lower()

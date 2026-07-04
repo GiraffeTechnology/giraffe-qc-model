@@ -168,71 +168,141 @@ def _create_qc_server_verdicts() -> None:
     op.create_index('ix_qc_server_verdicts_tenant_id', 'qc_server_verdicts', ['tenant_id'])
 
 
-# tablename -> (builder, expected column-name set). The expected columns are the
-# columns this migration creates, which equal the ORM model columns (the same
-# ones create_all would have made) — so an adopted create_all table matches.
+# Per-table expectation used both to create the table and to check compatibility
+# of a pre-existing (create_all) table before adopting it. ``uniques`` are
+# column-tuples that must be enforced unique (via a unique constraint *or* a
+# unique index — dialects differ); ``indexes`` are column-tuples that must be
+# indexed; ``fks`` are ``(local_cols, referred_table)`` pairs. These equal what
+# the builders create, which equals the ORM model — so a create_all table
+# reflects as fully compatible and is adopted.
 _TABLES = [
-    ('qc_bundles', _create_qc_bundles, {
-        'id', 'tenant_id', 'bundle_version', 'status', 'sku_count',
-        'standard_revision_count', 'created_by', 'manifest_json', 'manifest_sha256',
-        'signature', 'signature_algo', 'created_at',
-    }),
-    ('qc_workstations', _create_qc_workstations, {
-        'id', 'tenant_id', 'workstation_id', 'display_name', 'site_or_line',
-        'paired_status', 'assigned_bundle_version', 'installed_bundle_version',
-        'last_seen_at', 'last_sync_status', 'last_error', 'pairing_token',
-        'outbox_upload_status', 'created_at', 'updated_at',
-    }),
-    ('qc_bundle_assignments', _create_qc_bundle_assignments, {
-        'id', 'tenant_id', 'workstation_pk', 'bundle_pk', 'bundle_version',
-        'assigned_by', 'created_at',
-    }),
-    ('qc_pad_submissions', _create_qc_pad_submissions, {
-        'id', 'tenant_id', 'job_ref', 'standard_revision_id', 'bundle_version',
-        'workstation_id', 'pad_overall_result', 'raw_json', 'submitted_at',
-    }),
-    ('qc_submitted_checkpoints', _create_qc_submitted_checkpoints, {
-        'id', 'submission_id', 'tenant_id', 'checkpoint_id', 'result',
-    }),
-    ('qc_server_verdicts', _create_qc_server_verdicts, {
-        'id', 'submission_id', 'tenant_id', 'server_overall_result',
-        'pad_overall_result', 'agrees', 'review_required', 'rule_applied',
-        'standard_revision_id', 'bundle_version', 'missing_checkpoints_json',
-        'failing_checkpoints_json', 'warnings_json', 'differences_json',
-        'human_final_decision', 'human_decided_by', 'human_decision_comment',
-        'human_decided_at', 'recomputed_at',
-    }),
+    {
+        "name": "qc_bundles", "build": _create_qc_bundles,
+        "columns": {
+            'id', 'tenant_id', 'bundle_version', 'status', 'sku_count',
+            'standard_revision_count', 'created_by', 'manifest_json',
+            'manifest_sha256', 'signature', 'signature_algo', 'created_at',
+        },
+        "uniques": [("tenant_id", "bundle_version")],
+        "indexes": [("tenant_id",), ("bundle_version",)],
+        "fks": [],
+    },
+    {
+        "name": "qc_workstations", "build": _create_qc_workstations,
+        "columns": {
+            'id', 'tenant_id', 'workstation_id', 'display_name', 'site_or_line',
+            'paired_status', 'assigned_bundle_version', 'installed_bundle_version',
+            'last_seen_at', 'last_sync_status', 'last_error', 'pairing_token',
+            'outbox_upload_status', 'created_at', 'updated_at',
+        },
+        "uniques": [("tenant_id", "workstation_id")],
+        "indexes": [("tenant_id",), ("workstation_id",)],
+        "fks": [],
+    },
+    {
+        "name": "qc_bundle_assignments", "build": _create_qc_bundle_assignments,
+        "columns": {
+            'id', 'tenant_id', 'workstation_pk', 'bundle_pk', 'bundle_version',
+            'assigned_by', 'created_at',
+        },
+        "uniques": [],
+        "indexes": [("tenant_id",), ("workstation_pk",), ("bundle_pk",)],
+        "fks": [(("workstation_pk",), "qc_workstations"), (("bundle_pk",), "qc_bundles")],
+    },
+    {
+        "name": "qc_pad_submissions", "build": _create_qc_pad_submissions,
+        "columns": {
+            'id', 'tenant_id', 'job_ref', 'standard_revision_id', 'bundle_version',
+            'workstation_id', 'pad_overall_result', 'raw_json', 'submitted_at',
+        },
+        "uniques": [],
+        "indexes": [("tenant_id",), ("job_ref",), ("standard_revision_id",), ("workstation_id",)],
+        "fks": [],
+    },
+    {
+        "name": "qc_submitted_checkpoints", "build": _create_qc_submitted_checkpoints,
+        "columns": {'id', 'submission_id', 'tenant_id', 'checkpoint_id', 'result'},
+        "uniques": [],
+        "indexes": [("submission_id",), ("tenant_id",)],
+        "fks": [(("submission_id",), "qc_pad_submissions")],
+    },
+    {
+        "name": "qc_server_verdicts", "build": _create_qc_server_verdicts,
+        "columns": {
+            'id', 'submission_id', 'tenant_id', 'server_overall_result',
+            'pad_overall_result', 'agrees', 'review_required', 'rule_applied',
+            'standard_revision_id', 'bundle_version', 'missing_checkpoints_json',
+            'failing_checkpoints_json', 'warnings_json', 'differences_json',
+            'human_final_decision', 'human_decided_by', 'human_decision_comment',
+            'human_decided_at', 'recomputed_at',
+        },
+        "uniques": [("submission_id",)],  # enforced by a unique index
+        "indexes": [("submission_id",), ("tenant_id",)],
+        "fks": [(("submission_id",), "qc_pad_submissions")],
+    },
 ]
 
 
-def _ensure_table(name: str, build, expected_cols: set) -> None:
-    """Create the table, or adopt a compatible pre-existing one, or fail clearly."""
-    insp = sa.inspect(op.get_bind())  # fresh inspector each call — reflects prior creates
-    if name not in insp.get_table_names():
-        build()
-        return
+def _incompatibilities(insp, spec: dict) -> list:
+    """Return a list of human-readable incompatibilities, empty if adoptable."""
+    name = spec["name"]
+    problems: list[str] = []
 
     actual_cols = {c["name"] for c in insp.get_columns(name)}
-    if actual_cols == expected_cols:
+    missing_cols = sorted(spec["columns"] - actual_cols)
+    if missing_cols:
+        problems.append(f"missing columns {missing_cols}")
+
+    # Unique enforcement: a unique constraint OR a unique index over the columns.
+    unique_sets = {tuple(u["column_names"]) for u in insp.get_unique_constraints(name)}
+    unique_sets |= {tuple(i["column_names"]) for i in insp.get_indexes(name) if i.get("unique")}
+    for cols in spec["uniques"]:
+        if tuple(cols) not in unique_sets:
+            problems.append(f"missing unique constraint on {list(cols)}")
+
+    indexed_sets = {tuple(i["column_names"]) for i in insp.get_indexes(name)}
+    indexed_sets |= unique_sets  # a unique constraint also satisfies an index need
+    for cols in spec["indexes"]:
+        if tuple(cols) not in indexed_sets:
+            problems.append(f"missing index on {list(cols)}")
+
+    actual_fks = {(tuple(f["constrained_columns"]), f["referred_table"])
+                  for f in insp.get_foreign_keys(name)}
+    for cols, referred in spec["fks"]:
+        if (tuple(cols), referred) not in actual_fks:
+            problems.append(f"missing foreign key {list(cols)} -> {referred}")
+
+    return problems
+
+
+def _ensure_table(spec: dict) -> None:
+    """Create the table, or adopt a compatible pre-existing one, or fail clearly."""
+    name = spec["name"]
+    insp = sa.inspect(op.get_bind())  # fresh inspector each call — reflects prior creates
+    if name not in insp.get_table_names():
+        spec["build"]()
+        return
+
+    problems = _incompatibilities(insp, spec)
+    if not problems:
         return  # pre-existing (e.g. via create_all) and compatible → adopt
 
-    missing = sorted(expected_cols - actual_cols)
-    unexpected = sorted(actual_cols - expected_cols)
     raise RuntimeError(
-        f"Cannot upgrade to 018: table '{name}' already exists but its schema is "
-        f"incompatible with the model this migration creates "
-        f"(missing columns={missing}, unexpected columns={unexpected}). "
-        f"Remediation: align '{name}' to src.db.qc_bundle_models / "
-        f"src.db.qc_verdict_models (add the missing columns), or drop the table if "
-        f"it holds no data, then re-run `alembic upgrade head`."
+        f"Cannot upgrade to 018: table '{name}' already exists but is incompatible "
+        f"with the schema this migration expects — {'; '.join(problems)}. "
+        f"Remediation: reconcile '{name}' with src.db.qc_bundle_models / "
+        f"src.db.qc_verdict_models (add the missing columns/constraints), or, in a "
+        f"controlled maintenance window with a backup, drop the table so this "
+        f"migration can recreate it, then re-run `alembic upgrade head`. The bad "
+        f"schema is never silently adopted."
     )
 
 
 def upgrade() -> None:
     # Dependency order: parents (bundles, workstations, pad_submissions) before
     # children (assignments, checkpoints, verdicts).
-    for name, build, expected_cols in _TABLES:
-        _ensure_table(name, build, expected_cols)
+    for spec in _TABLES:
+        _ensure_table(spec)
 
 
 def downgrade() -> None:
