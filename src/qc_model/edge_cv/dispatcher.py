@@ -15,13 +15,20 @@ import uuid
 from datetime import timedelta
 from typing import Optional
 
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from src import config
 from src.db.models import _utcnow
-from src.db.edge_cv_models import CVJob, CVJobEvent, EdgeCVDevice, EdgeCVModel
+from src.db.edge_cv_models import (
+    CVJob,
+    CVJobEvent,
+    EdgeCVDevice,
+    EdgeCVDeviceSession,
+    EdgeCVModel,
+)
 from src.qc_model.edge_cv import constants as C
-from src.qc_model.edge_cv.service import _active_session
+from src.qc_model.edge_cv.service import _active_session, as_aware_utc
 
 
 class JobNotFound(Exception):
@@ -34,6 +41,26 @@ class InvalidJobState(Exception):
 
 def _uid(prefix: str) -> str:
     return f"{prefix}{uuid.uuid4().hex}"
+
+
+def _priority_order_expr():
+    """SQL CASE mapping job priority → numeric rank (lower = higher priority).
+
+    Ensures ``high`` is leased before ``normal`` before ``low`` — never the
+    lexicographic ``high < low < normal`` a plain string sort would give.
+    """
+    whens = [(CVJob.priority == name, rank) for name, rank in C.PRIORITY_RANK.items()]
+    return case(*whens, else_=C._DEFAULT_PRIORITY_RANK)
+
+
+def _has_live_session(db: Session, device: EdgeCVDevice) -> bool:
+    """True if the device currently holds an active runtime session."""
+    return (
+        db.query(EdgeCVDeviceSession)
+        .filter_by(device_id=device.id, status="active")
+        .first()
+        is not None
+    )
 
 
 def record_event(
@@ -176,6 +203,9 @@ def _capable_devices(db: Session, job: CVJob) -> list[EdgeCVDevice]:
         .all()
     )
 
+    now = _utcnow()
+    ttl = config.edge_cv_heartbeat_ttl_seconds()
+
     matched: list[EdgeCVDevice] = []
     for d in devices:
         caps = set(d.capabilities_json or [])
@@ -184,6 +214,15 @@ def _capable_devices(db: Session, job: CVJob) -> list[EdgeCVDevice]:
         if d.current_active_jobs >= d.max_concurrent_jobs:
             continue
         if model and model.target_device_type not in ("any", d.device_type):
+            continue
+        # A device is only a real pull candidate if it has a live session and a
+        # fresh heartbeat. This stops a seeded/stale device (never connected, or
+        # gone silent but not yet swept offline) from making the dispatcher hold
+        # a job in `queued` behind a puller that will never arrive.
+        if not _has_live_session(db, d):
+            continue
+        last_hb = as_aware_utc(d.last_heartbeat_at)
+        if last_hb is None or (now - last_hb).total_seconds() > ttl:
             continue
         matched.append(d)
 
@@ -259,7 +298,7 @@ def lease_next_job_for_device(
     candidates = (
         db.query(CVJob)
         .filter(CVJob.tenant_id == device.tenant_id, CVJob.status == C.JOB_QUEUED)
-        .order_by(CVJob.priority.desc(), CVJob.created_at.asc())
+        .order_by(_priority_order_expr().asc(), CVJob.created_at.asc())
         .all()
     )
     for job in candidates:

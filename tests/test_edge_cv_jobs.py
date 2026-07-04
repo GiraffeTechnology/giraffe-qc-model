@@ -162,6 +162,30 @@ def test_cpu_fallback_completes_job_when_no_device(db_session):
     assert res.confidence <= 0.5  # lower confidence than an edge result
 
 
+def test_seeded_defaults_no_agent_never_stays_queued(seeded_db):
+    # Regression: with seed_edge_cv_defaults() and no agent running, a CV job
+    # must use CPU fallback (or manual review) — it must NEVER hang in `queued`
+    # behind the seeded, session-less mock runner.
+    job = dispatcher.create_job(seeded_db, task_type="defect_candidate_detection")
+    seeded_db.refresh(job)
+    assert job.status in (C.JOB_COMPLETED, C.JOB_MANUAL_REVIEW)
+    assert job.status != C.JOB_QUEUED
+
+
+def test_high_priority_job_leased_first(db_session):
+    d, s, _ = _register(db_session)
+    # Create low, then normal, then high — reverse of desired lease order.
+    low = dispatcher.create_job(db_session, task_type="defect_candidate_detection", priority="low", auto_dispatch=False)
+    normal = dispatcher.create_job(db_session, task_type="defect_candidate_detection", priority="normal", auto_dispatch=False)
+    high = dispatcher.create_job(db_session, task_type="defect_candidate_detection", priority="high", auto_dispatch=False)
+    leased = dispatcher.lease_next_job_for_device(db_session, device_id=d.id, session_id=s.session_id, capabilities=["defect_candidate_detection"])
+    assert leased.id == high.id
+    # Next lease (free capacity by completing) should be the normal one before low.
+    results.upload_result(db_session, job_id=high.id, device_id=d.id, session_id=s.session_id, result_type="detection", pass_fail_hint="unknown")
+    leased2 = dispatcher.lease_next_job_for_device(db_session, device_id=d.id, session_id=s.session_id, capabilities=["defect_candidate_detection"])
+    assert leased2.id == normal.id
+
+
 def test_multiple_sequential_fallback_jobs_all_complete(db_session):
     # Regression: the CPU fallback runner is server-side, not a pull agent, so a
     # second no-device job must also fall back — never hang in `queued` waiting

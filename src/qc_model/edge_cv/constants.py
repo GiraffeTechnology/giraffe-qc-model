@@ -95,6 +95,17 @@ JOB_TERMINAL_STATES = frozenset({JOB_COMPLETED, JOB_FAILED, JOB_CANCELLED, JOB_M
 JOB_LEASED_STATES = frozenset({JOB_LEASED, JOB_RUNNING, JOB_UPLOADING})
 
 
+# ── Job priority (§10) ───────────────────────────────────────────────────────
+# Lower rank = higher priority. Used for numeric ordering so leasing never falls
+# back to lexicographic string order (where "high" < "normal" < "low").
+PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
+_DEFAULT_PRIORITY_RANK = PRIORITY_RANK["normal"]
+
+
+def priority_rank(priority: str) -> int:
+    return PRIORITY_RANK.get(priority, _DEFAULT_PRIORITY_RANK)
+
+
 # ── Task types (§11.3) ───────────────────────────────────────────────────────
 TASK_TYPES = frozenset(
     {

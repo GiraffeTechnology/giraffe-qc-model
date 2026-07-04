@@ -15,6 +15,7 @@ returns ``503`` so the rest of the system behaves exactly as before (§23.4).
 """
 from __future__ import annotations
 
+import hmac
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -57,6 +58,28 @@ def _assert_identity(claims: dict, device_id: str, session_id: str) -> None:
     """The token's signed device/session must match the request body (§17.3)."""
     if claims["device_id"] != device_id or claims["session_id"] != session_id:
         raise HTTPException(status_code=403, detail="token identity mismatch")
+
+
+def require_bootstrap_token(
+    x_edge_cv_bootstrap_token: Optional[str] = Header(default=None, alias="X-Edge-CV-Bootstrap-Token"),
+) -> None:
+    """Gate device registration behind a shared bootstrap secret (§17.2).
+
+    When ``EDGE_CV_REGISTRATION_SECRET`` (or ``EDGE_CV_BOOTSTRAP_TOKEN``) is set,
+    the ``X-Edge-CV-Bootstrap-Token`` header must match it (constant-time). When
+    no secret is configured, registration is rejected unless insecure mode is
+    explicitly allowed (test env, or ``EDGE_CV_ALLOW_INSECURE_REGISTRATION=true``).
+    """
+    secret = config.edge_cv_registration_secret()
+    if secret:
+        if not x_edge_cv_bootstrap_token or not hmac.compare_digest(x_edge_cv_bootstrap_token, secret):
+            raise HTTPException(status_code=401, detail="invalid_bootstrap_token")
+        return
+    if not config.edge_cv_allow_insecure_registration():
+        raise HTTPException(
+            status_code=401,
+            detail="device registration requires EDGE_CV_REGISTRATION_SECRET",
+        )
 
 
 # ── Request models ───────────────────────────────────────────────────────────
@@ -149,7 +172,11 @@ class CaptureUploadBody(BaseModel):
 
 # ── Device APIs (§12.1) ──────────────────────────────────────────────────────
 @router.post("/api/edge-cv/devices/register", status_code=201)
-def register_device(body: RegisterBody, db: Session = Depends(get_db_dep)):
+def register_device(
+    body: RegisterBody,
+    _bootstrap: None = Depends(require_bootstrap_token),
+    db: Session = Depends(get_db_dep),
+):
     _require_enabled()
     device, session, token = device_service.register_device(
         db,

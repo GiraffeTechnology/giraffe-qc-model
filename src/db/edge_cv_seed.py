@@ -10,7 +10,6 @@ import uuid
 
 from sqlalchemy.orm import Session
 
-from src.db.models import _utcnow
 from src.db.edge_cv_models import EdgeCVDevice, EdgeCVModel
 
 _MOCK_CAPS = [
@@ -38,18 +37,18 @@ def _get_or_create_device(db: Session, tenant_id: str, name: str, **kwargs) -> E
 
 def seed_edge_cv_defaults(db: Session, tenant_id: str = "default") -> None:
     """Seed mock runner, Jetson profile, and mock model (idempotent — §19)."""
-    now = _utcnow()
-
+    # Seeded devices are *profiles*, not live connections — a device only
+    # becomes dispatchable once a real agent registers a session and heartbeats.
+    # Seeding "online" would make the dispatcher believe a puller exists and
+    # leave jobs queued forever, so the seed is offline by default.
     _get_or_create_device(
         db,
         tenant_id,
         "mock-edge-cv-runner",
         device_type="mock_runner",
-        status="online",
+        status="offline",
         capabilities_json=_MOCK_CAPS,
         max_concurrent_jobs=1,
-        last_heartbeat_at=now,
-        last_seen_at=now,
         is_enabled=True,
     )
 

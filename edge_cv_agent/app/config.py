@@ -21,6 +21,7 @@ class AgentConfig:
     model_dir: str = field(default_factory=lambda: os.getenv("EDGE_AGENT_MODEL_DIR", "/opt/giraffe/models"))
     output_dir: str = field(default_factory=lambda: os.getenv("EDGE_AGENT_OUTPUT_DIR", "/opt/giraffe/cv_outputs"))
     mock_mode: bool = field(default_factory=lambda: _bool("EDGE_AGENT_MOCK_MODE", True))
+    bootstrap_token: str = field(default_factory=lambda: os.getenv("EDGE_AGENT_BOOTSTRAP_TOKEN", ""))
     agent_version: str = "0.1.0"
 
     def capabilities(self) -> list[str]:

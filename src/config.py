@@ -111,6 +111,29 @@ def edge_cv_default_device_type() -> str:
     return os.getenv("EDGE_CV_DEFAULT_DEVICE_TYPE", "jetson_nano_2gb")
 
 
+def edge_cv_registration_secret() -> str | None:
+    """Shared bootstrap secret required to register an edge device (§17.2).
+
+    Read from ``EDGE_CV_REGISTRATION_SECRET`` (or the alias
+    ``EDGE_CV_BOOTSTRAP_TOKEN``). When set, every ``/devices/register`` call must
+    present it via the ``X-Edge-CV-Bootstrap-Token`` header. Returns ``None`` when
+    unconfigured (see :func:`edge_cv_allow_insecure_registration`).
+    """
+    return os.getenv("EDGE_CV_REGISTRATION_SECRET") or os.getenv("EDGE_CV_BOOTSTRAP_TOKEN")
+
+
+def edge_cv_allow_insecure_registration() -> bool:
+    """Whether device registration is allowed with no bootstrap secret configured.
+
+    Defaults to true only in the test environment so the existing suite keeps
+    working without provisioning a secret. In production an unset secret is a
+    hard reject unless this flag is explicitly turned on.
+    """
+    if os.getenv("EDGE_CV_ALLOW_INSECURE_REGISTRATION") is not None:
+        return _env_bool("EDGE_CV_ALLOW_INSECURE_REGISTRATION", False)
+    return app_env() == "test"
+
+
 def edge_cv_recapture_cooldown_seconds() -> float:
     """Live-capture dedup window: suppress re-capturing the same tracked object.
 

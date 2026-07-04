@@ -107,13 +107,32 @@ def test_device_state_transitions_table():
 
 
 def test_capability_matching_filters_incapable_device(seeded_db):
-    # Seeded mock runner lacks nothing; add a device missing the capability.
-    d, s, _ = service.register_device(seeded_db, device_name="weak", device_type="mock_runner", capabilities=["image_preprocess"])
+    # A registered device advertising the capability is a candidate; one that
+    # does not is filtered out. The seeded (session-less, offline) mock runner
+    # is NOT a candidate — it has no live session/heartbeat.
+    service.register_device(seeded_db, device_name="strong", device_type="mock_runner", capabilities=["defect_candidate_detection", "opencv"])
+    service.register_device(seeded_db, device_name="weak", device_type="mock_runner", capabilities=["image_preprocess"])
     job = create_job(seeded_db, task_type="defect_candidate_detection", auto_dispatch=False)
     matched = _capable_devices(seeded_db, job)
     names = {x.device_name for x in matched}
+    assert "strong" in names
     assert "weak" not in names
-    assert "mock-edge-cv-runner" in names
+    assert "mock-edge-cv-runner" not in names  # seeded profile, no live session
+
+
+def test_seeded_device_without_session_is_not_capable(seeded_db):
+    # Regression: a seeded device must never be treated as an available puller.
+    job = create_job(seeded_db, task_type="defect_candidate_detection", auto_dispatch=False)
+    assert _capable_devices(seeded_db, job) == []
+
+
+def test_stale_heartbeat_device_not_capable(db_session):
+    from datetime import timedelta
+    d, s, _ = service.register_device(db_session, device_name="jetson-a", device_type="jetson_nano_2gb", capabilities=["defect_candidate_detection"])
+    d.last_heartbeat_at = _utcnow() - timedelta(seconds=999)  # gone silent, not yet swept
+    db_session.commit()
+    job = create_job(db_session, task_type="defect_candidate_detection", auto_dispatch=False)
+    assert _capable_devices(db_session, job) == []
 
 
 def test_model_metadata_seeded(seeded_db):

@@ -34,6 +34,14 @@ CV pipeline → uploads structured results → reports failures safely.
 
 ## 3. How registration works
 
+Registration is gated by a shared **bootstrap secret**. Set
+`EDGE_CV_REGISTRATION_SECRET` on the service and give each agent the same value
+via `EDGE_AGENT_BOOTSTRAP_TOKEN`; the agent sends it as the
+`X-Edge-CV-Bootstrap-Token` header. In production a missing/unset secret rejects
+all registrations (`401`) unless you explicitly opt into
+`EDGE_CV_ALLOW_INSECURE_REGISTRATION=true`; the test environment allows insecure
+registration by default so the suite needs no secret.
+
 `POST /api/edge-cv/devices/register` creates (or updates) the device row and
 opens a **fresh session**. The response returns:
 
