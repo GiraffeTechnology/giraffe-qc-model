@@ -253,6 +253,77 @@ def test_upgrade_head_fails_on_optional_column_made_not_null(tmp_path, monkeypat
     assert "last_sync_status" in msg and "must be nullable" in msg.lower()
 
 
+def test_upgrade_head_fails_on_unexpected_required_column(tmp_path, monkeypatch):
+    """An adopted table carrying an extra NOT NULL, no-default column is rejected.
+
+    ORM inserts (register_workstation, record_signed_bundle, ...) never populate a
+    column the model doesn't know about, so a diverged table with such a required
+    column would fail every insert at runtime — adoption must refuse it.
+    """
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'extracol.db'}"
+    monkeypatch.setenv("QC_DB_URL", url)
+    cfg = _alembic_config(url)
+
+    command.upgrade(cfg, "018")
+    # qc_bundles with every expected column + constraints/indexes, but ALSO an
+    # extra NOT NULL column with no default that the ORM will never populate.
+    cols = ", ".join(
+        f"{c} TEXT" for c in Base.metadata.tables["qc_bundles"].columns.keys()
+    )
+    with create_engine(url).begin() as conn:
+        conn.execute(text(
+            f"CREATE TABLE qc_bundles ({cols}, region VARCHAR(32) NOT NULL,"
+            " PRIMARY KEY (id),"
+            " CONSTRAINT uq_bundle_tenant_version UNIQUE (tenant_id, bundle_version))"
+        ))
+        conn.execute(text("CREATE INDEX ix_qc_bundles_tenant_id ON qc_bundles (tenant_id)"))
+        conn.execute(text("CREATE INDEX ix_qc_bundles_bundle_version ON qc_bundles (bundle_version)"))
+
+    with pytest.raises(Exception) as exc:
+        command.upgrade(cfg, "head")
+    msg = str(exc.value)
+    assert "qc_bundles" in msg and "region" in msg
+    assert "unexpected required column" in msg.lower()
+
+
+def test_upgrade_head_adopts_table_with_harmless_extra_column(tmp_path, monkeypatch):
+    """An extra *nullable* column is tolerated — ORM inserts still succeed."""
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'harmless.db'}"
+    monkeypatch.setenv("QC_DB_URL", url)
+    cfg = _alembic_config(url)
+
+    command.upgrade(cfg, "018")
+    # Fully-correct qc_bundles (matching the migration) plus one extra *nullable*
+    # column that the ORM does not know about — harmless, so it must be adopted.
+    with create_engine(url).begin() as conn:
+        conn.execute(text(
+            "CREATE TABLE qc_bundles ("
+            " id VARCHAR(64) NOT NULL, tenant_id VARCHAR(64) NOT NULL,"
+            " bundle_version VARCHAR(64) NOT NULL, status VARCHAR(32) NOT NULL,"
+            " sku_count INTEGER NOT NULL, standard_revision_count INTEGER NOT NULL,"
+            " created_by VARCHAR(128), manifest_json JSON NOT NULL,"
+            " manifest_sha256 VARCHAR(64) NOT NULL, signature VARCHAR(256) NOT NULL,"
+            " signature_algo VARCHAR(32) NOT NULL, created_at DATETIME NOT NULL,"
+            " legacy_note VARCHAR(64),"  # extra, nullable → tolerated
+            " PRIMARY KEY (id),"
+            " CONSTRAINT uq_bundle_tenant_version UNIQUE (tenant_id, bundle_version))"
+        ))
+        conn.execute(text("CREATE INDEX ix_qc_bundles_tenant_id ON qc_bundles (tenant_id)"))
+        conn.execute(text("CREATE INDEX ix_qc_bundles_bundle_version ON qc_bundles (bundle_version)"))
+
+    command.upgrade(cfg, "head")  # must adopt, not raise
+    from alembic.script import ScriptDirectory
+    from alembic.runtime.migration import MigrationContext
+
+    head = ScriptDirectory.from_config(cfg).get_current_head()
+    with create_engine(url).connect() as conn:
+        assert MigrationContext.configure(conn).get_current_revision() == head
+
+
 def test_upgrade_head_fails_on_foreign_key_to_wrong_column(tmp_path, monkeypatch):
     """An FK to the right parent table but the wrong parent column is rejected."""
     from sqlalchemy import text

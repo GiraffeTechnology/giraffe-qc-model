@@ -260,6 +260,20 @@ def _incompatibilities(insp, spec: dict) -> list:
     if missing_cols:
         problems.append(f"missing columns {missing_cols}")
 
+    # Extra columns are tolerated *unless* they would break the ORM: a diverged
+    # table may carry a column this migration/model does not know about, and the
+    # ORM inserts (register_workstation, record_signed_bundle, ...) never populate
+    # it. If such a column is NOT NULL with no server default, every insert fails
+    # at runtime — so adopting the table would be a latent break. Reject those;
+    # harmless extras (nullable, or with a default) are still adoptable.
+    for col in sorted(actual_cols - spec["columns"]):
+        c = columns[col]
+        if not c.get("nullable", True) and c.get("default") is None and not c.get("autoincrement", False):
+            problems.append(
+                f"unexpected required column '{col}' (NOT NULL, no default) — ORM "
+                f"inserts omit it and would fail"
+            )
+
     # Column *definitions*, not just names: the primary key must be exactly
     # ``id`` and every NOT-NULL column must reflect as NOT NULL. This rejects a
     # table that has the right column names but e.g. a plain nullable ``id``
