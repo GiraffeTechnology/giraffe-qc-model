@@ -62,6 +62,63 @@ def app_env() -> str:
     return os.getenv("APP_ENV", "production").lower()
 
 
+# ── Edge CV (hot-pluggable co-processor) ─────────────────────────────────────
+# All read at call time so tests can toggle per-case. The feature is optional:
+# when EDGE_CV_ENABLED is false the rest of the system behaves exactly as before.
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    return os.getenv(name, "true" if default else "false").lower() == "true"
+
+
+def edge_cv_enabled() -> bool:
+    return _env_bool("EDGE_CV_ENABLED", True)
+
+
+def edge_cv_hotplug_enabled() -> bool:
+    return _env_bool("EDGE_CV_HOTPLUG_ENABLED", True)
+
+
+def edge_cv_mock_enabled() -> bool:
+    return _env_bool("EDGE_CV_MOCK_ENABLED", True)
+
+
+def edge_cv_cpu_fallback() -> bool:
+    return _env_bool("EDGE_CV_CPU_FALLBACK", True)
+
+
+def edge_cv_heartbeat_interval_seconds() -> int:
+    return int(os.getenv("EDGE_CV_HEARTBEAT_INTERVAL_SECONDS", "10"))
+
+
+def edge_cv_heartbeat_ttl_seconds() -> int:
+    return int(os.getenv("EDGE_CV_HEARTBEAT_TTL_SECONDS", "35"))
+
+
+def edge_cv_job_lease_seconds() -> int:
+    return int(os.getenv("EDGE_CV_JOB_LEASE_SECONDS", "60"))
+
+
+def edge_cv_job_poll_interval_seconds() -> int:
+    return int(os.getenv("EDGE_CV_JOB_POLL_INTERVAL_SECONDS", "3"))
+
+
+def edge_cv_max_retries() -> int:
+    return int(os.getenv("EDGE_CV_MAX_RETRIES", "2"))
+
+
+def edge_cv_default_device_type() -> str:
+    return os.getenv("EDGE_CV_DEFAULT_DEVICE_TYPE", "jetson_nano_2gb")
+
+
+def edge_cv_recapture_cooldown_seconds() -> float:
+    """Live-capture dedup window: suppress re-capturing the same tracked object.
+
+    Device-local hint returned to the agent (Live-Capture Auto-Lock addendum).
+    """
+    return float(os.getenv("EDGE_CV_RECAPTURE_COOLDOWN_SECONDS", "5"))
+
+
 def fake_provider_allowed() -> bool:
     # In production, override env vars can never re-enable a fake adapter.
     if app_env() == "production":
