@@ -167,6 +167,11 @@ class QCDetectionPoint(Base):
     label: Mapped[str] = mapped_column(String(256), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     roi_json: Mapped[Optional[dict]] = mapped_column(JSON)
+    # Spatial grounding on the SKU's standard photos (PRD Authoring Extension
+    # §2). A JSON list of normalized bounding boxes
+    # ``[{"image_id", "x", "y", "w", "h"}]`` (0–1 coords, top-left origin). A
+    # point supports zero, one, or many regions; empty/None is valid.
+    regions_json: Mapped[Optional[list]] = mapped_column(JSON)
     expected_value: Mapped[Optional[str]] = mapped_column(String(256))
     method_hint: Mapped[Optional[str]] = mapped_column(String(128))
     # Human-readable pass/fail criterion for this detection point.  Carried

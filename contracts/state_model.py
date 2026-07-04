@@ -28,6 +28,11 @@ class StandardState(str, Enum):
     CONFIRMED = "confirmed"
     PUBLISHED = "published"
     INSTALLED_ON_PAD = "installed_on_pad"
+    # Probation (试用期): a newly installed standard runs real production jobs
+    # under mandatory human confirmation until it proves it can run solo
+    # (≥30 jobs, ≥90% AI/human agreement). See PRD "QC Standard Authoring
+    # Extension" §3. Inserted between INSTALLED_ON_PAD and ACTIVE_INSPECTION.
+    PROBATION = "probation"
     ACTIVE_INSPECTION = "active_inspection"
     NEEDS_REQUALIFICATION = "needs_requalification"
 
@@ -41,6 +46,7 @@ STATE_DISPLAY: dict[StandardState, str] = {
     StandardState.CONFIRMED: "Confirmed",
     StandardState.PUBLISHED: "Published",
     StandardState.INSTALLED_ON_PAD: "Installed on Pad",
+    StandardState.PROBATION: "Probation",
     StandardState.ACTIVE_INSPECTION: "Active Inspection",
     StandardState.NEEDS_REQUALIFICATION: "Needs Requalification",
 }
@@ -72,7 +78,15 @@ ALLOWED_TRANSITIONS: dict[StandardState, frozenset[StandardState]] = {
     StandardState.PUBLISHED: frozenset(
         {StandardState.INSTALLED_ON_PAD, StandardState.NEEDS_REQUALIFICATION}
     ),
+    # A newly installed standard enters Probation, not Active Inspection
+    # directly (PRD Authoring Extension §3.1). It may also be bounced to
+    # requalification on a false-pass incident before it ever runs.
     StandardState.INSTALLED_ON_PAD: frozenset(
+        {StandardState.PROBATION, StandardState.NEEDS_REQUALIFICATION}
+    ),
+    # Probation graduates to solo Active Inspection once the qualification
+    # gate is met (§3.3); a false-pass incident sends it to requalification.
+    StandardState.PROBATION: frozenset(
         {StandardState.ACTIVE_INSPECTION, StandardState.NEEDS_REQUALIFICATION}
     ),
     StandardState.ACTIVE_INSPECTION: frozenset(

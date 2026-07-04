@@ -53,9 +53,30 @@
     },
     "incidental_finding_policy": {
       "$ref": "#/$defs/incidentalFindingPolicy"
+    },
+    "regions": {
+      "type": "array",
+      "description": "Optional spatial grounding (PRD Authoring Extension §2). Zero, one, or many bounding boxes marking where this detection point applies on the SKU's standard photos. Absent or empty is valid — a point may rely on its natural-language description and thresholds alone.",
+      "items": { "$ref": "#/$defs/region" }
     }
   },
   "$defs": {
+    "region": {
+      "type": "object",
+      "description": "A single normalized bounding box on one standard photo. Coordinates are fractions of the image width/height with a top-left origin, so they are resolution-independent.",
+      "additionalProperties": false,
+      "required": ["image_id", "x", "y", "w", "h"],
+      "properties": {
+        "image_id": {
+          "type": "string",
+          "description": "Id of the standard photo this box is drawn on."
+        },
+        "x": { "type": "number", "minimum": 0, "maximum": 1, "description": "Left edge, 0–1." },
+        "y": { "type": "number", "minimum": 0, "maximum": 1, "description": "Top edge, 0–1." },
+        "w": { "type": "number", "minimum": 0, "maximum": 1, "description": "Width, 0–1." },
+        "h": { "type": "number", "minimum": 0, "maximum": 1, "description": "Height, 0–1." }
+      }
+    },
     "severity": {
       "type": "string",
       "description": "Defect severity if this point fails.",
