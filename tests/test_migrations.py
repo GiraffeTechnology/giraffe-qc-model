@@ -68,10 +68,10 @@ def test_downgrade_then_upgrade_round_trips(tmp_path, monkeypatch):
     monkeypatch.setenv("QC_DB_URL", url)
     cfg = _alembic_config(url)
     command.upgrade(cfg, "head")
-    command.downgrade(cfg, "017")
+    command.downgrade(cfg, "018")
     insp = inspect(create_engine(url))
     assert not (set(insp.get_table_names()) & set(_MIGRATED_TABLES)), \
-        "018 downgrade must drop all S3/S4 tables"
+        "019 downgrade must drop all S3/S4 tables"
     command.upgrade(cfg, "head")  # clean re-upgrade
     insp = inspect(create_engine(url))
     assert set(_MIGRATED_TABLES) <= set(inspect(create_engine(url)).get_table_names())
@@ -110,7 +110,7 @@ def test_upgrade_head_adopts_create_all_tables(tmp_path, monkeypatch):
     cfg = _alembic_config(url)
     engine = create_engine(url)
 
-    command.upgrade(cfg, "017")
+    command.upgrade(cfg, "018")
     # A create_all deployment materialised the S3/S4 tables already.
     Base.metadata.create_all(
         engine, tables=[Base.metadata.tables[t] for t in _MIGRATED_TABLES]
@@ -136,7 +136,7 @@ def test_upgrade_head_fails_clearly_on_missing_column(tmp_path, monkeypatch):
     monkeypatch.setenv("QC_DB_URL", url)
     cfg = _alembic_config(url)
 
-    command.upgrade(cfg, "017")
+    command.upgrade(cfg, "018")
     # A diverged qc_bundles (missing required columns like manifest_json) exists.
     with create_engine(url).begin() as conn:
         conn.execute(text("CREATE TABLE qc_bundles (id VARCHAR(64) PRIMARY KEY, wrong_col TEXT)"))
@@ -150,7 +150,7 @@ def test_upgrade_head_fails_clearly_on_missing_column(tmp_path, monkeypatch):
     # The bad schema must not have been stamped as 018.
     from alembic.runtime.migration import MigrationContext
     with create_engine(url).connect() as conn:
-        assert MigrationContext.configure(conn).get_current_revision() == "017"
+        assert MigrationContext.configure(conn).get_current_revision() == "018"
 
 
 def test_upgrade_head_fails_on_missing_unique_constraint(tmp_path, monkeypatch):
@@ -161,7 +161,7 @@ def test_upgrade_head_fails_on_missing_unique_constraint(tmp_path, monkeypatch):
     monkeypatch.setenv("QC_DB_URL", url)
     cfg = _alembic_config(url)
 
-    command.upgrade(cfg, "017")
+    command.upgrade(cfg, "018")
     # qc_bundles with every column but NO uq_bundle_tenant_version / indexes.
     cols = ", ".join(
         f"{c} TEXT" for c in Base.metadata.tables["qc_bundles"].columns.keys()

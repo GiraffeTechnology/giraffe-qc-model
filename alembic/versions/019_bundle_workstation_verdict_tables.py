@@ -15,15 +15,15 @@ have these tables. For each table we therefore:
   4. if incompatible, fail with a clear remediation message rather than leave a
      silently-diverged schema.
 
-Revision ID: 018
-Revises: 017
+Revision ID: 019
+Revises: 018
 Create Date: 2026-07-04
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = '018'
-down_revision = '017'
+revision = '019'
+down_revision = '018'
 branch_labels = None
 depends_on = None
 
@@ -288,7 +288,7 @@ def _ensure_table(spec: dict) -> None:
         return  # pre-existing (e.g. via create_all) and compatible → adopt
 
     raise RuntimeError(
-        f"Cannot upgrade to 018: table '{name}' already exists but is incompatible "
+        f"Cannot upgrade to 019: table '{name}' already exists but is incompatible "
         f"with the schema this migration expects — {'; '.join(problems)}. "
         f"Remediation: reconcile '{name}' with src.db.qc_bundle_models / "
         f"src.db.qc_verdict_models (add the missing columns/constraints), or, in a "
