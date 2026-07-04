@@ -28,6 +28,9 @@ from src.api.qc_studio_router import router as qc_studio_router
 from src.api.sample_admin_router import router as sample_admin_router
 from src.api.sku_router import router as sku_router
 from src.api.web_shell_router import router as web_shell_router
+from src.api.admin_login_router import router as admin_login_router
+from src.api.authz import AuthTenantMiddleware
+from src.api.startup import session_secret, validate_startup_config
 from src.db.session import init_db
 
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "static"
@@ -35,7 +38,8 @@ _STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "static"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan: initialize database on startup."""
+    """Application lifespan: validate config, then initialize the database."""
+    validate_startup_config()
     init_db()
     yield
 
@@ -47,13 +51,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Middleware order matters: the LAST added runs OUTERMOST. SessionMiddleware
+# must decode the cookie session BEFORE the auth gate reads it, so the auth
+# gate is added first (inner) and SessionMiddleware second (outer).
+app.add_middleware(AuthTenantMiddleware)
 app.add_middleware(
     SessionMiddleware,
-    secret_key=os.getenv("SESSION_SECRET", "dev-secret-change-in-prod"),
+    secret_key=session_secret(),
 )
 
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
+app.include_router(admin_login_router)
 app.include_router(web_shell_router)
 app.include_router(pad_router)
 app.include_router(qc_router)

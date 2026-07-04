@@ -37,6 +37,8 @@ from src.storage.upload_validation import (
     UploadValidationError,
     read_and_validate_upload,
 )
+from src.api.authz import effective_tenant
+from src.api.uploads import validate_safe_id
 from src.web.i18n import install_i18n
 
 router = APIRouter(tags=["admin-studio"])
@@ -140,6 +142,7 @@ def studio_voice():
 
 @router.post("/admin/studio/upload")
 async def studio_upload(
+    request: Request,
     sku_id: str = Form(...),
     tenant_id: str = Form("default"),
     view_type: Optional[str] = Form(None),
@@ -147,6 +150,11 @@ async def studio_upload(
     image: UploadFile = File(...),
     db: Session = Depends(get_db_dep),
 ):
+    # The multipart body is not rewritten by the auth gate, so derive the
+    # authoritative tenant from the authenticated principal here.
+    tenant_id = effective_tenant(request, tenant_id)
+    # sku_id is used to build a filesystem path — reject traversal attempts.
+    validate_safe_id(sku_id, "sku_id")
     sku = db.query(QCSkuItem).filter_by(id=sku_id, tenant_id=tenant_id).first()
     if sku is None:
         raise HTTPException(status_code=404, detail="SKU not found")

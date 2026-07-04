@@ -19,6 +19,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_db_dep
+from src.api.authz import effective_tenant
+from src.api.uploads import validate_safe_id
+from src.storage.upload_validation import (
+    UploadValidationError,
+    read_and_validate_upload,
+)
 from src.web.i18n import install_i18n
 from src.db.sku_models import (
     QCDetectionPoint,
@@ -185,6 +191,10 @@ async def add_photo(
     photo_file: Optional[UploadFile] = File(default=None),
     db: Session = Depends(get_db_dep),
 ):
+    # Authoritative tenant from the authenticated principal; guard the sku_id
+    # since it is used to build a filesystem path.
+    tenant_id = effective_tenant(request, tenant_id)
+    validate_safe_id(sku_id, "sku_id")
     sku = (
         db.query(QCSkuItem)
         .filter(QCSkuItem.id == sku_id, QCSkuItem.tenant_id == tenant_id)
@@ -202,9 +212,14 @@ async def add_photo(
 
     if photo_file and photo_file.filename:
         # Mode A: upload file to data/qc_samples/{tenant_id}/{sku_id}/photos/
-        content = await photo_file.read()
-        sha256_hash = hashlib.sha256(content).hexdigest()
-        mime_type = photo_file.content_type or "application/octet-stream"
+        # Hardened: streamed size bound + magic-byte MIME sniff (fail-closed).
+        try:
+            validated = await read_and_validate_upload(photo_file)
+        except UploadValidationError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.message)
+        content = validated.content
+        sha256_hash = validated.sha256
+        mime_type = validated.mime_type
 
         try:
             import cv2
@@ -216,7 +231,7 @@ async def add_photo(
         except Exception:
             pass
 
-        ext = Path(photo_file.filename).suffix or ".jpg"
+        ext = validated.extension or Path(photo_file.filename).suffix or ".jpg"
         filename = f"{_new_id()}{ext}"
         dest_dir = _DATA_DIR / tenant_id / sku_id / "photos"
         dest_dir.mkdir(parents=True, exist_ok=True)
