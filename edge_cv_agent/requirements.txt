@@ -1,0 +1,4 @@
+# Edge CV agent runtime deps (mock mode needs only httpx).
+# A real Jetson build additionally installs opencv-python + numpy (+ psutil for
+# host metrics); those are intentionally NOT required for CI / mock mode.
+httpx>=0.27

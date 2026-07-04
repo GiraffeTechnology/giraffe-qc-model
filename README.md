@@ -221,6 +221,42 @@ AI may record, route, or assist review, but physical measurement checkpoints mus
 
 ---
 
+## Edge CV (optional hot-pluggable co-processor)
+
+An **optional** subsystem lets a low-cost edge device (e.g. an NVIDIA Jetson
+Nano 2GB) offload lightweight CV work — preprocessing, candidate detection,
+crop/annotation generation. It is **off-switchable** and **failure-safe**:
+
+```text
+Jetson is optional        — the service runs with no edge device present
+Jetson is hot-pluggable   — connect / disconnect / reboot / replace, no service restart
+Service is source of truth — the device never writes to the DB; only validated APIs persist
+CPU fallback is mandatory  — no workflow freezes when Jetson is offline
+CV result is evidence      — pass_fail_hint is a hint, never the final QC decision
+CI needs no real hardware  — everything runs in mock mode
+```
+
+Enable/disable and tune via env (see `.env.example`):
+
+```env
+EDGE_CV_ENABLED=true          # set false to disable the whole subsystem
+EDGE_CV_HOTPLUG_ENABLED=true
+EDGE_CV_MOCK_ENABLED=true
+EDGE_CV_CPU_FALLBACK=true
+```
+
+The edge agent is pull-based (`register → heartbeat → pull job → run CV →
+upload result`) and ships with a mock runner. Docs:
+
+- `docs/edge-cv-architecture.md` — design, device + job state machines
+- `docs/jetson-nano-2gb-hotplug.md` — run the agent, unplug/replug safely
+- `docs/cv-job-lifecycle.md` — lease expiry, retry, manual review, CPU fallback
+- `docs/cv-result-schema.md` — result fields, `pass_fail_hint` limitation, validation
+- `docs/edge-cv-troubleshooting.md` — common issues
+- `edge_cv_agent/README.md` — the mock edge agent
+
+---
+
 ## Integration with Giraffe Stack
 
 ```text
