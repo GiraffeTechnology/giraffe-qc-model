@@ -82,9 +82,11 @@ SKU identity, revision metadata, every detection point with its full semantic
 field set, and standard-photo hashes — then signs it.
 
 - **Manifest version**: `studio-bundle-v1`
-- **Signature**: `HMAC-SHA256` over the canonical (sorted-key, compact) JSON
+- **Signature**: `Ed25519` over the canonical (sorted-key, compact) JSON
 - **Hash**: `SHA-256` of the same canonical manifest
-- Signing key: `QC_BUNDLE_SIGNING_KEY` (key id `QC_BUNDLE_SIGNING_KEY_ID`)
+- Signing key: server private key (`QC_BUNDLE_SIGNING_PRIVATE_KEY_PEM` /
+  `QC_BUNDLE_SIGNING_PRIVATE_KEY_PATH`); a deployed Pad verifies with only the
+  public key (`QC_BUNDLE_VERIFY_PUBLIC_KEY_PEM` / `QC_BUNDLE_VERIFY_PUBLIC_KEY_PATH`)
 
 Publishing **fails closed**: a SKU with no active revision, or an active
 revision with no confirmed detection points, cannot be published (`400`). Each
@@ -102,8 +104,8 @@ Migration `017`:
 | Env var | Default | Purpose |
 |---------|---------|---------|
 | `QC_MAX_UPLOAD_BYTES` | `10485760` | Per-upload size ceiling |
-| `QC_BUNDLE_SIGNING_KEY` | `dev-bundle-signing-key` | HMAC signing key (set in production) |
-| `QC_BUNDLE_SIGNING_KEY_ID` | `default` | Recorded key id for rotation |
+| `QC_BUNDLE_SIGNING_PRIVATE_KEY_PEM` / `_PATH` | — (ephemeral under `APP_ENV=test`) | Ed25519 **private** signing key (server; set in production, fail-closed if absent) |
+| `QC_BUNDLE_VERIFY_PUBLIC_KEY_PEM` / `_PATH` | — (derives from signer in dev/test) | Ed25519 **public** verify key (Pad/verifier) |
 
 ## Tests
 

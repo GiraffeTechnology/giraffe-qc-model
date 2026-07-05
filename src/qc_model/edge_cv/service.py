@@ -11,7 +11,6 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src import config

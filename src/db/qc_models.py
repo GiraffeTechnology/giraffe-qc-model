@@ -3,7 +3,7 @@
 These models are separate from models.py to maintain backward compatibility,
 but use the same Base class so they're part of the same metadata.
 """
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship

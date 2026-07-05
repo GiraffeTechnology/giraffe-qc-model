@@ -19,7 +19,6 @@ from typing import Optional
 from src.config import app_env
 from src.qc_model.sample_learning.types import (
     SAMPLE_TYPE_TO_FEATURE,
-    FeatureType,
     SampleType,
 )
 

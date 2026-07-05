@@ -42,8 +42,12 @@ Manifest (version 1):
 
 Any failure raises `BundleVerificationError`; callers translate that to HTTP
 `400` (record) / `409` (download/assign) and never serve the payload. The
-signer is HMAC-SHA256 keyed on `BUNDLE_SIGNING_SECRET` (shared with the
-publisher); the `algo` field leaves room for an asymmetric signer later.
+signer is **Ed25519**: the server holds the private key
+(`QC_BUNDLE_SIGNING_PRIVATE_KEY_PEM` / `_PATH`) and a deployed Pad verifies with
+only the public key (`QC_BUNDLE_VERIFY_PUBLIC_KEY_PEM` / `_PATH`). There is no
+production HMAC path (which would force the verifier to hold the signing
+secret); see `src/qc_model/bundle/ed25519.py`. The `algo` field records the
+signature algorithm (`ed25519`).
 
 Raw upload streaming (oversize/invalid rejection) is **not** owned here — it
 belongs to S2's uploader.

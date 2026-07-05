@@ -5,7 +5,6 @@ Sample DB logic does not branch by edition.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import uuid
 from datetime import datetime, timezone

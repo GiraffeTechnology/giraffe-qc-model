@@ -12,7 +12,6 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from src.db.qc_learning_models import QCLearningJob
 from src.db.qc_source_models import (
     SOURCE_STATUS_REJECTED,
     SOURCE_STATUS_REVIEWED,

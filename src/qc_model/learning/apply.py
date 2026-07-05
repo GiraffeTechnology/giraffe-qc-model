@@ -22,7 +22,6 @@ from sqlalchemy.orm import Session
 from src.db.qc_learning_models import (
     QCLearnedDetectionPointProposal,
     QCLearningApproval,
-    QCLearningJob,
 )
 from src.db.qc_model_models import QCCheckpointClassification
 from src.db.sku_models import QCDetectionPoint

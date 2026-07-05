@@ -196,7 +196,7 @@ def apply_memory(training_pack_id: str, body: ApplyBody, db: Session = Depends(g
 def sample_learning_panel(
     request: Request, training_pack_id: str, tenant_id: str = "default", db: Session = Depends(get_db_dep)
 ):
-    from src.db.qc_sample_learning_models import SampleGroup, SampleLearningJob, VisualRuleMemory
+    from src.db.qc_sample_learning_models import SampleGroup, SampleLearningJob
     from src.db.sku_models import QCDetectionPoint
 
     groups = db.query(SampleGroup).filter_by(training_pack_id=training_pack_id, tenant_id=tenant_id).all()

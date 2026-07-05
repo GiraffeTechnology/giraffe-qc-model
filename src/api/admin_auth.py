@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from typing import Optional
 
 from fastapi import HTTPException, Request, status
-from sqlalchemy.orm import Session
 
 from src.db.pad_models import QCOperatorProfile
 

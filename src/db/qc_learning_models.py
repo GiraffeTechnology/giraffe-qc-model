@@ -13,7 +13,6 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
-    Integer,
     JSON,
     String,
     Text,

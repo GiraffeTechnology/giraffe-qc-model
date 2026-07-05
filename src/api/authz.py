@@ -40,7 +40,6 @@ from __future__ import annotations
 import json
 from urllib.parse import parse_qsl, urlencode
 
-from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 

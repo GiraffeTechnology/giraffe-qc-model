@@ -5,7 +5,6 @@ Use them in tests to avoid real network/model calls.
 """
 from __future__ import annotations
 
-import json
 from typing import List
 
 from src.config import fake_provider_allowed

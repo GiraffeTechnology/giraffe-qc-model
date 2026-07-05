@@ -11,7 +11,6 @@ not primarily judge when a physical fixture/ruler is more appropriate.
 from __future__ import annotations
 
 from src.qc_model.schemas.checkpoint import (
-    AIRole,
     CheckpointCategory,
     ai_can_be_primary_judge,
 )

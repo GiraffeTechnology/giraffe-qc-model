@@ -50,7 +50,6 @@ from src.qc_model.production.provider import (
     is_production_eligible_provider,
 )
 from src.qc_model.production.runtime import (
-    TabletRuntimeNotAllowedForProduction,
     assert_server_side_runtime,
 )
 from src.qc_model.readiness.evaluator import TARGET_PRODUCTION_ASSISTED, evaluate_readiness

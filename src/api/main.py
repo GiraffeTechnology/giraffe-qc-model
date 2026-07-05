@@ -1,7 +1,6 @@
 """FastAPI application entry point for Giraffe QC Model."""
 from __future__ import annotations
 
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 

@@ -17,13 +17,11 @@ from src.db.execution_models import (
     QCInspectionJob,
     QCModelResult,
 )
-from src.db.sku_models import QCDetectionPoint, QCSkuItem, QCSkuStandardRevision
+from src.db.sku_models import QCDetectionPoint
 from src.inspection.service import (
     create_inspection_job,
     finalize_job,
     get_active_detection_points_for_job,
-    submit_checkpoint_result,
-    submit_incidental_finding,
 )
 
 _VALID_RESULTS = {"pass", "fail", "not_visible", "low_confidence", "unsupported", "missing"}

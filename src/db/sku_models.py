@@ -1,5 +1,5 @@
 """SQLAlchemy models for QC SKU catalog (shared by Pad and Server editions)."""
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
