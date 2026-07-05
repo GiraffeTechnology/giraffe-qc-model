@@ -9,6 +9,12 @@ class QCSourceType(str, Enum):
 
     NATURAL_LANGUAGE = "natural_language"
     PROCESS_SPEC = "process_spec"
+    # Process card (工艺卡) — a manufacturing/QC routing card supplied as a
+    # standard-authoring input (PRD Authoring Extension §1). It is a *source
+    # format*, not a payload shape: the concrete document (image / PDF / Word /
+    # Excel / CAD) is classified and routed by
+    # :mod:`src.qc_model.ingestion.process_card`.
+    PROCESS_CARD = "process_card"
     INSPECTION_STANDARD = "inspection_standard"
     DRAWING = "drawing"
     CAD_EXPORT = "cad_export"

@@ -123,13 +123,17 @@ value** is the only serialized form; display labels come from the i18n seam
 | `confirmed` | Confirmed |
 | `published` | Published |
 | `installed_on_pad` | Installed on Pad |
+| `probation` | Probation |
 | `active_inspection` | Active Inspection |
 | `needs_requalification` | Needs Requalification |
 
 Allowed transitions are enumerated in both files (`ALLOWED_TRANSITIONS` /
 `allowedTransitions`) and enforced fail-closed — any pair not listed is rejected.
 Authoring (Web) drives up to `published`; `installed_on_pad` onward is reported
-by the Pad. `needs_requalification` loops back into authoring (§9).
+by the Pad. A newly installed standard enters `probation` — mandatory human
+confirmation on every real job — and only graduates to solo `active_inspection`
+once the qualification gate is met (≥30 jobs, ≥90% AI/human agreement; PRD
+Authoring Extension §3). `needs_requalification` loops back into authoring (§9).
 
 ---
 

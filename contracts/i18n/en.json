@@ -11,6 +11,7 @@
   "state.confirmed": "Confirmed",
   "state.published": "Published",
   "state.installed_on_pad": "Installed on Pad",
+  "state.probation": "Probation",
   "state.active_inspection": "Active Inspection",
   "state.needs_requalification": "Needs Requalification",
 

@@ -21,6 +21,9 @@ enum class StandardState(val wire: String) {
     CONFIRMED("confirmed"),
     PUBLISHED("published"),
     INSTALLED_ON_PAD("installed_on_pad"),
+    // Probation (试用期): mandatory human confirmation per job until the
+    // standard proves it can run solo (PRD Authoring Extension §3).
+    PROBATION("probation"),
     ACTIVE_INSPECTION("active_inspection"),
     NEEDS_REQUALIFICATION("needs_requalification");
 
@@ -43,7 +46,8 @@ enum class StandardState(val wire: String) {
             READY_FOR_REVIEW to setOf(CONFIRMED, NEEDS_INFORMATION),
             CONFIRMED to setOf(PUBLISHED, NEEDS_INFORMATION),
             PUBLISHED to setOf(INSTALLED_ON_PAD, NEEDS_REQUALIFICATION),
-            INSTALLED_ON_PAD to setOf(ACTIVE_INSPECTION, NEEDS_REQUALIFICATION),
+            INSTALLED_ON_PAD to setOf(PROBATION, NEEDS_REQUALIFICATION),
+            PROBATION to setOf(ACTIVE_INSPECTION, NEEDS_REQUALIFICATION),
             ACTIVE_INSPECTION to setOf(NEEDS_REQUALIFICATION),
             NEEDS_REQUALIFICATION to setOf(DRAFT, READY_FOR_REVIEW),
         )

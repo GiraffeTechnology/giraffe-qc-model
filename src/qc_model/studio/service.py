@@ -283,6 +283,7 @@ def _dp_view(dp: QCDetectionPoint) -> Dict[str, Any]:
         "pass_criteria": dp.pass_criteria,
         "severity": dp.severity,
         "sort_order": dp.sort_order,
+        "regions": dp.regions_json or [],
     }
 
 
@@ -511,6 +512,7 @@ def build_bundle_manifest(db: Session, sku: QCSkuItem, tenant_id: str) -> Dict[s
                 "pass_criteria": dp.pass_criteria,
                 "severity": dp.severity,
                 "sort_order": dp.sort_order,
+                "regions": dp.regions_json or [],
             }
             for dp in dps
         ],
