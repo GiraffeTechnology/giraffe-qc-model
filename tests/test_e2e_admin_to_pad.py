@@ -56,15 +56,15 @@ from src.qc_model.studio.service import verify_bundle as verify_studio_bundle
 
 TENANT = "tenant_acme"
 BUNDLE_VERSION = "1.0.0"
-BUNDLE_SECRET = "s7-e2e-secret"
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 
 @pytest.fixture()
-def db_session_factory(monkeypatch):
-    monkeypatch.setenv("BUNDLE_SIGNING_SECRET", BUNDLE_SECRET)
+def db_session_factory():
+    # Bundle signing is Ed25519 (canonical, no HMAC secret); under APP_ENV=test
+    # the signer uses an ephemeral per-process keypair, so no env is needed.
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -174,7 +174,6 @@ def _s3_signed_bundle_body(sku_id: str, revision_id: str) -> dict:
         }],
         photos=[{"photo_id": "p1", "sku_id": sku_id,
                  "sha256": "a" * 64, "path": "photos/p1.jpg"}],
-        secret=BUNDLE_SECRET,
         created_by="studio@acme",
     )
     return {
@@ -320,10 +319,11 @@ def test_e2e_tampered_bundle_signature_rejected(client):
     """S3 re-verifies signed bundles fail-closed on ingest."""
     ctx = _studio_create_confirm(client)
     body = _s3_signed_bundle_body(ctx["sku_id"], ctx["revision_id"])
-    # Deterministically flip the first hex nibble so the signature is *always*
-    # changed — even on the ~1/256 run where the HMAC already starts with "0"
-    # (the manifest timestamp varies run to run). Keeps the same valid hex
-    # length; only the value differs, so verification always fails.
+    # Deterministically flip the first character so the signature is *always*
+    # changed, regardless of what the signer produced this run (the manifest
+    # timestamp varies run to run). "0" and "1" are both valid base64 chars, so
+    # the length and alphabet stay valid — only the value differs, and Ed25519
+    # verification fails closed.
     sig = body["signature"]
     body["signature"] = ("1" if sig[0] == "0" else "0") + sig[1:]  # tamper
     rec = client.post("/api/qc/bundles", json=body)
