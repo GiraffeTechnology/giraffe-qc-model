@@ -113,7 +113,7 @@ against the exact revision the Pad used — never the latest.
 - ✅ Chat can create a SKU; upload is validated and previewable (tenant-aware).
 - ✅ Missing counts trigger a follow-up; counts are never guessed.
 - ✅ Confirmation persists `method_hint` / `expected_value` / `pass_criteria`.
-- ✅ Publish produces an HMAC-signed L2 bundle; fails closed with no confirmed standard.
+- ✅ Publish produces an **Ed25519-signed `.tar.gz`** L2 bundle (`manifest.json` + `checksum.sha256` + `bundle.sig` + embedded `photos/`); fails closed with no confirmed standard.
 - ✅ Bundle history/download; register + assign a (simulated) workstation.
 - ✅ Offline operator SKU selection returns installed standards with no backend call.
 - ✅ Server recomputes the verdict against the used revision; shown in Admin Results.
@@ -147,6 +147,19 @@ against the exact revision the Pad used — never the latest.
 - S3 bundle + workstation management with fail-closed signature verification.
 - S4 server verdict recompute + Admin Results.
 - Admin→Pad→Server E2E chain and the §16.4 fail-closed guarantees.
+- **Canonical Ed25519-signed `.tar.gz` bundle format** (#43): the single
+  production bundle standard — `manifest.json` + `checksum.sha256` + `bundle.sig`
+  + embedded `photos/`; the signature covers manifest + checksum, the checksum
+  covers every payload. No production HMAC signing; no `BUNDLE_SIGNING_SECRET` /
+  `QC_BUNDLE_SIGNING_KEY` (canonical env vars are
+  `QC_BUNDLE_SIGNING_PRIVATE_KEY_PEM`/`_PATH` for the server and
+  `QC_BUNDLE_VERIFY_PUBLIC_KEY_PEM`/`_PATH` for the verifier).
+- **Real Alembic migrations for the S3/S4 tables** (#42) plus the #45 authoring
+  tables. Chain is linear and single-headed: **017 → 018 → 019 → 020 → 021**,
+  single head **021**; a production `alembic upgrade head` now provisions
+  `qc_bundles`, `qc_workstations`, `qc_bundle_assignments`, `qc_pad_submissions`,
+  `qc_server_verdicts`, `qc_probations`, `qc_probation_jobs`, and
+  `qc_detection_points.regions_json`.
 
 ### Implemented but simulated (no physical Pad / no real inference)
 - S5/S6 Android Pad shell, QC Work page, conversation, readiness, offline SKU
@@ -158,36 +171,42 @@ against the exact revision the Pad used — never the latest.
   Pad reports *model pending* by design.
 
 ### Not implemented / pending
-- **Unified bundle format.** S2 publishes a `studio-bundle-v1` HMAC manifest;
-  S3 verifies a separate `manifest_version: 1` format (and PR #32 defines an
-  Ed25519 `.tar.gz` envelope). These are **not yet reconciled** — the E2E
-  records the S3-format bundle rather than feeding the S2 studio bundle straight
-  into S3. Single source of truth is pending S0 reconciliation.
-- **DB migrations for S3/S4 tables.** `qc_bundles`, `qc_workstations`,
-  `qc_bundle_assignments`, `qc_pad_submissions`, `qc_server_verdicts` are created
-  via `Base.metadata.create_all` and have **no Alembic migration**. Tests are
-  unaffected; a production `alembic upgrade` would not create them yet.
+- **Region annotation HTTP/UI route.** Detection-point region annotation (#45)
+  exists at the service / model / signed-manifest level with fail-closed
+  validation and unit tests, but **no dedicated HTTP/UI route is exposed for
+  direct region editing**. This does not block the local simulated E2E pass;
+  it should be wired in a separate product PR.
 - **On-device MNN inference** and **real hardware Pad run** — pending device.
 - **Studio voice input** — returns a controlled "not enabled" response.
+
+> **Update (post-S7).** The two items previously listed here — a unified bundle
+> format and Alembic migrations for the S3/S4 tables — are now **delivered** and
+> merged into `main` (#43 and #42 respectively; see "Implemented and verified"
+> above). #45 (authoring extension) and #40 (this S7 report) are also merged.
 
 ---
 
 ## 9. Known limitations (summary)
 
-1. No physical Pad tested — all Pad behaviour simulated (JVM unit / API).
+1. No physical Pad tested — all Pad behaviour simulated (JVM unit / API). No
+   CTYUN test, no real camera test, no real MNN hardware verification.
 2. On-device MNN inference not wired; Pad is fail-closed to "model pending".
-3. Two bundle-manifest formats (studio vs S3/offline-sync) not yet unified.
-4. S3/S4 tables lack Alembic migrations (create_all only).
-5. Voice input is a controlled stub.
+3. Region annotation has no dedicated HTTP/UI editing route yet (service /
+   model / manifest only) — separate product PR.
+4. Voice input is a controlled stub.
 
 ---
 
 ## 10. Completion statement (§20)
 
-S1–S6 are merged and green on `main`. The Admin → Pad → Server Definition-of-Done
-flow is verified as an automated integration test, and the safety-critical
-fail-closed guarantees hold end to end. All Pad-side behaviour is **simulated**,
-never hardware-verified, and on-device inference remains fail-closed. The items
-in §8 "Not implemented / pending" — chiefly the unified bundle format, S3/S4
-migrations, and a real device run — are the remaining work before a production
-hardware pilot.
+S1–S7 are merged and green on `main` (incl. #42 S3/S4 migrations, #43 canonical
+Ed25519 `.tar.gz` bundle, #45 authoring extension, #40 this report). The
+Admin → Pad → Server Definition-of-Done flow is verified as an automated
+integration test, and the safety-critical fail-closed guarantees hold end to
+end. The bundle standard is Ed25519-signed `.tar.gz` (no production HMAC), and
+the Alembic chain is single-headed at **021** (`017 → 018 → 019 → 020 → 021`).
+All Pad-side behaviour is **simulated**, never hardware-verified — no CTYUN, no
+physical Pad, no real camera, no real MNN hardware — and on-device inference
+remains fail-closed. The remaining work before a production hardware pilot is a
+real device run, on-device MNN inference wiring, and the region-annotation
+HTTP/UI route (§8).
