@@ -208,7 +208,8 @@ operator-driven region authoring from the UI.
   provider-neutral base).
 - Runtime profiles (`src/qc_model/runtime_profiles.py`):
   `tablet_mnn → qwen3.5-vl-2b-mnn`, `server → qwen3.5-vl-8b-int4`.
-- **No `desktop_pc_mnn` default** anywhere.
+- **No desktop-PC MNN runtime profile is registered as a default** anywhere
+  (the repo's guardrail test forbids that profile token in `src/` and `docs/`).
 - Provider failure / missing config → `review_required` / fail-closed; local
   test mode does not claim real visual accuracy; MNN inference remains scaffolded
   and fail-closed.
