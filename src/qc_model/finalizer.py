@@ -31,7 +31,6 @@ from typing import Optional
 
 from src.qc_model.providers.base import VisualInspectionResponse
 from src.qc_model.schemas.checkpoint import (
-    CheckpointCategory,
     ai_can_be_primary_judge,
     is_supported_category,
 )

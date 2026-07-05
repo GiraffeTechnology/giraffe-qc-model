@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Optional
 
-from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi import Depends, Header, HTTPException, status
 from itsdangerous import BadSignature, URLSafeSerializer
 
 # The known dev default that must never be used to sign real tokens / sessions.

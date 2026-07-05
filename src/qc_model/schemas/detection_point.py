@@ -13,7 +13,6 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from src.qc_model.schemas.checkpoint import (
-    CheckpointCategory,
     ai_can_be_primary_judge,
     default_ai_role,
     is_supported_category,

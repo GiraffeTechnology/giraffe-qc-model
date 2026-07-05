@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 from src.db.pad_models import QCConversationMessage
 from src.openclaw.qc_agent_bridge import (
     INTENT_THRESHOLD,
-    CheckpointProposal,
     OpenClawResponse,
     QCAgentBridge,
     get_bridge,

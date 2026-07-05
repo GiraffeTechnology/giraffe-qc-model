@@ -7,7 +7,7 @@ publish bundle history — one append-only row per ``Publish to Pad`` action.
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, Integer, String, Text, JSON
+from sqlalchemy import DateTime, Integer, String, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.models import Base, _utcnow
@@ -19,7 +19,9 @@ class QCPublishBundle(Base):
     Append-only: a bundle row is never mutated after creation.  ``manifest_json``
     holds the full bundle manifest (SKU, active revision, detection points with
     all semantic fields, standard photos); ``bundle_hash`` is the SHA-256 of the
-    canonical manifest and ``signature`` is the HMAC signature over that hash.
+    canonical manifest and ``signature`` is the Ed25519 signature over that hash
+    (the concrete algorithm is recorded in ``signature_algorithm`` — ``ed25519``
+    for bundles published today; see :mod:`src.qc_model.bundle.ed25519`).
     """
     __tablename__ = "qc_publish_bundles"
 

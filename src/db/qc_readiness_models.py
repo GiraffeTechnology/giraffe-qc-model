@@ -6,7 +6,6 @@ identity and a justification, is scoped to a specific item, and is never
 mutated (append-only audit trail). All other readiness checks are non-waivable.
 """
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import DateTime, String, Text
 from sqlalchemy.orm import Mapped, mapped_column

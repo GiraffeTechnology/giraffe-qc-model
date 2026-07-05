@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_db_dep
@@ -23,10 +23,7 @@ from src.db.qc_models import (
     SyncTarget,
 )
 from src.events.qc_events import (
-    build_asset_registered_event,
     build_inspection_completed_event,
-    build_inspection_started_event,
-    build_standard_created_event,
 )
 from src.qwen.schema import (
     CapturePhotoInput,

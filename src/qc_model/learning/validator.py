@@ -14,7 +14,6 @@ from src.qc_model.learning.schemas import (
     QCRuleLearningResponse,
 )
 from src.qc_model.schemas.checkpoint import (
-    CheckpointCategory,
     ai_can_be_primary_judge,
     default_ai_role,
     is_supported_category,

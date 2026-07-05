@@ -18,7 +18,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_db_dep
-from src.db.sku_models import QCDetectionPoint, QCSkuItem
+from src.db.sku_models import QCSkuItem
 from src.qc_model.classification_service import (
     classification_view,
     confirm_category,

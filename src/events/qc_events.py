@@ -5,7 +5,7 @@ Builds structured event payloads for the 5 main QC event types.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 
 def _utcnow_iso() -> str:
