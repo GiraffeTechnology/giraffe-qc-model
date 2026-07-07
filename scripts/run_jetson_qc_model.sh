@@ -9,11 +9,14 @@ ENV_FILE="$ROOT/scripts/jetson_qc_model_env.sh"
 RUN_DIR="$ROOT/artifacts/jetson_deploy"
 PID_FILE="$RUN_DIR/uvicorn.pid"
 LOG_FILE="$RUN_DIR/uvicorn.log"
+ICON_FILE="$ROOT/src/web/static/giraffe-qc-model-icon.png"
+DESKTOP_FILE=/home/giraffe/Desktop/Giraffe-QC-Model.desktop
+LAUNCHER=/home/giraffe/.local/bin/giraffe-qc-model-open.sh
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8000}"
 
 usage() {
-  echo "Usage: $0 {migrate|start|stop|restart|status|logs|smoke}"
+  echo "Usage: $0 {migrate|start|stop|restart|status|logs|smoke|desktop-icon}"
 }
 
 load_env() {
@@ -105,6 +108,50 @@ print(json.dumps(checks, indent=2, sort_keys=True))
 PY
 }
 
+install_desktop_icon() {
+  load_env
+  mkdir -p /home/giraffe/.local/bin /home/giraffe/Desktop
+  if [[ ! -f "$ICON_FILE" ]]; then
+    echo "missing icon asset: $ICON_FILE"
+    exit 1
+  fi
+  cat >"$LAUNCHER" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT=/home/giraffe/work/giraffe-qc-model
+URL=http://127.0.0.1:8000/admin
+
+cd "$ROOT"
+scripts/run_jetson_qc_model.sh start >/tmp/giraffe-qc-model-launch.log 2>&1 || true
+
+if command -v chromium-browser >/dev/null 2>&1; then
+  nohup chromium-browser "$URL" >/tmp/giraffe-qc-model-browser.log 2>&1 &
+elif command -v xdg-open >/dev/null 2>&1; then
+  nohup xdg-open "$URL" >/tmp/giraffe-qc-model-browser.log 2>&1 &
+else
+  nohup x-terminal-emulator -e "bash -lc 'echo Giraffe QC Model: $URL; read -r -p \"Press Enter to close\"'" >/tmp/giraffe-qc-model-browser.log 2>&1 &
+fi
+SH
+  chmod +x "$LAUNCHER"
+
+  cat >"$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Giraffe QC Model
+Comment=Open Giraffe QC Model Admin
+Exec=$LAUNCHER
+Icon=$ICON_FILE
+Terminal=false
+Categories=Development;Utility;
+StartupNotify=true
+EOF
+  chmod +x "$DESKTOP_FILE"
+  gio set "$DESKTOP_FILE" metadata::trusted true 2>/dev/null || true
+  echo "installed desktop icon: $DESKTOP_FILE"
+}
+
 cmd="${1:-}"
 case "$cmd" in
   migrate) migrate ;;
@@ -114,5 +161,6 @@ case "$cmd" in
   status) status ;;
   logs) tail -n 120 "$LOG_FILE" ;;
   smoke) smoke ;;
+  desktop-icon) install_desktop_icon ;;
   *) usage; exit 2 ;;
 esac

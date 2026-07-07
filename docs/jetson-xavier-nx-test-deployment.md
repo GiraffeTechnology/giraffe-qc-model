@@ -77,6 +77,7 @@ scripts/run_jetson_qc_model.sh migrate
 scripts/run_jetson_qc_model.sh start
 scripts/run_jetson_qc_model.sh status
 scripts/run_jetson_qc_model.sh smoke
+scripts/run_jetson_qc_model.sh desktop-icon
 scripts/run_jetson_qc_model.sh logs
 scripts/run_jetson_qc_model.sh stop
 ```
@@ -95,6 +96,11 @@ Smoke checks cover:
 - `/admin/studio`
 - `/admin/bundles`
 - `/api/edge-cv/devices`
+
+`desktop-icon` installs a Jetson desktop launcher named **Giraffe QC Model**.
+The icon asset is `src/web/static/giraffe-qc-model-icon.png`; the launcher opens
+`http://127.0.0.1:8000/admin` and starts the local test service first when
+needed.
 
 ## Simulated Photo Input
 
