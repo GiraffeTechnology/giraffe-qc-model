@@ -283,6 +283,222 @@ _STRINGS = {
         LANG_ZH: "保存",
         LANG_JA: "保存",
     },
+    # Admin Studio
+    "studio.page.title": {
+        LANG_EN: "QC Admin Studio",
+        LANG_ZH: "质检管理工作室",
+        LANG_JA: "QC 管理スタジオ",
+    },
+    "studio.header.title": {
+        LANG_EN: "Admin Studio",
+        LANG_ZH: "管理工作室",
+        LANG_JA: "管理スタジオ",
+    },
+    "studio.nav.qc_model": {
+        LANG_EN: "Visual QC Model",
+        LANG_ZH: "视觉质检模型",
+        LANG_JA: "ビジュアル QC モデル",
+    },
+    "studio.nav.samples": {
+        LANG_EN: "Sample Admin",
+        LANG_ZH: "样品管理",
+        LANG_JA: "サンプル管理",
+    },
+    "studio.left.title": {
+        LANG_EN: "SKUs",
+        LANG_ZH: "SKU 列表",
+        LANG_JA: "SKU",
+    },
+    "studio.search.placeholder": {
+        LANG_EN: "Search SKU / name...",
+        LANG_ZH: "搜索 SKU / 名称...",
+        LANG_JA: "SKU / 名前を検索...",
+    },
+    "studio.status.all": {
+        LANG_EN: "All statuses",
+        LANG_ZH: "全部状态",
+        LANG_JA: "すべての状態",
+    },
+    "studio.status.active": {
+        LANG_EN: "Active",
+        LANG_ZH: "启用",
+        LANG_JA: "有効",
+    },
+    "studio.status.inactive": {
+        LANG_EN: "Inactive",
+        LANG_ZH: "停用",
+        LANG_JA: "無効",
+    },
+    "studio.status.archived": {
+        LANG_EN: "Archived",
+        LANG_ZH: "已归档",
+        LANG_JA: "アーカイブ済み",
+    },
+    "studio.center.title": {
+        LANG_EN: "Conversation",
+        LANG_ZH: "对话",
+        LANG_JA: "会話",
+    },
+    "studio.voice.title": {
+        LANG_EN: "Voice input",
+        LANG_ZH: "语音输入",
+        LANG_JA: "音声入力",
+    },
+    "studio.upload.title": {
+        LANG_EN: "Upload standard photo",
+        LANG_ZH: "上传标准照片",
+        LANG_JA: "標準写真をアップロード",
+    },
+    "studio.chat.placeholder": {
+        LANG_EN: "Create a SKU or describe QC requirements...",
+        LANG_ZH: "创建 SKU 或描述质检要求...",
+        LANG_JA: "SKU を作成するか QC 要件を入力...",
+    },
+    "studio.send": {
+        LANG_EN: "Send",
+        LANG_ZH: "发送",
+        LANG_JA: "送信",
+    },
+    "studio.right.title": {
+        LANG_EN: "Standard",
+        LANG_ZH: "标准",
+        LANG_JA: "標準",
+    },
+    "studio.empty.standard": {
+        LANG_EN: "Select or create a SKU to see its standard.",
+        LANG_ZH: "选择或创建 SKU 以查看标准。",
+        LANG_JA: "SKU を選択または作成して標準を表示します。",
+    },
+    "studio.confirm.head": {
+        LANG_EN: "Candidate detection points",
+        LANG_ZH: "候选检测点",
+        LANG_JA: "候補検査ポイント",
+    },
+    "studio.confirm.yes": {
+        LANG_EN: "Confirm & save",
+        LANG_ZH: "确认并保存",
+        LANG_JA: "確認して保存",
+    },
+    "studio.confirm.no": {
+        LANG_EN: "Reject",
+        LANG_ZH: "拒绝",
+        LANG_JA: "却下",
+    },
+    "studio.js.no_skus": {
+        LANG_EN: "No SKUs yet.",
+        LANG_ZH: "还没有 SKU。",
+        LANG_JA: "SKU はまだありません。",
+    },
+    "studio.js.no_photo": {
+        LANG_EN: "No standard photo yet",
+        LANG_ZH: "还没有标准照片",
+        LANG_JA: "標準写真はまだありません",
+    },
+    "studio.js.standard_photo_alt": {
+        LANG_EN: "standard photo",
+        LANG_ZH: "标准照片",
+        LANG_JA: "標準写真",
+    },
+    "studio.js.expected": {
+        LANG_EN: "expected: {value}",
+        LANG_ZH: "期望值：{value}",
+        LANG_JA: "期待値: {value}",
+    },
+    "studio.js.no_detection_points": {
+        LANG_EN: "No confirmed detection points.",
+        LANG_ZH: "还没有已确认的检测点。",
+        LANG_JA: "確認済み検査ポイントはありません。",
+    },
+    "studio.js.publish": {
+        LANG_EN: "Publish to Pad (L2)",
+        LANG_ZH: "发布到 Pad (L2)",
+        LANG_JA: "Pad に公開 (L2)",
+    },
+    "studio.js.publishing": {
+        LANG_EN: "Publishing...",
+        LANG_ZH: "正在发布...",
+        LANG_JA: "公開中...",
+    },
+    "studio.js.published": {
+        LANG_EN: "Published signed L2 bundle for {item} - {count} detection point(s).",
+        LANG_ZH: "已为 {item} 发布签名 L2 包 - {count} 个检测点。",
+        LANG_JA: "{item} の署名済み L2 バンドルを公開しました - 検査ポイント {count} 件。",
+    },
+    "studio.js.bundle_note": {
+        LANG_EN: "bundle {id} - {algorithm} - hash {hash}...",
+        LANG_ZH: "包 {id} - {algorithm} - 哈希 {hash}...",
+        LANG_JA: "バンドル {id} - {algorithm} - ハッシュ {hash}...",
+    },
+    "studio.js.publish_failed": {
+        LANG_EN: "Publish failed: {message}",
+        LANG_ZH: "发布失败：{message}",
+        LANG_JA: "公開に失敗しました: {message}",
+    },
+    "studio.js.error": {
+        LANG_EN: "Error: {message}",
+        LANG_ZH: "错误：{message}",
+        LANG_JA: "エラー: {message}",
+    },
+    "studio.js.expected_count_required": {
+        LANG_EN: "Expected count required",
+        LANG_ZH: "需要填写期望数量",
+        LANG_JA: "期待数が必要です",
+    },
+    "studio.js.count_placeholder": {
+        LANG_EN: "count",
+        LANG_ZH: "数量",
+        LANG_JA: "数",
+    },
+    "studio.js.provide_counts": {
+        LANG_EN: "Please provide every expected count before confirming.",
+        LANG_ZH: "确认前请填写所有期望数量。",
+        LANG_JA: "確認前にすべての期待数を入力してください。",
+    },
+    "studio.js.confirmed_revision": {
+        LANG_EN: "Confirmed - revision {revision}.",
+        LANG_ZH: "已确认 - 修订 {revision}。",
+        LANG_JA: "確認済み - リビジョン {revision}。",
+    },
+    "studio.js.saved_points": {
+        LANG_EN: "Saved {count} detection point(s) to revision {revision}. You can now publish to Pad.",
+        LANG_ZH: "已将 {count} 个检测点保存到修订 {revision}。现在可以发布到 Pad。",
+        LANG_JA: "{count} 件の検査ポイントをリビジョン {revision} に保存しました。Pad に公開できます。",
+    },
+    "studio.js.rejected": {
+        LANG_EN: "Rejected.",
+        LANG_ZH: "已拒绝。",
+        LANG_JA: "却下しました。",
+    },
+    "studio.js.select_before_upload": {
+        LANG_EN: "Select or create a SKU before uploading a standard photo.",
+        LANG_ZH: "上传标准照片前，请先选择或创建 SKU。",
+        LANG_JA: "標準写真をアップロードする前に SKU を選択または作成してください。",
+    },
+    "studio.js.uploading_photo": {
+        LANG_EN: "Uploading standard photo...",
+        LANG_ZH: "正在上传标准照片...",
+        LANG_JA: "標準写真をアップロード中...",
+    },
+    "studio.js.photo_uploaded": {
+        LANG_EN: "Standard photo uploaded.",
+        LANG_ZH: "标准照片已上传。",
+        LANG_JA: "標準写真をアップロードしました。",
+    },
+    "studio.js.upload_failed": {
+        LANG_EN: "Upload failed: {message}",
+        LANG_ZH: "上传失败：{message}",
+        LANG_JA: "アップロードに失敗しました: {message}",
+    },
+    "studio.js.voice_disabled": {
+        LANG_EN: "Voice input is not enabled yet.",
+        LANG_ZH: "语音输入尚未启用。",
+        LANG_JA: "音声入力はまだ有効ではありません。",
+    },
+    "studio.js.welcome": {
+        LANG_EN: "Welcome to Admin Studio. Create a SKU (e.g. \"create sku FLW-001 Flower Brooch\") or select one on the left to train its QC standard.",
+        LANG_ZH: "欢迎进入管理工作室。创建一个 SKU（例如“create sku FLW-001 Flower Brooch”），或在左侧选择一个 SKU 来训练它的质检标准。",
+        LANG_JA: "管理スタジオへようこそ。SKU（例: \"create sku FLW-001 Flower Brooch\"）を作成するか、左側で選択して QC 標準を学習させます。",
+    },
 }
 
 
