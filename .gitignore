@@ -1,10 +1,12 @@
 # Runtime data
 data/
+artifacts/
 giraffe_qc.db
 *.db
 
 # Python
 __pycache__/
+.conda*/
 *.pyc
 *.pyo
 .venv/
