@@ -10,6 +10,15 @@
   const skuList = $("#sku-list");
   const skuCard = $("#sku-card");
   const activeChip = $("#active-sku-chip");
+  const strings = window.GIRAFFE_STUDIO_I18N || {};
+
+  function t(key, vars) {
+    let text = strings[key] || key;
+    Object.keys(vars || {}).forEach((name) => {
+      text = text.replace(new RegExp("\\{" + name + "\\}", "g"), vars[name]);
+    });
+    return text;
+  }
 
   function api(path, opts) {
     return fetch(path, opts).then(async (r) => {
@@ -48,7 +57,7 @@
     if (!items.length) {
       const li = document.createElement("li");
       li.className = "muted";
-      li.textContent = "No SKUs yet.";
+      li.textContent = t("noSkus");
       skuList.appendChild(li);
       return;
     }
@@ -87,20 +96,20 @@
   function renderCard(sku) {
     if (!sku) {
       skuCard.className = "sku-card empty";
-      skuCard.innerHTML = `<p class="muted">Select or create a SKU to see its standard.</p>`;
+      skuCard.innerHTML = `<p class="muted">${esc(t("emptyStandard"))}</p>`;
       return;
     }
     skuCard.className = "sku-card";
     const photo = sku.primary_photo;
     const preview = photo
-      ? `<img class="standard-preview" src="${photo.url}" alt="standard photo">`
-      : `<div class="standard-preview placeholder">No standard photo yet</div>`;
+      ? `<img class="standard-preview" src="${photo.url}" alt="${esc(t("standardPhotoAlt"))}">`
+      : `<div class="standard-preview placeholder">${esc(t("noPhoto"))}</div>`;
 
     const dps = (sku.detection_points || [])
       .map((dp) => {
         const bits = [];
         if (dp.method_hint) bits.push(dp.method_hint);
-        if (dp.expected_value) bits.push("expected: " + dp.expected_value);
+        if (dp.expected_value) bits.push(t("expected", { value: dp.expected_value }));
         bits.push(dp.severity);
         return (
           `<li><span class="dp-code">${esc(dp.point_code)}</span> — ${esc(dp.label)}` +
@@ -117,9 +126,9 @@
       `<div class="sku-sub">${esc(sku.item_number)}${sku.category ? " · " + esc(sku.category) : ""}</div>` +
       preview +
       `<div><span class="status-badge status-${esc(sku.standard_status)}">${esc(sku.standard_status.replace(/_/g, " "))}</span></div>` +
-      (dps ? `<ul class="dp-list">${dps}</ul>` : `<p class="muted" style="margin-top:12px">No confirmed detection points.</p>`) +
+      (dps ? `<ul class="dp-list">${dps}</ul>` : `<p class="muted" style="margin-top:12px">${esc(t("noDetectionPoints"))}</p>`) +
       `<div class="publish-row">` +
-      `<button class="publish-btn" id="publish-btn" ${canPublish ? "" : "disabled"}>Publish to Pad (L2)</button>` +
+      `<button class="publish-btn" id="publish-btn" ${canPublish ? "" : "disabled"}>${esc(t("publish"))}</button>` +
       `<div class="bundle-note hidden" id="bundle-note"></div>` +
       `</div>`;
 
@@ -131,7 +140,7 @@
     if (!state.skuId) return;
     const btn = $("#publish-btn");
     btn.disabled = true;
-    btn.textContent = "Publishing…";
+    btn.textContent = t("publishing");
     api("/admin/studio/publish", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -140,19 +149,25 @@
       .then((data) => {
         const b = data.bundle;
         addBubble(
-          `Published signed L2 bundle for ${state.sku.item_number} — ` +
-          `${b.detection_point_count} detection point(s).`,
+          t("published", {
+            item: state.sku.item_number,
+            count: b.detection_point_count,
+          }),
           "system"
         );
         const note = $("#bundle-note");
         note.classList.remove("hidden");
-        note.textContent = `bundle ${b.id.slice(0, 8)} · ${b.signature_algorithm} · hash ${b.bundle_hash.slice(0, 16)}…`;
-        btn.textContent = "Publish to Pad (L2)";
+        note.textContent = t("bundleNote", {
+          id: b.id.slice(0, 8),
+          algorithm: b.signature_algorithm,
+          hash: b.bundle_hash.slice(0, 16),
+        });
+        btn.textContent = t("publish");
         btn.disabled = false;
       })
       .catch((err) => {
-        addBubble("Publish failed: " + err.message, "system");
-        btn.textContent = "Publish to Pad (L2)";
+        addBubble(t("publishFailed", { message: err.message }), "system");
+        btn.textContent = t("publish");
         btn.disabled = false;
       });
   }
@@ -171,7 +186,7 @@
         if (res.action === "created_sku" || res.action === "selected_sku") loadSkus();
         if (res.confirmation_card) renderConfirmCard(res.confirmation_card);
       })
-      .catch((err) => addBubble("Error: " + err.message, "system"));
+      .catch((err) => addBubble(t("error", { message: err.message }), "system"));
   }
 
   // ── Confirmation card (§5.5) ────────────────────────────────────────────
@@ -190,16 +205,16 @@
         `<div class="cp-fields">${esc(cp.method_hint || "")} · ${esc(cp.severity || "")}` +
         (cp.pass_criteria ? ` · ${esc(cp.pass_criteria)}` : "") + `</div>`;
       if (needsCount) {
-        html += `<div class="cp-missing">Expected count required</div>`;
+        html += `<div class="cp-missing">${esc(t("expectedCountRequired"))}</div>`;
       } else if (cp.expected_value) {
-        html += `<div class="cp-fields">expected: ${esc(cp.expected_value)}</div>`;
+        html += `<div class="cp-fields">${esc(t("expected", { value: cp.expected_value }))}</div>`;
       }
       row.innerHTML = html;
       if (needsCount) {
         const inp = document.createElement("input");
         inp.className = "cp-input";
         inp.type = "text";
-        inp.placeholder = "count";
+        inp.placeholder = t("countPlaceholder");
         inp.dataset.idx = i;
         row.appendChild(inp);
         inputs[i] = inp;
@@ -217,7 +232,7 @@
         (cp) => cp.method_hint === "counting" && !cp.expected_value
       );
       if (missing) {
-        addBubble("Please provide every expected count before confirming.", "system");
+        addBubble(t("provideCounts"), "system");
         return;
       }
       api("/admin/studio/confirm", {
@@ -232,16 +247,18 @@
       })
         .then((res) => {
           root.querySelector(".confirm-actions").innerHTML =
-            `<span class="muted">Confirmed — revision ${res.revision_no}.</span>`;
+            `<span class="muted">${esc(t("confirmedRevision", { revision: res.revision_no }))}</span>`;
           addBubble(
-            `Saved ${checkpoints.length} detection point(s) to revision ${res.revision_no}. ` +
-            `You can now publish to Pad.`,
+            t("savedPoints", {
+              count: checkpoints.length,
+              revision: res.revision_no,
+            }),
             "system"
           );
           if (res.sku) setActiveSku(res.sku);
           loadSkus();
         })
-        .catch((err) => addBubble("Confirm failed: " + err.message, "system"));
+        .catch((err) => addBubble(t("error", { message: err.message }), "system"));
     });
 
     root.querySelector(".confirm-no").addEventListener("click", () => {
@@ -251,7 +268,7 @@
         body: JSON.stringify({ tenant_id: tenant, intake_id: card.intake_id }),
       }).finally(() => {
         root.querySelector(".confirm-actions").innerHTML =
-          `<span class="muted">Rejected.</span>`;
+          `<span class="muted">${esc(t("rejected"))}</span>`;
       });
     });
 
@@ -262,27 +279,27 @@
   // ── Upload (§5.3) ───────────────────────────────────────────────────────
   function uploadPhoto(file) {
     if (!state.skuId) {
-      addBubble("Select or create a SKU before uploading a standard photo.", "system");
+      addBubble(t("selectBeforeUpload"), "system");
       return;
     }
     const fd = new FormData();
     fd.append("sku_id", state.skuId);
     fd.append("tenant_id", tenant);
     fd.append("image", file);
-    addBubble("Uploading standard photo…", "user");
+    addBubble(t("uploadingPhoto"), "user");
     api("/admin/studio/upload", { method: "POST", body: fd })
       .then((res) => {
-        addBubble("Standard photo uploaded.", "system", res.url);
+        addBubble(t("photoUploaded"), "system", res.url);
         if (res.sku) setActiveSku(res.sku);
       })
-      .catch((err) => addBubble("Upload failed: " + err.message, "system"));
+      .catch((err) => addBubble(t("uploadFailed", { message: err.message }), "system"));
   }
 
   // ── Voice toggle (§5.3) — must not crash ────────────────────────────────
   function voiceToggle() {
     api("/admin/studio/voice", { method: "POST" })
-      .then((res) => addBubble(res.message || "Voice input is not enabled yet.", "system"))
-      .catch(() => addBubble("Voice input is not enabled yet.", "system"));
+      .then((res) => addBubble(res.message || t("voiceDisabled"), "system"))
+      .catch(() => addBubble(t("voiceDisabled"), "system"));
   }
 
   function esc(s) {
@@ -312,10 +329,6 @@
   });
   $("#sku-status-filter").addEventListener("change", loadSkus);
 
-  addBubble(
-    "Welcome to Admin Studio. Create a SKU (e.g. “create sku FLW-001 Flower Brooch”) " +
-    "or select one on the left to train its QC standard.",
-    "system"
-  );
+  addBubble(t("welcome"), "system");
   loadSkus();
 })();

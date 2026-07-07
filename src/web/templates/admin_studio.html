@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ current_language() }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>QC Admin Studio</title>
+  <title>{{ t('studio.page.title') }}</title>
   <link rel="stylesheet" href="/static/admin_studio.css">
 </head>
 <body data-tenant="{{ tenant_id }}">
   <header class="studio-header">
     <a href="/admin/samples" class="brand">Giraffe QC</a>
-    <span class="studio-title">Admin Studio</span>
+    <span class="studio-title">{{ t('studio.header.title') }}</span>
     <nav class="studio-nav">
-      <a href="/admin/qc-model">Visual QC Model</a>
-      <a href="/admin/samples">Sample Admin</a>
+      <a href="/admin/qc-model">{{ t('studio.nav.qc_model') }}</a>
+      <a href="/admin/samples">{{ t('studio.nav.samples') }}</a>
     </nav>
     <div class="studio-header__actions">
       {% include "_language_switch.html" %}
@@ -23,15 +23,15 @@
     <!-- LEFT: SKU list / search / status filter -->
     <aside class="panel panel-left">
       <div class="panel-head">
-        <h2>SKUs</h2>
+        <h2>{{ t('studio.left.title') }}</h2>
       </div>
       <div class="sku-controls">
-        <input type="search" id="sku-search" placeholder="Search SKU / name…" autocomplete="off">
+        <input type="search" id="sku-search" placeholder="{{ t('studio.search.placeholder') }}" autocomplete="off">
         <select id="sku-status-filter">
-          <option value="">All statuses</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-          <option value="archived">Archived</option>
+          <option value="">{{ t('studio.status.all') }}</option>
+          <option value="active">{{ t('studio.status.active') }}</option>
+          <option value="inactive">{{ t('studio.status.inactive') }}</option>
+          <option value="archived">{{ t('studio.status.archived') }}</option>
         </select>
       </div>
       <ul id="sku-list" class="sku-list"></ul>
@@ -40,29 +40,29 @@
     <!-- CENTER: conversation + input -->
     <section class="panel panel-center">
       <div class="panel-head">
-        <h2>Conversation</h2>
+        <h2>{{ t('studio.center.title') }}</h2>
         <span id="active-sku-chip" class="chip hidden"></span>
       </div>
       <div id="conversation" class="conversation" aria-live="polite"></div>
 
       <form id="chat-form" class="chat-input">
-        <button type="button" id="voice-toggle" class="icon-btn" title="Voice input">🎤</button>
-        <label class="icon-btn" title="Upload standard photo">
+        <button type="button" id="voice-toggle" class="icon-btn" title="{{ t('studio.voice.title') }}">🎤</button>
+        <label class="icon-btn" title="{{ t('studio.upload.title') }}">
           📎
           <input type="file" id="photo-input" accept="image/*" hidden>
         </label>
-        <input type="text" id="chat-text" placeholder="Create a SKU or describe QC requirements…" autocomplete="off">
-        <button type="submit" class="send-btn">Send</button>
+        <input type="text" id="chat-text" placeholder="{{ t('studio.chat.placeholder') }}" autocomplete="off">
+        <button type="submit" class="send-btn">{{ t('studio.send') }}</button>
       </form>
     </section>
 
     <!-- RIGHT: SKU card + standard preview + detection points + status -->
     <aside class="panel panel-right">
       <div class="panel-head">
-        <h2>Standard</h2>
+        <h2>{{ t('studio.right.title') }}</h2>
       </div>
       <div id="sku-card" class="sku-card empty">
-        <p class="muted">Select or create a SKU to see its standard.</p>
+        <p class="muted">{{ t('studio.empty.standard') }}</p>
       </div>
     </aside>
   </div>
@@ -70,15 +70,43 @@
   <!-- Confirmation card template rendered into the conversation -->
   <template id="confirm-card-template">
     <div class="confirm-card">
-      <div class="confirm-head">Candidate detection points</div>
+      <div class="confirm-head">{{ t('studio.confirm.head') }}</div>
       <div class="confirm-body"></div>
       <div class="confirm-actions">
-        <button type="button" class="btn btn-primary confirm-yes">Confirm &amp; save</button>
-        <button type="button" class="btn confirm-no">Reject</button>
+        <button type="button" class="btn btn-primary confirm-yes">{{ t('studio.confirm.yes') }}</button>
+        <button type="button" class="btn confirm-no">{{ t('studio.confirm.no') }}</button>
       </div>
     </div>
   </template>
 
+  <script>
+    window.GIRAFFE_STUDIO_I18N = {
+      noSkus: {{ t('studio.js.no_skus') | tojson }},
+      emptyStandard: {{ t('studio.empty.standard') | tojson }},
+      noPhoto: {{ t('studio.js.no_photo') | tojson }},
+      standardPhotoAlt: {{ t('studio.js.standard_photo_alt') | tojson }},
+      expected: {{ t('studio.js.expected') | tojson }},
+      noDetectionPoints: {{ t('studio.js.no_detection_points') | tojson }},
+      publish: {{ t('studio.js.publish') | tojson }},
+      publishing: {{ t('studio.js.publishing') | tojson }},
+      published: {{ t('studio.js.published') | tojson }},
+      bundleNote: {{ t('studio.js.bundle_note') | tojson }},
+      publishFailed: {{ t('studio.js.publish_failed') | tojson }},
+      error: {{ t('studio.js.error') | tojson }},
+      expectedCountRequired: {{ t('studio.js.expected_count_required') | tojson }},
+      countPlaceholder: {{ t('studio.js.count_placeholder') | tojson }},
+      provideCounts: {{ t('studio.js.provide_counts') | tojson }},
+      confirmedRevision: {{ t('studio.js.confirmed_revision') | tojson }},
+      savedPoints: {{ t('studio.js.saved_points') | tojson }},
+      rejected: {{ t('studio.js.rejected') | tojson }},
+      selectBeforeUpload: {{ t('studio.js.select_before_upload') | tojson }},
+      uploadingPhoto: {{ t('studio.js.uploading_photo') | tojson }},
+      photoUploaded: {{ t('studio.js.photo_uploaded') | tojson }},
+      uploadFailed: {{ t('studio.js.upload_failed') | tojson }},
+      voiceDisabled: {{ t('studio.js.voice_disabled') | tojson }},
+      welcome: {{ t('studio.js.welcome') | tojson }}
+    };
+  </script>
   <script src="/static/admin_studio.js"></script>
 </body>
 </html>

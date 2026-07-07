@@ -185,6 +185,22 @@ def test_selection_persists_and_overrides_device_language(client):
     assert translate("admin.home.title", "zh-CN") in followup.text
 
 
+def test_admin_studio_uses_persisted_language_for_static_and_js_copy(client):
+    client.cookies.set(LANGUAGE_COOKIE, "zh-CN")
+    resp = client.get("/admin/studio", headers={"Accept-Language": "en"})
+    assert resp.status_code == 200
+    body = resp.text
+    assert '<html lang="zh-CN">' in body
+    assert translate("studio.header.title", "zh-CN") in body
+    assert translate("studio.search.placeholder", "zh-CN") in body
+    assert translate("studio.empty.standard", "zh-CN") in body
+    assert "welcome:" in body
+    # Jinja's tojson safely escapes non-ASCII text in the injected JS payload.
+    assert "\\u6b22\\u8fce\\u8fdb\\u5165\\u7ba1\\u7406\\u5de5\\u4f5c\\u5ba4" in body
+    assert "Admin Studio" not in body
+    assert "Create a SKU or describe QC requirements" not in body
+
+
 def test_set_language_guards_against_open_redirect(client):
     resp = client.post(
         "/admin/settings/language",
