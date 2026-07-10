@@ -286,6 +286,36 @@ upload result`) and ships with a mock runner. Docs:
 
 ---
 
+## Jetson Xavier NX — qc-model inference runner (optional)
+
+The QC production line has two device-side stages, both optional and headless:
+
+```
+CV front-end                         inference                verdict
+Jetson Nano 2GB (auto-lock capture)  ─┐
+   or                                 ├─▶ frame + spec ─▶ Jetson Xavier NX ─▶ Pad ─▶ Server (S4)
+Pad (local CV framing)              ─┘                    qc-model VLM        shows   recomputes
+```
+
+- The **CV** role (candidate detection / capture / framing) is played by the
+  Jetson **Nano** (`edge_cv_agent/`, see the Edge CV section) **or** the **Pad** —
+  interchangeable front-ends.
+- The Jetson **Xavier NX** runs qc-model **inference** only: stateless per
+  request, every request carries the full detection-point spec inline (no bundle
+  caching → no Pad↔Jetson version skew). Its output is **evidence, not a
+  verdict** — the Server still recomputes pass/fail (S4).
+
+**Headless (P0):** production Jetsons have no display/keyboard/mouse. Pairing is
+USB (physical proof) or Wi-Fi (pairing-window + chassis-fingerprint) — never a
+QR/screen — and is 1:1, fail-closed (re-pair drops the old Pad with no grace),
+and Server-independent (floor first, sync later). If the Jetson is unreachable
+the operator **cannot submit** an inspection (no fabricated verdict, no fallback).
+
+Docs: `docs/jetson-xavier-nx-inference.md`, `docs/jetson-headless-pairing.md`,
+`docs/jetson-runtime-readiness.md`; mock runner: `jetson_runner/README.md`.
+
+---
+
 ## Integration with Giraffe Stack
 
 ```text

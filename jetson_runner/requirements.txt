@@ -1,0 +1,6 @@
+# Jetson runner runtime deps. Mock mode needs only fastapi+uvicorn for the LAN
+# endpoint; the contract/identity helpers are imported from the qc-model package.
+# A real Xavier NX build additionally installs the qc-model VLM runtime and
+# jetson-stats (jtop) for health — intentionally NOT required for CI/mock mode.
+fastapi>=0.115
+uvicorn[standard]>=0.30
