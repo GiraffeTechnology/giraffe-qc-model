@@ -58,7 +58,8 @@ inference latency.
 2. The installed unit is a systemd user service with `Linger=no`, not the PRD's
    required pre-login system service. System installation needs sudo authority.
 3. PR #51 is unmerged; the Phase 1 fix should target its source branch.
-4. `gh` CLI is absent on the Jetson, so the draft PR publish workflow is pending.
+4. Phase 1 harness/report changes are published as draft PR #52, targeting the
+   unmerged PR #51 source branch rather than `main`.
 
 ## Two-hour continuous-load result
 
