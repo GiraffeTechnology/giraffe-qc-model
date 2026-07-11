@@ -14,6 +14,8 @@ from __future__ import annotations
 import time
 from typing import Optional
 
+from starlette.requests import Request
+
 from jetson_runner.app import health, inference_server, signing
 from jetson_runner.app.config import RunnerConfig
 from jetson_runner.app.identity import JetsonIdentity, generate_identity
@@ -90,6 +92,20 @@ def main() -> None:  # pragma: no cover - real deployment entrypoint
     @app.get("/health")
     def _health():
         return service.health_report()
+
+    @app.post("/phase1/pair-loopback")
+    def _phase1_pair_loopback(body: dict, request: Request):
+        """Allow the local Phase 1 CV harness to pair; never enabled by default."""
+        if not cfg.phase1_loopback_pairing:
+            raise HTTPException(status_code=404, detail="not_found")
+        client_host = request.client.host if request.client else ""
+        if client_host not in {"127.0.0.1", "::1"}:
+            raise HTTPException(status_code=403, detail="loopback_only")
+        pad_device_id = body.get("pad_device_id", "")
+        pad_pubkey = body.get("pad_pubkey", "")
+        if not pad_device_id or not pad_pubkey:
+            raise HTTPException(status_code=422, detail="pad_device_id_and_pad_pubkey_required")
+        return service.pairing.pair_usb(pad_device_id, pad_pubkey)
 
     @app.post("/infer")
     def _infer(body: dict):
