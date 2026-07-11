@@ -44,3 +44,7 @@ def test_provisioning_identity_and_chassis_label():
     assert ident.fingerprint.count("-") == 3  # NNNN-NNNN-NNNN-NNNN
     assert ident.jetson_device_id in ident.chassis_label
     assert ident.fingerprint in ident.chassis_label
+
+
+def test_phase1_loopback_pairing_defaults_off():
+    assert RunnerConfig().phase1_loopback_pairing is False

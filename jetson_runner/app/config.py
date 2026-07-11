@@ -18,4 +18,7 @@ class RunnerConfig:
     bind_host: str = field(default_factory=lambda: os.getenv("JETSON_BIND_HOST", "0.0.0.0"))
     bind_port: int = field(default_factory=lambda: int(os.getenv("JETSON_BIND_PORT", "8600")))
     status_led_enabled: bool = field(default_factory=lambda: _bool("JETSON_STATUS_LED", False))
+    # Hardware-validation escape hatch: disabled by default and restricted by
+    # the HTTP layer to callers on this Jetson.
+    phase1_loopback_pairing: bool = field(default_factory=lambda: _bool("JETSON_PHASE1_LOOPBACK_PAIRING", False))
     agent_version: str = "0.1.0"

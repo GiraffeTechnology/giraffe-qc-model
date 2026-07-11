@@ -1,0 +1,22 @@
+{
+  "standard_revision_id": "phase1-local-revision-1",
+  "bundle_version": "phase1-fixture-1",
+  "detection_points": [
+    {
+      "point_code": "seam_alignment",
+      "label": "Seam alignment",
+      "expected_value": "Straight and centered seam",
+      "pass_criteria": "No visible skew or puckering",
+      "severity": "major",
+      "regions": [{"image_id": "capture", "x": 0.1, "y": 0.1, "w": 0.8, "h": 0.8}]
+    },
+    {
+      "point_code": "surface_defect",
+      "label": "Surface defect",
+      "expected_value": "Clean surface",
+      "pass_criteria": "No stain, hole, or foreign material",
+      "severity": "critical",
+      "regions": [{"image_id": "capture", "x": 0, "y": 0, "w": 1, "h": 1}]
+    }
+  ]
+}
