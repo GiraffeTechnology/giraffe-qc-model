@@ -49,7 +49,7 @@ inference latency.
 | Kill and automatic restart | measured pass | PID 24970 killed; systemd restarted as PID 25066; health returned HTTP 200 |
 | Two-hour continuous HTTP load | measured pass (mock runner) | 7200.62 s, 6719 requests, 0 failures |
 | Cold power-on to ready | not tested | requires controlled power cycle/system-level boot service |
-| Camera unplug/replug behavior | not tested | pending after continuous load |
+| Camera unplug/replug behavior | not tested | requires a physical unplug/replug action at the Jetson |
 
 ## Outstanding issues
 
