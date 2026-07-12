@@ -1,5 +1,14 @@
 # Jetson Xavier NX 真实推理 Runtime 可行性调研
 
+**人工选型决定（2026-07-12）：** 选 **选项 C**——重刷 JetPack 5.1.x（CUDA
+11.4），2B 档模型，推理后端选 **llama.cpp**（官方 `jetson-containers` 在
+JetPack5.x 上有持续维护的容器镜像，社区证据比 onnxruntime 路径更充分；
+adapter 计划走 `llama-server` HTTP 接口调用，绕开 Python 3.11 绑定问题，
+见第 2.1 节）。**Task 2b（adapter 实现）明确等重刷完成、Phase 1.5 拿到
+JetPack5.1.x 实测环境信息（实际 CUDA/cuDNN/TensorRT 版本、可用 wheel/容器
+情况）之后再开工，不基于假设环境提前写代码。** 重刷本身仍是人工/Codex
+在设备上执行的事项，本文档不涉及执行。
+
 **目的：** 回答 Phase 1 测试暴露的核心问题——qc-model 的 VLM 推理能不能在当前
 Jetson Xavier NX 测试机上真实跑起来（而非 mock）。仅评估，不实现、不重刷、不
 提交任何设备端改动。设备端实测（Phase 1.5）由 Codex 在 `192.168.5.35` 上执行。
