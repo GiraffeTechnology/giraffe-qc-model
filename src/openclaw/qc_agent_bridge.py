@@ -1,3 +1,5 @@
+# Contains FakeOpenClawLLMClient, a labeled NON-PRODUCTION MOCK fallback used only when
+# no real OpenClaw client is configured.
 """OpenClaw LLM bridge for QC pad multilingual processing."""
 from __future__ import annotations
 

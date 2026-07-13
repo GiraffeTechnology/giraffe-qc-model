@@ -1,3 +1,4 @@
+# Drives the labeled NON-PRODUCTION MOCK pipeline in cv_pipeline.py (CI simulation only).
 """Run one pulled job end-to-end: validate model, run CV, upload or fail."""
 from __future__ import annotations
 

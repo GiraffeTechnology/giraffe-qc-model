@@ -16,8 +16,9 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies including dev tooling
-        run: uv sync --group dev
-
-      - name: Run tests
-        run: uv run pytest tests/ -v
+      # Clean-environment reproducibility standard (WS1 / CI instructions §1.1):
+      # the frozen lockfile alone must be sufficient — no ad-hoc installs.
+      - name: Run tests (frozen lockfile, clean environment)
+        run: |
+          rm -rf .venv
+          UV_CACHE_DIR=/tmp/uv-cache UV_PROJECT_ENVIRONMENT=.venv uv run --frozen pytest -q

@@ -17,6 +17,12 @@ import com.giraffetechnology.qc.ui.WelcomeScreen
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Build provenance (P0-7): ties any installed APK back to its exact commit.
+        android.util.Log.i(
+            "BuildProvenance",
+            "commit=${BuildConfig.GIT_COMMIT_SHA} branch=${BuildConfig.GIT_BRANCH} " +
+                "builtAt=${BuildConfig.BUILD_TIMESTAMP}",
+        )
         PadRuntimeGraph.init(this)
         setContent {
             MaterialTheme {

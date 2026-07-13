@@ -1,3 +1,4 @@
+# MockRuleAuthoringProvider below is a labeled NON-PRODUCTION MOCK for CI/dev use.
 """Rule-authoring provider abstraction (PR 22 §0, §6, §8).
 
 Mirrors the learning provider pattern already used in the repo — an abstract

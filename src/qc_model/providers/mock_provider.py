@@ -1,3 +1,4 @@
+# NON-PRODUCTION MOCK — scripted VLM provider for CI/tests.
 """Deterministic mocked VLM provider for Phase 1 tests.
 
 This provider returns scripted structured output so that schema, parser,

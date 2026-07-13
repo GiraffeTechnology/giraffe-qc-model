@@ -1,3 +1,4 @@
+# NON-PRODUCTION MOCK — deterministic LLM provider for CI/tests. Never enable in production.
 """Deterministic mock — used when LLM_ENABLE_REAL_CALLS=false or no API key."""
 from src.llm.base import LLMProvider, ImageCompareResult
 

@@ -1,0 +1,33 @@
+name: remediation-lints
+
+# CI_AND_MERGE_INSTRUCTIONS.md §1.3 / §1.4 — these jobs must pass (or, for the
+# claims check, be reviewed) before any P0-remediation PR merges.
+on:
+  push:
+  pull_request:
+
+jobs:
+  mock-labeling-lint:
+    name: Mock-labeling lint (§1.3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Fail on unlabeled mock/fake patterns in production paths
+        run: python scripts/ci/mock_labeling_lint.py
+
+  no-unverified-claims:
+    name: No-unverified-claims check (§1.4, soft)
+    runs-on: ubuntu-latest
+    # Soft check per the CI instructions: annotates unbacked readiness claims
+    # for reviewers instead of hard-blocking the merge.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Warn on readiness claims without adjacent evidence
+        run: python scripts/ci/claims_lint.py

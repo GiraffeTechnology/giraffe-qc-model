@@ -1,3 +1,4 @@
+# NON-PRODUCTION MOCK — deterministic fake Qwen providers, gated by fake_provider_allowed().
 """Fake QWEN QC providers for testing.
 
 These providers do NOT import or call any real MNN or DashScope API.

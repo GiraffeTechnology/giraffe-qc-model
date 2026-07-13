@@ -1,3 +1,5 @@
+# References NON-PRODUCTION MOCK providers (FakeCloudQwenProvider) only via the gated
+# provider registry; the mock itself is labeled in src/qwen/fake_providers.py.
 """FastAPI QC API router — all endpoints from §4.6.1–4.6.7."""
 from __future__ import annotations
 

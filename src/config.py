@@ -1,3 +1,5 @@
+# NON-PRODUCTION MOCK gating lives here: fake_provider_allowed() / EDGE_CV_MOCK_ENABLED
+# select labeled mock providers for CI/dev only; production deployments must disable them.
 """
 Central runtime configuration.
 

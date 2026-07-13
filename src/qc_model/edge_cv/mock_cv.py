@@ -1,3 +1,4 @@
+# NON-PRODUCTION MOCK — simulated edge-CV inference for CI/dev. Never a real verdict source.
 """Deterministic mock CV inference used by the CPU fallback and the mock agent.
 
 No real model or hardware is involved — this produces a plausible, structured CV

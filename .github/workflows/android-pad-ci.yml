@@ -32,11 +32,6 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      - name: Set up Gradle 8.6
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.6'
-
       - name: Install Android SDK platform and build tools
         run: |
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
@@ -46,9 +41,15 @@ jobs:
       - name: Create MNN CI stubs (satisfies verifyMnnNativeDeps)
         run: bash scripts/download_mnn_android_libs.sh --ci-stubs
 
-      - name: Generate Gradle wrapper
-        working-directory: apps/android-qc
-        run: gradle wrapper --gradle-version 8.6 --distribution-type bin
+      # The Gradle wrapper (gradlew + gradle-wrapper.jar, Gradle 8.6 pinned by
+      # sha256) is committed in apps/android-qc — no wrapper-generation step, so
+      # the CI build matches a clean local checkout exactly.
+
+      - name: Export build provenance (commit SHA, branch, timestamp)
+        run: |
+          echo "GIT_COMMIT_SHA=${{ github.sha }}" >> "$GITHUB_ENV"
+          echo "GIT_BRANCH=${{ github.head_ref || github.ref_name }}" >> "$GITHUB_ENV"
+          echo "BUILD_TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
       - name: Run 1 of 3 — assemble padLocalDebug + unit tests
         working-directory: apps/android-qc
@@ -92,11 +93,11 @@ jobs:
           fi
           echo "Static check complete."
 
-      - name: Upload APK artifact
+      - name: Upload APK artifact (APK filename + BuildConfig embed commit SHA)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pad-local-debug-apk
+          name: pad-local-debug-apk-${{ github.sha }}
           path: apps/android-qc/app/build/outputs/apk/padLocal/debug/*.apk
           retention-days: 14
 
