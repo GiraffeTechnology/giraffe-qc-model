@@ -40,9 +40,10 @@ data class JetsonInferenceRequest(
      * inline-encoded frame". This client always sends an inline
      * `data:<mime>;base64,<...>` data URI so the Jetson never needs a shared
      * filesystem mount with the Pad -- and a llama.cpp-backed real adapter
-     * can pass this string straight through as an OpenAI-style
+     * can pass this string straight through as a chat-completions-style
      * `image_url.url` value unmodified (see jetson_runner's
-     * LlamaCppInferenceAdapter).
+     * LlamaCppInferenceAdapter). This is LAN-local inference on the Jetson,
+     * never a cloud endpoint.
      */
     val image: String,
     val detectionPoints: List<JetsonDetectionPointSpec>,
