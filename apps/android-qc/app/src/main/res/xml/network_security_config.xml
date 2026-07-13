@@ -1,11 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Factory LAN SKU backend uses HTTP on the local 192.168.1.10 network.
-    Cleartext is permitted only for this specific factory IP host.
-    Pad-side QC inference remains local-only MNN; QWEN_CLOUD_ENABLED=false is unchanged.
+    Factory LAN SKU/sync backend uses HTTP on the local 192.168.1.10 network;
+    cleartext is explicitly permitted for that specific factory IP host.
+
+    The Jetson Xavier NX inference unit (WS4) is different: its LAN IP is not
+    known at build time; it's whatever address the factory network assigns
+    the specific device an operator pairs with on the floor, entered by the
+    operator in the pairing screen, not compiled in. Android's Network
+    Security Config has no wildcard/CIDR domain matching, only exact
+    domain/IP entries, so a per-Jetson domain entry is not workable here.
+
+    Given every network call this app makes stays on the factory LAN by
+    design (auditNoCloudInference in build.gradle.kts greps src/main for
+    cloud-provider hostnames and fails the build if any appear; see that
+    task before assuming this is looser than it looks), the base-config
+    fallback below permits cleartext broadly rather than to a fixed Jetson
+    IP. This is a real, deliberate broadening of the cleartext policy versus
+    the single-IP-pinned approach used for the Server, flagged here and in
+    the WS4 PR description, not silently done. A tighter alternative (e.g. a
+    custom TrustManager/NetworkSecurityPolicy keyed to the paired IP at
+    runtime) is a legitimate follow-up if this is judged too broad.
 -->
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="false">192.168.1.10</domain>
     </domain-config>
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

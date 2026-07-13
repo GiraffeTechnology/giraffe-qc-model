@@ -53,6 +53,12 @@ android {
         buildConfigField("boolean", "ALLOW_SEND_IMAGES_TO_CLOUD_QWEN", "false")
         buildConfigField("boolean", "ALLOW_STUB_PASS",                 "false")
         buildConfigField("String",  "SKU_API_BASE_URL",                "\"http://192.168.1.10:8080\"")
+        // WS4: Jetson LAN inference is the default path. This must stay
+        // false in defaultConfig -- flipping it true is the ONLY way the
+        // retired on-device MNN path becomes active (PadRuntimeGraph reads
+        // it via PadRuntimeConfig.legacyMnnRuntimeEnabled), and it must never
+        // be true in a production-marked build by default.
+        buildConfigField("boolean", "LEGACY_MNN_RUNTIME_ENABLED",      "false")
 
         // Build provenance — ties any installed APK back to an exact commit.
         buildConfigField("String", "GIT_COMMIT_SHA",  "\"$gitCommitSha\"")

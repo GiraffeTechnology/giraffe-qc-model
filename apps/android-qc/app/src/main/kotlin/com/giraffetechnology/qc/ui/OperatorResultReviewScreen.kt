@@ -59,6 +59,14 @@ fun OperatorResultReviewScreen(
     val clientJobId = remember(task.sku.id, result.capturedImagePath) { UUID.randomUUID().toString() }
     var submitting by remember { mutableStateOf(false) }
 
+    // Fail-closed submit gate (WS4 §6 / docs/api-contracts/jetson-runner-api.md
+    // §3): "MNN_PENDING" means the coordinator never actually ran inference
+    // (runtime not ready at capture time -- Jetson unreachable, unpaired, or
+    // legacy MNN not loaded) -- no real evidence exists for this result. The
+    // operator must retake once the runtime is ready rather than being able
+    // to confirm a decision against a result that was never really produced.
+    val submitBlocked = result.overallResult == "MNN_PENDING"
+
     fun submit(decision: HumanDecision) {
         submitting = true
         scope.launch {
@@ -102,23 +110,39 @@ fun OperatorResultReviewScreen(
 
         Spacer(Modifier.weight(1f))
 
+        if (submitBlocked) {
+            Surface(color = Color(0xFFB71C1C).copy(alpha = 0.15f), modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    skill.t("pad.jetson.submit_blocked"),
+                    modifier = Modifier.padding(12.dp),
+                    color = Color(0xFFB71C1C),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+
         // Mandatory human final decision — the model never auto-finalizes.
+        // Fail-closed: when no real inference actually ran (submitBlocked),
+        // none of the three decisions are submittable -- retake is the only
+        // path forward. No silent fallback to a mock/pass result.
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             Button(
                 onClick = { submit(HumanDecision.PASS) },
-                enabled = !submitting,
+                enabled = !submitting && !submitBlocked,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B5E20)),
                 modifier = Modifier.weight(1f),
             ) { Text(skill.t("pad.review.confirm_pass")) }
             Button(
                 onClick = { submit(HumanDecision.FAIL) },
-                enabled = !submitting,
+                enabled = !submitting && !submitBlocked,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB71C1C)),
                 modifier = Modifier.weight(1f),
             ) { Text(skill.t("pad.review.confirm_fail")) }
             OutlinedButton(
                 onClick = { submit(HumanDecision.REVIEW_REQUIRED) },
-                enabled = !submitting,
+                enabled = !submitting && !submitBlocked,
                 modifier = Modifier.weight(1f),
             ) { Text(skill.t("pad.review.mark_review")) }
         }

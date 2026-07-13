@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import com.giraffetechnology.qc.PadRuntimeGraph
 import com.giraffetechnology.qc.qwen.ModelProvisioning
 import com.giraffetechnology.qc.qwen.MnnQwenInspector
+import com.giraffetechnology.qc.qwen.MnnRuntimeLoader
 import com.giraffetechnology.qc.qwen.CapturePhotoInput
 import com.giraffetechnology.qc.qwen.InspectionContext
 import com.giraffetechnology.qc.qwen.QcPointInput
@@ -65,7 +66,20 @@ class BenchmarkActivity : ComponentActivity() {
         iterations: Int,
         modelName: String,
     ): Map<String, Any> = withContext(Dispatchers.Default) {
-        val runtimeLoader = PadRuntimeGraph.runtimeLoader
+        // This benchmark exercises the on-device MNN JNI path specifically
+        // (§4.3.0) -- it is not meaningful against the Jetson LAN runtime,
+        // which is the default since WS4. Requires
+        // PadRuntimeConfig.legacyMnnRuntimeEnabled=true (or launching via a
+        // PadRuntimeGraph.init that set it) so PadRuntimeGraph.runtimeLoader
+        // actually is an MnnRuntimeLoader.
+        val runtimeLoader = PadRuntimeGraph.runtimeLoader as? MnnRuntimeLoader
+            ?: return@withContext mapOf(
+                "error" to "MNN benchmark requires legacyMnnRuntimeEnabled=true; " +
+                    "the active runtime is ${PadRuntimeGraph.runtimeLoader.javaClass.simpleName}, not MnnRuntimeLoader.",
+                "model_name" to modelName,
+                "device_model" to Build.MODEL,
+                "total_ram_mb" to totalRamMb(),
+            )
 
         val loadStart  = System.currentTimeMillis()
         val loaded     = runtimeLoader.loadModel(File(modelPath))
