@@ -1,3 +1,7 @@
+import java.time.Instant
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -10,6 +14,25 @@ plugins {
 //   ./gradlew :app:assemblePadLocalDebug -PwithMnnNative=true
 val withMnnNative: Boolean =
     (project.findProperty("withMnnNative") as String?)?.toBoolean() ?: false
+
+// ── Build provenance (P0-7) ──────────────────────────────────────────────────
+// CI passes GIT_COMMIT_SHA / GIT_BRANCH / BUILD_TIMESTAMP explicitly; local
+// builds fall back to `git` so every APK still carries real provenance.
+fun gitOutput(vararg args: String): String? = try {
+    val proc = ProcessBuilder("git", *args)
+        .directory(rootProject.projectDir)
+        .redirectErrorStream(true)
+        .start()
+    val out = proc.inputStream.bufferedReader().readText().trim()
+    if (proc.waitFor() == 0 && out.isNotEmpty()) out else null
+} catch (_: Exception) { null }
+
+val gitCommitSha: String = System.getenv("GIT_COMMIT_SHA")
+    ?: gitOutput("rev-parse", "HEAD") ?: "unknown"
+val gitBranch: String = System.getenv("GIT_BRANCH")
+    ?: gitOutput("rev-parse", "--abbrev-ref", "HEAD") ?: "unknown"
+val buildTimestamp: String = System.getenv("BUILD_TIMESTAMP")
+    ?: DateTimeFormatter.ISO_INSTANT.format(Instant.now().truncatedTo(ChronoUnit.SECONDS))
 
 android {
     namespace = "com.giraffetechnology.qc"
@@ -30,6 +53,11 @@ android {
         buildConfigField("boolean", "ALLOW_SEND_IMAGES_TO_CLOUD_QWEN", "false")
         buildConfigField("boolean", "ALLOW_STUB_PASS",                 "false")
         buildConfigField("String",  "SKU_API_BASE_URL",                "\"http://192.168.1.10:8080\"")
+
+        // Build provenance — ties any installed APK back to an exact commit.
+        buildConfigField("String", "GIT_COMMIT_SHA",  "\"$gitCommitSha\"")
+        buildConfigField("String", "GIT_BRANCH",      "\"$gitBranch\"")
+        buildConfigField("String", "BUILD_TIMESTAMP", "\"$buildTimestamp\"")
 
         if (withMnnNative) {
             // Pad hardware is arm64-v8a only; MNN prebuilts ship for that ABI.
@@ -88,6 +116,15 @@ android {
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
+    }
+
+    // Embed the commit in every APK filename, e.g.
+    // giraffe-qc-padLocal-debug-1a2b3c4d5e6f.apk
+    applicationVariants.all {
+        outputs.all {
+            (this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl)
+                ?.outputFileName = "giraffe-qc-$name-${gitCommitSha.take(12)}.apk"
+        }
     }
 }
 

@@ -1,3 +1,4 @@
+# NON-PRODUCTION MOCK — deterministic rule-learning provider for CI/tests.
 """Deterministic mock rule-learning provider for Phase 2A tests.
 
 Produces structured proposals from operator requirements using the

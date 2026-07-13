@@ -1,3 +1,5 @@
+# Provider registry: the 'mock' branch returns a labeled NON-PRODUCTION MOCK provider
+# and must only be selected by test/dev configuration.
 """Resolve provider name → LLMProvider instance.
 
 Default (no args): CVComparator — pure local vision, no API key needed.

@@ -1,3 +1,4 @@
+# Falls back to a labeled NON-PRODUCTION MOCK provider when no real provider is configured.
 """QC rule-learning service layer (PRD §10, §11).
 
 Orchestrates the learning workflow: create job -> add inputs -> run learning

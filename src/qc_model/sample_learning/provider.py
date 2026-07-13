@@ -1,3 +1,4 @@
+# MockSampleLearningProvider below is a labeled NON-PRODUCTION MOCK for CI/dev.
 """VLM sample-learning provider (PR 23 §0, §6).
 
 Mirrors the existing provider pattern (mock + qwen skeleton + fail-closed gate)

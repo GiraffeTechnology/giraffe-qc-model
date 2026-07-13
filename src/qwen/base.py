@@ -1,3 +1,4 @@
+# FakeCloudQwenProvider referenced here is a labeled NON-PRODUCTION MOCK (see fake_providers.py).
 """Abstract base class for QWEN QC providers."""
 from __future__ import annotations
 

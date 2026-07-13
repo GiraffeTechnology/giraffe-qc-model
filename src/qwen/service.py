@@ -1,3 +1,5 @@
+# Provider selection: 'fake' branch returns a labeled NON-PRODUCTION MOCK provider and is
+# gated by fake_provider_allowed(); production modes never route to it.
 """QWEN QC Service — wraps the router for use by FastAPI endpoints."""
 from __future__ import annotations
 

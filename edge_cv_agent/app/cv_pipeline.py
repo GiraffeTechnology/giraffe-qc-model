@@ -1,3 +1,4 @@
+# NON-PRODUCTION MOCK — the mock CV runner below simulates Jetson outcomes for CI (§14.3).
 """Mock CV pipeline + runner (§14.3).
 
 The mock runner deterministically simulates the outcomes the PRD requires so

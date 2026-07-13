@@ -1,3 +1,4 @@
+# MockProductionInspectionProvider below is a labeled NON-PRODUCTION MOCK for CI/dev.
 """Production inspection provider abstraction (PR 25).
 
 A production inspection provider takes a confirmed detection point + captured
