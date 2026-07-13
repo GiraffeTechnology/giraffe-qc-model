@@ -11,9 +11,14 @@ without a schema change.
 """
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 
+from src.qc_model.ingestion.process_card import (
+    REAL_TEXT_EXTRACTION_EXTENSIONS,
+    plan_process_card_ingestion,
+)
 from src.qc_model.ingestion.types import (
     CandidateLabel,
     FragmentType,
@@ -197,6 +202,62 @@ def extract(source_type: str, text_content: str | None, file_ref: str | None) ->
                 candidate_label=CandidateLabel.REVIEW.value,
                 text=f"Unrecognized source type: {source_type}",
                 rationale="Unknown source type reached the extractor.",
+            )
+        )
+        return output
+
+    if stype is QCSourceType.PROCESS_CARD:
+        # PROCESS_CARD is deliberately not in TEXTUAL_SOURCE_TYPES (its payload
+        # shape varies -- text/image/CAD); route it through process_card.py
+        # instead of falling into the generic binary-source fallback below.
+        filename = os.path.basename(file_ref) if file_ref else None
+        has_text = bool(text_content and text_content.strip())
+        plan = plan_process_card_ingestion(filename=filename, has_inline_text=has_text)
+        if has_text:
+            for statement in _split_statements(text_content):
+                output.fragments.append(_classify_statement(statement))
+            if not output.fragments:
+                output.fragments.append(
+                    ExtractedFragment(
+                        fragment_type=FragmentType.UNCLEAR_REQUIREMENT.value,
+                        candidate_label=CandidateLabel.REVIEW.value,
+                        text=text_content.strip()[:280],
+                        rationale="No parseable statements found.",
+                    )
+                )
+            return output
+        if plan.path.value == "direct_text":
+            # process_card.py classified this as a native-text format (e.g. PDF/
+            # DOCX), but no text_content was actually extracted -- this
+            # environment has no parser wired for those binary formats. Do not
+            # silently guess at their contents; say so explicitly.
+            output.fragments.append(
+                ExtractedFragment(
+                    fragment_type=FragmentType.REQUIRES_SUPERVISOR_REVIEW.value,
+                    candidate_label=CandidateLabel.REVIEW.value,
+                    text=(
+                        f"Process card ({filename or file_ref or 'unknown file'}) is a native-text "
+                        "format, but no document parser for it is wired in this environment "
+                        f"(real support today: {sorted(REAL_TEXT_EXTRACTION_EXTENSIONS)}). "
+                        "Needs a real parser (e.g. PDF/DOCX extraction) before this can be "
+                        "auto-extracted -- not guessed."
+                    ),
+                    rationale="ELECTRONIC_TEXT format classified DIRECT_TEXT-eligible but no parser is available.",
+                    source_excerpt=(file_ref or "")[:280],
+                    confidence=0.2,
+                )
+            )
+            return output
+        # VISION_OCR / CAD_RENDER / UNSUPPORTED -- an honest routing decision
+        # from process_card.py, not a guess at the card's contents.
+        output.fragments.append(
+            ExtractedFragment(
+                fragment_type=FragmentType.REQUIRES_SUPERVISOR_REVIEW.value,
+                candidate_label=CandidateLabel.REVIEW.value,
+                text=f"Process card ({filename or file_ref or 'unknown file'}): {plan.reason}",
+                rationale=f"process_card routing: format={plan.fmt.value} path={plan.path.value}",
+                source_excerpt=(file_ref or "")[:280],
+                confidence=0.2,
             )
         )
         return output

@@ -7,23 +7,32 @@ draft fragment.
 """
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from src.api.authz import effective_tenant
 from src.api.deps import get_db_dep
+from src.api.uploads import validate_safe_id
 from src.qc_model.ingestion import service
+from src.qc_model.ingestion.process_card import REAL_TEXT_EXTRACTION_EXTENSIONS
 from src.qc_model.ingestion.types import FragmentType, QCSourceType, is_valid_source_type
+from src.storage.upload_validation import (
+    UploadValidationError,
+    read_and_validate_document_upload,
+)
 
 router = APIRouter(tags=["qc-source-ingestion"])
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "web" / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+_SOURCE_UPLOAD_DIR = Path("data/qc_source_uploads")
 
 
 # ── Request bodies ────────────────────────────────────────────────────────
@@ -303,6 +312,68 @@ def ui_create_source(
             )
         except service.CrossTenantTrainingPack:
             pass
+    return _sources_redirect(training_pack_id, tenant_id)
+
+
+@router.post("/admin/qc-model/training-packs/{training_pack_id}/sources/upload")
+async def ui_upload_process_card(
+    training_pack_id: str,
+    request: Request,
+    title: str = Form(""),
+    tenant_id: str = Form("default"),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db_dep),
+):
+    """Real process-card file upload (replaces the file_ref text field for
+    this flow -- file_ref is still accepted separately in the plain
+    ``sources`` form above for callers that already have a stored reference).
+
+    Stores the file, then creates a ``process_card`` source document whose
+    ``file_ref`` points at the stored path. For the narrow set of formats
+    this environment can actually decode as plain text
+    (:data:`REAL_TEXT_EXTRACTION_EXTENSIONS`), the decoded text is stored as
+    ``text_content`` too so extraction (a separate, later step) has real
+    text to work with -- not fabricated. Everything else (PDF/DOCX/images/
+    CAD) is stored and classified, but extraction will honestly report that
+    no parser is wired rather than guess.
+    """
+    tenant_id = effective_tenant(request, tenant_id)
+    validate_safe_id(training_pack_id, "training_pack_id")
+
+    try:
+        validated = await read_and_validate_document_upload(file, filename=file.filename or "")
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+    dest_dir = _SOURCE_UPLOAD_DIR / tenant_id / training_pack_id
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    stored_name = f"{uuid.uuid4().hex}{validated.extension}"
+    dest_path = dest_dir / stored_name
+    dest_path.write_bytes(validated.content)
+
+    text_content = None
+    if validated.extension in REAL_TEXT_EXTRACTION_EXTENSIONS:
+        try:
+            text_content = validated.content.decode("utf-8")
+        except UnicodeDecodeError:
+            # Extension claimed plain text but the bytes aren't valid UTF-8 --
+            # leave text_content unset rather than store mojibake; extraction
+            # will honestly report no usable text was recovered.
+            text_content = None
+
+    try:
+        service.create_source_document(
+            db,
+            training_pack_id=training_pack_id,
+            source_type=QCSourceType.PROCESS_CARD.value,
+            tenant_id=tenant_id,
+            title=title or file.filename,
+            text_content=text_content,
+            file_ref=str(dest_path),
+            mime_type=file.content_type,
+        )
+    except service.CrossTenantTrainingPack:
+        pass
     return _sources_redirect(training_pack_id, tenant_id)
 
 

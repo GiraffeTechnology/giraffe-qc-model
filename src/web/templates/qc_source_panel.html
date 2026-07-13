@@ -40,6 +40,26 @@
     <button type="submit" class="btn btn-primary">Register source</button>
   </form>
 
+  <h2>Upload a process card (工艺卡)</h2>
+  <p class="qcm-note">
+    Real file upload — replaces the plain-text reference above for process
+    cards. Plain-text files (<code>.txt</code>/<code>.md</code>/<code>.csv</code>)
+    are extracted for real; PDF/Word/Excel are stored and classified but
+    <strong>not yet parsed</strong> (no document-parser dependency in this
+    environment); scanned images need a vision OCR pass; CAD exports need a
+    render step. None of these are silently guessed — run extraction to see
+    exactly which state a given upload landed in.
+  </p>
+  <form method="post"
+        action="/admin/qc-model/training-packs/{{ training_pack_id }}/sources/upload"
+        enctype="multipart/form-data"
+        class="qcm-source-form">
+    <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+    <label>Title <input type="text" name="title" placeholder="optional title"></label>
+    <label>File <input type="file" name="file" required></label>
+    <button type="submit" class="btn btn-primary">Upload process card</button>
+  </form>
+
   <h2>Registered sources</h2>
   {% for row in source_rows %}
   <div class="qcm-sku">

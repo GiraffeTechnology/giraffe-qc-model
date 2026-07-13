@@ -55,6 +55,23 @@ _ELECTRONIC_TEXT_EXT = {
 _IMAGE_EXT = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp", ".heic", ".gif"}
 _CAD_EXT = {".dwg", ".dxf", ".dgn", ".step", ".stp", ".iges", ".igs", ".sldprt", ".ipt", ".catpart"}
 
+# Public aliases so callers that need to validate an upload's extension
+# (e.g. src.storage.upload_validation) share this list instead of
+# maintaining a second copy that can drift.
+ELECTRONIC_TEXT_EXTENSIONS = frozenset(_ELECTRONIC_TEXT_EXT)
+IMAGE_EXTENSIONS = frozenset(_IMAGE_EXT)
+CAD_EXTENSIONS = frozenset(_CAD_EXT)
+ALL_PROCESS_CARD_EXTENSIONS = ELECTRONIC_TEXT_EXTENSIONS | IMAGE_EXTENSIONS | CAD_EXTENSIONS
+
+# Of ELECTRONIC_TEXT_EXTENSIONS, only these are genuinely decodable as plain
+# text with what this environment has available (no PDF/DOCX/XLS parser is a
+# dependency of this project -- see JETSON_NX_RUNTIME_FEASIBILITY.md-style
+# honesty: don't claim a format is "text_ready" just because process_card.py's
+# format-level routing groups it with ELECTRONIC_TEXT). Extraction-time code
+# must check membership here before trusting a plan's text_ready=True for a
+# real (non-inline-text) upload.
+REAL_TEXT_EXTRACTION_EXTENSIONS = frozenset({".txt", ".md", ".csv"})
+
 _ELECTRONIC_TEXT_MIME_PREFIXES = (
     "application/pdf",
     "application/msword",

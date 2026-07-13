@@ -102,10 +102,15 @@
         if (dp.method_hint) bits.push(dp.method_hint);
         if (dp.expected_value) bits.push("expected: " + dp.expected_value);
         bits.push(dp.severity);
+        const regionCount = (dp.regions || []).length;
         return (
-          `<li><span class="dp-code">${esc(dp.point_code)}</span> — ${esc(dp.label)}` +
+          `<li data-dp-id="${esc(dp.id)}"><span class="dp-code">${esc(dp.point_code)}</span> — ${esc(dp.label)}` +
           `<div class="dp-meta">${esc(bits.join(" · "))}</div>` +
           (dp.pass_criteria ? `<div class="dp-meta">${esc(dp.pass_criteria)}</div>` : "") +
+          `<button type="button" class="btn dp-regions-btn" data-dp-id="${esc(dp.id)}">` +
+          (regionCount ? `Regions (${regionCount})` : "Add regions") +
+          `</button>` +
+          `<div class="region-editor-slot"></div>` +
           `</li>`
         );
       })
@@ -125,6 +130,10 @@
 
     const pubBtn = $("#publish-btn");
     if (pubBtn) pubBtn.addEventListener("click", publish);
+
+    skuCard.querySelectorAll(".dp-regions-btn").forEach((btn) => {
+      btn.addEventListener("click", () => toggleRegionEditor(btn));
+    });
   }
 
   function publish() {
@@ -155,6 +164,170 @@
         btn.textContent = "Publish to Pad (L2)";
         btn.disabled = false;
       });
+  }
+
+  // ── Region annotation editor (§2) ───────────────────────────────────────
+  // One editor open at a time; drawn boxes accumulate in `activeEditor.regions`
+  // (bounding-box only, normalized 0-1 coords, tagged with the selected
+  // photo's image_id) and are only persisted on "Save regions".
+  let activeEditor = null;
+
+  function findDp(dpId) {
+    return ((state.sku && state.sku.detection_points) || []).find((d) => d.id === dpId);
+  }
+
+  function toggleRegionEditor(btn) {
+    const dpId = btn.dataset.dpId;
+    const li = btn.closest("li[data-dp-id]");
+    const slot = li.querySelector(".region-editor-slot");
+
+    if (activeEditor && activeEditor.dpId === dpId) {
+      closeRegionEditor();
+      return;
+    }
+    closeRegionEditor();
+
+    const dp = findDp(dpId);
+    const photos = (state.sku && state.sku.photos) || [];
+    if (!photos.length) {
+      addBubble("Upload a standard photo before adding regions.", "system");
+      return;
+    }
+
+    const tpl = $("#region-editor-template").content.cloneNode(true);
+    const root = tpl.querySelector(".region-editor");
+    const select = tpl.querySelector(".region-photo-select");
+    const img = tpl.querySelector(".region-image");
+    const canvas = tpl.querySelector(".region-canvas");
+    const list = tpl.querySelector(".region-list");
+    const errorEl = tpl.querySelector(".region-error");
+
+    photos.forEach((p) => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = (p.view_type || p.angle || p.id.slice(0, 8)) + (p.is_primary ? " (primary)" : "");
+      select.appendChild(opt);
+    });
+
+    const regions = (dp.regions || []).map((r) => Object.assign({}, r));
+
+    function currentImageId() { return select.value; }
+
+    function renderList() {
+      list.innerHTML = "";
+      regions.forEach((r, idx) => {
+        if (r.image_id !== currentImageId()) return;
+        const li2 = document.createElement("li");
+        li2.textContent = `x=${r.x.toFixed(2)} y=${r.y.toFixed(2)} w=${r.w.toFixed(2)} h=${r.h.toFixed(2)}`;
+        const rm = document.createElement("button");
+        rm.type = "button";
+        rm.className = "region-remove";
+        rm.textContent = "Remove";
+        rm.addEventListener("click", () => {
+          regions.splice(idx, 1);
+          renderList();
+          drawAll();
+        });
+        li2.appendChild(rm);
+        list.appendChild(li2);
+      });
+    }
+
+    function syncCanvasSize() {
+      canvas.width = img.naturalWidth || img.clientWidth;
+      canvas.height = img.naturalHeight || img.clientHeight;
+      drawAll();
+    }
+
+    function drawBox(ctx, x, y, w, h, color) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, w, h);
+      ctx.fillStyle = color.replace("rgb", "rgba").replace(")", ",0.12)");
+      ctx.fillRect(x, y, w, h);
+    }
+
+    function drawAll(dragBox) {
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      regions
+        .filter((r) => r.image_id === currentImageId())
+        .forEach((r) =>
+          drawBox(ctx, r.x * canvas.width, r.y * canvas.height, r.w * canvas.width, r.h * canvas.height, "rgb(37,99,235)")
+        );
+      if (dragBox) drawBox(ctx, dragBox.x, dragBox.y, dragBox.w, dragBox.h, "rgb(220,38,38)");
+    }
+
+    function getPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (e.clientX - rect.left) * (canvas.width / rect.width),
+        y: (e.clientY - rect.top) * (canvas.height / rect.height),
+      };
+    }
+
+    let dragging = false, startX = 0, startY = 0;
+    canvas.addEventListener("mousedown", (e) => {
+      dragging = true;
+      const p = getPos(e);
+      startX = p.x; startY = p.y;
+    });
+    canvas.addEventListener("mousemove", (e) => {
+      if (!dragging) return;
+      const p = getPos(e);
+      const x = Math.min(startX, p.x), y = Math.min(startY, p.y);
+      const w = Math.abs(p.x - startX), h = Math.abs(p.y - startY);
+      drawAll({ x, y, w, h });
+    });
+    canvas.addEventListener("mouseup", (e) => {
+      if (!dragging) return;
+      dragging = false;
+      const p = getPos(e);
+      const x = Math.min(startX, p.x), y = Math.min(startY, p.y);
+      const w = Math.abs(p.x - startX), h = Math.abs(p.y - startY);
+      if (w < 4 || h < 4 || canvas.width === 0 || canvas.height === 0) { drawAll(); return; }
+      regions.push({
+        image_id: currentImageId(),
+        x: parseFloat((x / canvas.width).toFixed(4)),
+        y: parseFloat((y / canvas.height).toFixed(4)),
+        w: parseFloat((w / canvas.width).toFixed(4)),
+        h: parseFloat((h / canvas.height).toFixed(4)),
+      });
+      renderList();
+      drawAll();
+    });
+
+    function loadPhoto() {
+      const photo = photos.find((p) => p.id === currentImageId());
+      img.src = photo ? photo.url : "";
+      renderList();
+    }
+    img.addEventListener("load", syncCanvasSize);
+    select.addEventListener("change", loadPhoto);
+
+    root.querySelector(".region-save").addEventListener("click", () => {
+      errorEl.textContent = "";
+      api(`/admin/studio/detection-points/${dpId}/regions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenant_id: tenant, regions: regions }),
+      })
+        .then((res) => {
+          addBubble(`Saved ${regions.length} region(s) for ${dp.point_code}.`, "system");
+          if (res.sku) setActiveSku(res.sku);
+        })
+        .catch((err) => { errorEl.textContent = err.message; });
+    });
+    root.querySelector(".region-cancel").addEventListener("click", closeRegionEditor);
+
+    slot.appendChild(tpl);
+    loadPhoto();
+    activeEditor = { dpId, root: slot };
+  }
+
+  function closeRegionEditor() {
+    if (activeEditor && activeEditor.root) activeEditor.root.innerHTML = "";
+    activeEditor = null;
   }
 
   // ── Chat send ───────────────────────────────────────────────────────────

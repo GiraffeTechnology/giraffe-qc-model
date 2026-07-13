@@ -155,3 +155,85 @@ async def read_and_validate_upload(
         declared_content_type=getattr(upload, "content_type", None),
         max_bytes=limit,
     )
+
+
+@dataclass(frozen=True)
+class ValidatedDocument:
+    """Result of a successful process-card document validation.
+
+    Unlike :class:`ValidatedImage`, this does NOT claim to have parsed the
+    content -- ``extension`` is the only signal callers get about format.
+    Whether the bytes are actually extractable as text is a separate,
+    narrower decision (see
+    :data:`src.qc_model.ingestion.process_card.REAL_TEXT_EXTRACTION_EXTENSIONS`),
+    made by the caller, not this validator.
+    """
+    content: bytes
+    extension: str
+    sha256: str
+    size_bytes: int
+
+
+def validate_process_card_content(
+    content: bytes,
+    *,
+    filename: str,
+    max_bytes: Optional[int] = None,
+) -> ValidatedDocument:
+    """Validate a process-card upload's size and recognized extension.
+
+    Accepts any extension `process_card.classify_process_card` can route
+    (electronic text, scanned image, or CAD) -- upload succeeding does not
+    imply the content is extractable; that is decided at extraction time.
+    An unrecognized extension is rejected outright: this workbench never
+    stores a file it cannot even classify.
+    """
+    from src.qc_model.ingestion.process_card import ALL_PROCESS_CARD_EXTENSIONS
+
+    limit = max_bytes if max_bytes is not None else max_upload_bytes()
+    if not content:
+        raise UploadValidationError("Uploaded file is empty.", status_code=400)
+    if len(content) > limit:
+        raise UploadValidationError(
+            f"Uploaded file is too large ({len(content)} bytes > {limit} byte limit).",
+            status_code=413,
+        )
+    ext = os.path.splitext(filename or "")[1].lower()
+    if ext not in ALL_PROCESS_CARD_EXTENSIONS:
+        raise UploadValidationError(
+            f"Unrecognized process-card file type {ext or '(none)'!r}. "
+            f"Supported: {sorted(ALL_PROCESS_CARD_EXTENSIONS)}",
+            status_code=415,
+        )
+    return ValidatedDocument(
+        content=content,
+        extension=ext,
+        sha256=hashlib.sha256(content).hexdigest(),
+        size_bytes=len(content),
+    )
+
+
+async def read_and_validate_document_upload(
+    upload,
+    *,
+    filename: str,
+    max_bytes: Optional[int] = None,
+) -> ValidatedDocument:
+    """Stream a FastAPI ``UploadFile`` process-card upload under a hard size bound.
+
+    Same streamed-size-bound discipline as :func:`read_and_validate_upload`,
+    for a document rather than an image.
+    """
+    limit = max_bytes if max_bytes is not None else max_upload_bytes()
+    buffer = bytearray()
+    while True:
+        chunk = await upload.read(_STREAM_CHUNK)
+        if not chunk:
+            break
+        buffer.extend(chunk)
+        if len(buffer) > limit:
+            raise UploadValidationError(
+                f"Uploaded file exceeds the {limit} byte limit.",
+                status_code=413,
+            )
+    return validate_process_card_content(bytes(buffer), filename=filename, max_bytes=limit)

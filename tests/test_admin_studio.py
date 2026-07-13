@@ -674,3 +674,117 @@ def test_minimum_admin_happy_path_flw001(client):
     pub = client.post("/admin/studio/publish", json={"sku_id": sku_id})
     assert pub.status_code == 200
     assert pub.json()["bundle"]["detection_point_count"] == 2
+
+
+# ── Region annotation (§2, WS6) — real HTTP caller for set_detection_point_regions ──
+
+
+def _confirm_one_point(client, sku_id: str) -> str:
+    """Create+confirm a single detection point, return its id."""
+    card = client.post(
+        "/admin/studio/chat",
+        json={"message": "stamen centering", "sku_id": sku_id},
+    ).json()["confirmation_card"]
+    resp = client.post(
+        "/admin/studio/confirm",
+        json={
+            "intake_id": card["intake_id"],
+            "confirmed_by": "admin",
+            "checkpoints": card["checkpoints"],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    dps = resp.json()["sku"]["detection_points"]
+    assert len(dps) == 1
+    return dps[0]["id"]
+
+
+def test_set_regions_persists_and_appears_in_sku_summary(client):
+    sku_id = _create_flw(client)
+    up = client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": "default"},
+        files={"image": ("flw.png", _tiny_png(), "image/png")},
+    )
+    photo_id = up.json()["photo_id"]
+    dp_id = _confirm_one_point(client, sku_id)
+
+    resp = client.post(
+        f"/admin/studio/detection-points/{dp_id}/regions",
+        json={"regions": [{"image_id": photo_id, "x": 0.1, "y": 0.1, "w": 0.2, "h": 0.2}]},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "regions_saved"
+    assert body["regions"] == [{"image_id": photo_id, "x": 0.1, "y": 0.1, "w": 0.2, "h": 0.2}]
+
+    sku = client.get(f"/admin/studio/skus/{sku_id}").json()
+    saved = next(d for d in sku["detection_points"] if d["id"] == dp_id)
+    assert saved["regions"] == [{"image_id": photo_id, "x": 0.1, "y": 0.1, "w": 0.2, "h": 0.2}]
+
+
+def test_set_regions_rejects_unknown_photo_fail_closed(client):
+    sku_id = _create_flw(client)
+    dp_id = _confirm_one_point(client, sku_id)
+    resp = client.post(
+        f"/admin/studio/detection-points/{dp_id}/regions",
+        json={"regions": [{"image_id": "not-a-real-photo", "x": 0.1, "y": 0.1, "w": 0.2, "h": 0.2}]},
+    )
+    assert resp.status_code == 400
+    assert "error" in resp.json()
+
+
+def test_set_regions_empty_list_clears_existing(client):
+    sku_id = _create_flw(client)
+    up = client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": "default"},
+        files={"image": ("flw.png", _tiny_png(), "image/png")},
+    )
+    photo_id = up.json()["photo_id"]
+    dp_id = _confirm_one_point(client, sku_id)
+
+    client.post(
+        f"/admin/studio/detection-points/{dp_id}/regions",
+        json={"regions": [{"image_id": photo_id, "x": 0.0, "y": 0.0, "w": 0.5, "h": 0.5}]},
+    )
+    resp = client.post(f"/admin/studio/detection-points/{dp_id}/regions", json={"regions": []})
+    assert resp.status_code == 200
+    assert resp.json()["regions"] == []
+
+
+def test_published_bundle_manifest_contains_authored_regions(client, db_session_factory):
+    """Closes the gap: proves regions set via the real endpoint actually reach
+    the signed publish bundle, not just _dp_view (already covered by
+    tests/test_region_annotation.py's unit test)."""
+    import io
+    import json
+    import tarfile
+
+    sku_id = _create_flw(client)
+    up = client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": "default"},
+        files={"image": ("flw.png", _tiny_png(), "image/png")},
+    )
+    photo_id = up.json()["photo_id"]
+    dp_id = _confirm_one_point(client, sku_id)
+
+    region = {"image_id": photo_id, "x": 0.25, "y": 0.25, "w": 0.5, "h": 0.5}
+    set_resp = client.post(
+        f"/admin/studio/detection-points/{dp_id}/regions",
+        json={"regions": [region]},
+    )
+    assert set_resp.status_code == 200, set_resp.text
+
+    pub = client.post("/admin/studio/publish", json={"sku_id": sku_id})
+    assert pub.status_code == 200, pub.text
+    bundle_id = pub.json()["bundle"]["id"]
+
+    dl = client.get(f"/admin/studio/bundles/{bundle_id}/download")
+    assert dl.status_code == 200
+    with tarfile.open(fileobj=io.BytesIO(dl.content), mode="r:gz") as tf:
+        manifest_bytes = tf.extractfile("manifest.json").read()
+    manifest = json.loads(manifest_bytes)
+    dp_manifest = next(d for d in manifest["detection_points"] if d["point_code"] == "STAMEN_CENTERING")
+    assert dp_manifest["regions"] == [region]
