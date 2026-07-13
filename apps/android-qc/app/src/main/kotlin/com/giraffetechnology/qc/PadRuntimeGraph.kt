@@ -22,6 +22,16 @@ import com.giraffetechnology.qc.submit.AndroidSqliteOutboxStore
 import com.giraffetechnology.qc.submit.HttpSubmissionClient
 import com.giraffetechnology.qc.submit.OutboxUploader
 import com.giraffetechnology.qc.submit.PadOutbox
+import com.giraffetechnology.qc.admin.AdminApiClient
+import com.giraffetechnology.qc.admin.AdminBundleController
+import com.giraffetechnology.qc.admin.AdminHealthController
+import com.giraffetechnology.qc.admin.AdminLoginController
+import com.giraffetechnology.qc.admin.AdminProbationController
+import com.giraffetechnology.qc.admin.AdminResultsController
+import com.giraffetechnology.qc.admin.AdminSkuController
+import com.giraffetechnology.qc.admin.AdminStandardController
+import com.giraffetechnology.qc.admin.AdminWorkstationController
+import com.giraffetechnology.qc.admin.AndroidPadHealthProbe
 import com.giraffetechnology.qc.sku.ApiSkuRepository
 import com.giraffetechnology.qc.sku.MnnSkuMatcher
 import com.giraffetechnology.qc.sku.PadInspectionCoordinator
@@ -88,6 +98,15 @@ object PadRuntimeGraph {
     @Volatile private var _languageController: LanguageController? = null
     @Volatile private var _outbox: PadOutbox? = null
     @Volatile private var _outboxUploader: OutboxUploader? = null
+    @Volatile private var _adminApiClient: AdminApiClient? = null
+    @Volatile private var _adminLoginController: AdminLoginController? = null
+    @Volatile private var _adminSkuController: AdminSkuController? = null
+    @Volatile private var _adminStandardController: AdminStandardController? = null
+    @Volatile private var _adminBundleController: AdminBundleController? = null
+    @Volatile private var _adminWorkstationController: AdminWorkstationController? = null
+    @Volatile private var _adminResultsController: AdminResultsController? = null
+    @Volatile private var _adminProbationController: AdminProbationController? = null
+    @Volatile private var _adminHealthController: AdminHealthController? = null
 
     fun init(context: Context) = init(context, PadRuntimeConfig())
 
@@ -148,6 +167,22 @@ object PadRuntimeGraph {
             val outbox = PadOutbox(AndroidSqliteOutboxStore(appContext))
             _outbox = outbox
             _outboxUploader = OutboxUploader(outbox, HttpSubmissionClient(BuildConfig.SKU_API_BASE_URL))
+
+            // Administrator module (WS3): real backend client + controllers.
+            val adminClient = AdminApiClient(BuildConfig.SKU_API_BASE_URL)
+            _adminApiClient = adminClient
+            _adminLoginController = AdminLoginController(adminClient)
+            _adminSkuController = AdminSkuController(adminClient)
+            _adminStandardController = AdminStandardController(adminClient)
+            _adminBundleController = AdminBundleController(adminClient)
+            _adminWorkstationController = AdminWorkstationController(adminClient)
+            _adminResultsController = AdminResultsController(adminClient)
+            _adminProbationController = AdminProbationController(adminClient)
+            _adminHealthController = AdminHealthController(
+                client = adminClient,
+                probe = AndroidPadHealthProbe(appContext),
+                runtimeState = loader.runtimeState,
+            )
 
             _initialized = true
 
@@ -216,6 +251,33 @@ object PadRuntimeGraph {
 
     val outboxUploader: OutboxUploader
         get() = checkNotNull(_outboxUploader) { notInitMsg() }
+
+    val adminApiClient: AdminApiClient
+        get() = checkNotNull(_adminApiClient) { notInitMsg() }
+
+    val adminLoginController: AdminLoginController
+        get() = checkNotNull(_adminLoginController) { notInitMsg() }
+
+    val adminSkuController: AdminSkuController
+        get() = checkNotNull(_adminSkuController) { notInitMsg() }
+
+    val adminStandardController: AdminStandardController
+        get() = checkNotNull(_adminStandardController) { notInitMsg() }
+
+    val adminBundleController: AdminBundleController
+        get() = checkNotNull(_adminBundleController) { notInitMsg() }
+
+    val adminWorkstationController: AdminWorkstationController
+        get() = checkNotNull(_adminWorkstationController) { notInitMsg() }
+
+    val adminResultsController: AdminResultsController
+        get() = checkNotNull(_adminResultsController) { notInitMsg() }
+
+    val adminProbationController: AdminProbationController
+        get() = checkNotNull(_adminProbationController) { notInitMsg() }
+
+    val adminHealthController: AdminHealthController
+        get() = checkNotNull(_adminHealthController) { notInitMsg() }
 
     private fun notInitMsg() = "PadRuntimeGraph.init(context) must be called before accessing this"
 }

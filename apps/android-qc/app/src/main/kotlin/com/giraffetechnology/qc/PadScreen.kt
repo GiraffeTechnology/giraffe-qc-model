@@ -6,8 +6,17 @@ import com.giraffetechnology.qc.sku.QcTask
 sealed class PadScreen {
     /** Entry screen (S5 §3.1): Giraffe icon, Administrator / Operator branches. */
     object Welcome : PadScreen()
-    /** Administrator branch lands here — admin management runs on the Web console. */
-    object AdministratorInfo : PadScreen()
+
+    /** Administrator module (WS3) — real, functional admin screens on the Pad. */
+    object AdminLogin : PadScreen()
+    object AdminHome : PadScreen()
+    object AdminSkus : PadScreen()
+    data class AdminStandard(val skuId: String) : PadScreen()
+    object AdminBundles : PadScreen()
+    object AdminWorkstations : PadScreen()
+    object AdminHealth : PadScreen()
+    object AdminProbation : PadScreen()
+    object AdminResults : PadScreen()
     /** Operator branch (S5 §8.1): offline search of standards installed on this Pad. */
     object OperatorTaskSelection : PadScreen()
     /** QC Work page (S6 §8.2): split camera / reference / conversation / input. */

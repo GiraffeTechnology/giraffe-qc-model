@@ -5,8 +5,17 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import androidx.compose.material3.MaterialTheme
-import com.giraffetechnology.qc.ui.AdministratorInfoScreen
+import com.giraffetechnology.qc.admin.AdminLoginState
 import com.giraffetechnology.qc.ui.OperatorQcWorkScreen
+import com.giraffetechnology.qc.ui.admin.AdminBundleScreen
+import com.giraffetechnology.qc.ui.admin.AdminHealthScreen
+import com.giraffetechnology.qc.ui.admin.AdminHomeScreen
+import com.giraffetechnology.qc.ui.admin.AdminLoginScreen
+import com.giraffetechnology.qc.ui.admin.AdminProbationScreen
+import com.giraffetechnology.qc.ui.admin.AdminResultsScreen
+import com.giraffetechnology.qc.ui.admin.AdminSkuScreen
+import com.giraffetechnology.qc.ui.admin.AdminStandardScreen
+import com.giraffetechnology.qc.ui.admin.AdminWorkstationScreen
 import com.giraffetechnology.qc.ui.OperatorResultReviewScreen
 import com.giraffetechnology.qc.ui.OperatorSyncStatusScreen
 import com.giraffetechnology.qc.ui.OperatorTaskSelectionScreen
@@ -39,13 +48,85 @@ private fun PadApp() {
     when (val s = screen) {
         is PadScreen.Welcome -> WelcomeScreen(
             languageController = PadRuntimeGraph.languageController,
-            onAdministrator    = { screen = PadScreen.AdministratorInfo },
+            onAdministrator    = {
+                // Skip login if an admin session is already bound this run.
+                screen = if (PadRuntimeGraph.adminLoginController.state.value
+                        is AdminLoginState.LoggedIn
+                ) PadScreen.AdminHome else PadScreen.AdminLogin
+            },
             onOperator         = { screen = PadScreen.OperatorTaskSelection },
         )
 
-        is PadScreen.AdministratorInfo -> AdministratorInfoScreen(
+        // ── Administrator module (WS3) ──────────────────────────────────────
+        is PadScreen.AdminLogin -> AdminLoginScreen(
+            controller         = PadRuntimeGraph.adminLoginController,
             languageController = PadRuntimeGraph.languageController,
+            onLoggedIn         = { screen = PadScreen.AdminHome },
             onBack             = { screen = PadScreen.Welcome },
+        )
+
+        is PadScreen.AdminHome -> AdminHomeScreen(
+            loginController    = PadRuntimeGraph.adminLoginController,
+            languageController = PadRuntimeGraph.languageController,
+            onOpenSkus         = { screen = PadScreen.AdminSkus },
+            onOpenBundles      = { screen = PadScreen.AdminBundles },
+            onOpenWorkstations = { screen = PadScreen.AdminWorkstations },
+            onOpenHealth       = { screen = PadScreen.AdminHealth },
+            onOpenProbation    = { screen = PadScreen.AdminProbation },
+            onOpenResults      = { screen = PadScreen.AdminResults },
+            onLogout           = {
+                PadRuntimeGraph.adminLoginController.logout()
+                screen = PadScreen.Welcome
+            },
+        )
+
+        is PadScreen.AdminSkus -> AdminSkuScreen(
+            controller         = PadRuntimeGraph.adminSkuController,
+            languageController = PadRuntimeGraph.languageController,
+            onOpenStandard     = { skuId -> screen = PadScreen.AdminStandard(skuId) },
+            onBack             = { screen = PadScreen.AdminHome },
+        )
+
+        is PadScreen.AdminStandard -> AdminStandardScreen(
+            skuId              = s.skuId,
+            skuController      = PadRuntimeGraph.adminSkuController,
+            standardController = PadRuntimeGraph.adminStandardController,
+            client             = PadRuntimeGraph.adminApiClient,
+            languageController = PadRuntimeGraph.languageController,
+            onPublish          = { screen = PadScreen.AdminBundles },
+            onBack             = { screen = PadScreen.AdminSkus },
+        )
+
+        is PadScreen.AdminBundles -> AdminBundleScreen(
+            bundleController   = PadRuntimeGraph.adminBundleController,
+            skuController      = PadRuntimeGraph.adminSkuController,
+            languageController = PadRuntimeGraph.languageController,
+            onBack             = { screen = PadScreen.AdminHome },
+        )
+
+        is PadScreen.AdminWorkstations -> AdminWorkstationScreen(
+            workstationController = PadRuntimeGraph.adminWorkstationController,
+            bundleController      = PadRuntimeGraph.adminBundleController,
+            languageController    = PadRuntimeGraph.languageController,
+            onBack                = { screen = PadScreen.AdminHome },
+        )
+
+        is PadScreen.AdminHealth -> AdminHealthScreen(
+            controller         = PadRuntimeGraph.adminHealthController,
+            languageController = PadRuntimeGraph.languageController,
+            onBack             = { screen = PadScreen.AdminHome },
+        )
+
+        is PadScreen.AdminProbation -> AdminProbationScreen(
+            controller         = PadRuntimeGraph.adminProbationController,
+            languageController = PadRuntimeGraph.languageController,
+            onBack             = { screen = PadScreen.AdminHome },
+        )
+
+        is PadScreen.AdminResults -> AdminResultsScreen(
+            controller         = PadRuntimeGraph.adminResultsController,
+            languageController = PadRuntimeGraph.languageController,
+            onBack             = { screen = PadScreen.AdminHome },
         )
 
         is PadScreen.OperatorTaskSelection -> OperatorTaskSelectionScreen(
