@@ -237,7 +237,10 @@ object PadRuntimeGraph {
             _adminHealthController = AdminHealthController(
                 client = adminClient,
                 probe = AndroidPadHealthProbe(appContext),
-                runtimeState = loader.runtimeState,
+                // Post-WS4 the active runtime is Jetson-backed by default (MNN
+                // only behind legacyMnnRuntimeEnabled); the health screen shows
+                // whichever runtime is actually serving inference.
+                runtimeState = runtime.runtimeState,
             )
 
             _initialized = true
