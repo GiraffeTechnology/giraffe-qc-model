@@ -20,6 +20,7 @@ import src.db.qc_verdict_models  # noqa: F401
 from src.db.sku_models import QCDetectionPoint, QCSkuItem, QCSkuStandardRevision
 from src.api.deps import get_db_dep
 from src.api.main import app
+from src.qc_model.qualification import probation as probation_service
 
 
 T1 = "tenant_1"
@@ -170,3 +171,124 @@ def test_admin_results_page_renders(client, db_session):
     page = client.get("/admin/results", params={"tenant_id": T1})
     assert page.status_code == 200
     assert "Server Verdict" in page.text
+
+
+# ── Probation wiring (WS7 §1.2): human final decision -> record_probation_job ─
+
+
+def test_final_decision_records_probation_job_when_revision_is_on_probation(client, db_session):
+    """The real result-submission path (POST .../final-decision) must call
+    record_probation_job -- not just the standalone service function -- when
+    the standard revision it was judged against is on probation."""
+    rev = _seed_revision(db_session)
+    probation = probation_service.start_probation(db_session, standard_revision_id=rev, tenant_id=T1)
+
+    sid = _submit(client, rev, [("cp1", "pass"), ("cp2", "pass")], pad="pass").json()["submission_id"]
+    resp = client.post(
+        f"/api/qc/results/{sid}/final-decision",
+        json={"tenant_id": T1, "decision": "pass", "decided_by": "qa1"},
+    )
+    assert resp.status_code == 201
+
+    report = client.get(f"/api/qc/probation/{probation.id}/disagreement-report", params={"tenant_id": T1}).json()
+    assert report["gate"]["jobs_recorded"] == 1
+    assert report["gate"]["agreements"] == 1  # server_overall_result "pass" == human "pass"
+
+
+def test_final_decision_records_disagreement_on_probation(client, db_session):
+    rev = _seed_revision(db_session)
+    probation = probation_service.start_probation(db_session, standard_revision_id=rev, tenant_id=T1)
+
+    sid = _submit(client, rev, [("cp1", "pass"), ("cp2", "pass")], pad="pass").json()["submission_id"]
+    client.post(
+        f"/api/qc/results/{sid}/final-decision",
+        json={"tenant_id": T1, "decision": "reject", "decided_by": "qa1"},
+    )
+
+    p = client.get(f"/api/qc/probation/{probation.id}", params={"tenant_id": T1}).json()
+    assert p["gate"]["jobs_recorded"] == 1
+    assert p["gate"]["agreements"] == 0  # server said "pass", human said "reject"
+
+
+def test_final_decision_without_probation_record_is_unaffected(client, db_session):
+    """No probation record exists for this revision (never published) --
+    recording a human decision must still succeed and must not create one."""
+    rev = _seed_revision(db_session)
+    sid = _submit(client, rev, [("cp1", "pass"), ("cp2", "pass")], pad="pass").json()["submission_id"]
+    resp = client.post(
+        f"/api/qc/results/{sid}/final-decision",
+        json={"tenant_id": T1, "decision": "pass", "decided_by": "qa1"},
+    )
+    assert resp.status_code == 201
+    assert client.get(f"/api/qc/probation/by-revision/{rev}", params={"tenant_id": T1}).status_code == 404
+
+
+def test_final_decision_skipped_while_probation_paused(client, db_session):
+    """A paused probation (admin mid-edit) must not gain jobs from decisions
+    made in the meantime -- but the decision itself must still be recorded."""
+    rev = _seed_revision(db_session)
+    probation = probation_service.start_probation(db_session, standard_revision_id=rev, tenant_id=T1)
+    probation_service.pause_probation(db_session, probation.id, T1)
+
+    sid = _submit(client, rev, [("cp1", "pass"), ("cp2", "pass")], pad="pass").json()["submission_id"]
+    resp = client.post(
+        f"/api/qc/results/{sid}/final-decision",
+        json={"tenant_id": T1, "decision": "pass", "decided_by": "qa1"},
+    )
+    assert resp.status_code == 201
+    p = client.get(f"/api/qc/probation/{probation.id}", params={"tenant_id": T1}).json()
+    assert p["status"] == "paused"
+    assert p["gate"]["jobs_recorded"] == 0
+
+
+def test_final_decision_resubmission_does_not_double_count_probation_job(client, db_session):
+    """Amending and resubmitting the same submission's final decision must not
+    inflate the probation job count -- record_probation_job's own job_ref
+    de-dup is relied on, not re-derived here."""
+    rev = _seed_revision(db_session)
+    probation = probation_service.start_probation(db_session, standard_revision_id=rev, tenant_id=T1)
+    sid = _submit(client, rev, [("cp1", "pass"), ("cp2", "pass")], pad="pass").json()["submission_id"]
+
+    client.post(
+        f"/api/qc/results/{sid}/final-decision",
+        json={"tenant_id": T1, "decision": "pass", "decided_by": "qa1"},
+    )
+    resp2 = client.post(
+        f"/api/qc/results/{sid}/final-decision",
+        json={"tenant_id": T1, "decision": "reject", "decided_by": "qa2"},
+    )
+    assert resp2.status_code == 201  # amending the decision itself still succeeds
+    p = client.get(f"/api/qc/probation/{probation.id}", params={"tenant_id": T1}).json()
+    assert p["gate"]["jobs_recorded"] == 1
+
+
+def test_final_decision_path_triggers_qualification_at_job_30(client, db_session):
+    """WS7 §4: proves the agreement-rate check actually runs through the real
+    HTTP result-submission flow at the specified cadence -- not just as a
+    standalone probation.py unit test -- and that 90%+ agreement at job 30
+    auto-transitions the standard to solo Active Inspection."""
+    rev = _seed_revision(db_session)
+    probation = probation_service.start_probation(db_session, standard_revision_id=rev, tenant_id=T1)
+
+    for _ in range(30):
+        sid = _submit(client, rev, [("cp1", "pass"), ("cp2", "pass")], pad="pass").json()["submission_id"]
+        client.post(
+            f"/api/qc/results/{sid}/final-decision",
+            json={"tenant_id": T1, "decision": "pass", "decided_by": "qa1"},
+        )
+
+    p = client.get(f"/api/qc/probation/{probation.id}", params={"tenant_id": T1}).json()
+    assert p["status"] == "qualified"
+    assert p["gate"]["jobs_recorded"] == 30
+    assert p["gate"]["qualified"] is True
+
+    # Solo now -- further decisions must not attempt to record more probation
+    # jobs (record_probation_job would raise ProbationNotActive if they did).
+    sid2 = _submit(client, rev, [("cp1", "pass"), ("cp2", "pass")], pad="pass").json()["submission_id"]
+    resp = client.post(
+        f"/api/qc/results/{sid2}/final-decision",
+        json={"tenant_id": T1, "decision": "pass", "decided_by": "qa1"},
+    )
+    assert resp.status_code == 201
+    p2 = client.get(f"/api/qc/probation/{probation.id}", params={"tenant_id": T1}).json()
+    assert p2["gate"]["jobs_recorded"] == 30  # unchanged -- standard now runs solo

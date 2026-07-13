@@ -136,6 +136,16 @@ body {
 .publish-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
 .bundle-note { font-size: 12px; color: var(--muted); margin-top: 8px; word-break: break-all; }
 
+/* Probation / qualification (§3, WS7) */
+.probation-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.probation-empty { font-size: 12px; }
+.probation-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.probation-stats { font-size: 12px; color: var(--muted); }
+.status-probation-active { background: #fef3c7; color: #92400e; }
+.status-probation-paused { background: #e5e7eb; color: #374151; }
+.status-probation-qualified { background: #dcfce7; color: #166534; }
+.probation-actions { margin-top: 8px; display: flex; gap: 8px; }
+
 .muted { color: var(--muted); }
 .hidden { display: none !important; }
 .chip { padding: 3px 10px; border-radius: 999px; background: #111; color: #fff; font-size: 12px; }

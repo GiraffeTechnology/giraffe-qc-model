@@ -32,6 +32,7 @@ from src.db.studio_models import QCPublishBundle
 from src.api.main import app
 from src.api.deps import get_db_dep
 from src.qc_model.studio.service import verify_bundle
+from src.qc_model.qualification import probation as probation_service
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -788,3 +789,107 @@ def test_published_bundle_manifest_contains_authored_regions(client, db_session_
     manifest = json.loads(manifest_bytes)
     dp_manifest = next(d for d in manifest["detection_points"] if d["point_code"] == "STAMEN_CENTERING")
     assert dp_manifest["regions"] == [region]
+
+
+# ── Probation auto-start on publish (WS7 §1.1) ────────────────────────────────
+
+
+def test_publish_starts_probation(client, db_session_factory):
+    """Publishing is exactly "newly installed" (PRD §3.2) -- the real
+    /admin/studio/publish endpoint must call start_probation(), not just the
+    standalone service function."""
+    sku_id = _create_flw(client)
+    _confirm_one_point(client, sku_id)
+    pub = client.post("/admin/studio/publish", json={"sku_id": sku_id})
+    assert pub.status_code == 200, pub.text
+    rev_id = pub.json()["bundle"]["standard_revision_id"]
+
+    resp = client.get(f"/api/qc/probation/by-revision/{rev_id}")
+    assert resp.status_code == 200, resp.text
+    p = resp.json()
+    assert p["status"] == "active"
+    assert p["sku_id"] == sku_id
+    assert p["gate"]["jobs_recorded"] == 0
+
+
+def test_republish_same_revision_preserves_probation_progress(client, db_session_factory):
+    """Re-publishing without a new confirm reuses the same standard_revision_id
+    -- get-or-create must return the existing probation record, not reset it."""
+    sku_id = _create_flw(client)
+    _confirm_one_point(client, sku_id)
+    pub1 = client.post("/admin/studio/publish", json={"sku_id": sku_id}).json()["bundle"]
+    rev_id = pub1["standard_revision_id"]
+
+    session = db_session_factory()
+    try:
+        probation = probation_service.get_probation_for_revision(session, rev_id, "default")
+        probation_service.record_probation_job(session, probation.id, "pass", "pass", "default", job_ref="j1")
+    finally:
+        session.close()
+
+    pub2 = client.post("/admin/studio/publish", json={"sku_id": sku_id}).json()["bundle"]
+    assert pub2["standard_revision_id"] == rev_id  # no new confirm -> same active revision
+
+    p = client.get(f"/api/qc/probation/by-revision/{rev_id}").json()
+    assert p["gate"]["jobs_recorded"] == 1
+
+
+def test_new_revision_after_reconfirm_gets_fresh_probation(client, db_session_factory):
+    """Editing/re-confirming a standard mints a brand-new standard_revision_id
+    (§3.4) -- the fresh id naturally gets a fresh probation record at 0
+    through start_probation's own get-or-create keying, with no separate
+    reset codepath needed."""
+    sku_id = _create_flw(client)
+    _confirm_one_point(client, sku_id)
+    pub1 = client.post("/admin/studio/publish", json={"sku_id": sku_id}).json()["bundle"]
+    rev1 = pub1["standard_revision_id"]
+
+    session = db_session_factory()
+    try:
+        probation = probation_service.get_probation_for_revision(session, rev1, "default")
+        probation_service.record_probation_job(session, probation.id, "pass", "pass", "default", job_ref="j1")
+    finally:
+        session.close()
+
+    _confirm_one_point(client, sku_id)  # a fresh confirm -> a brand-new revision
+    pub2 = client.post("/admin/studio/publish", json={"sku_id": sku_id}).json()["bundle"]
+    rev2 = pub2["standard_revision_id"]
+    assert rev2 != rev1
+
+    p2 = client.get(f"/api/qc/probation/by-revision/{rev2}").json()
+    assert p2["gate"]["jobs_recorded"] == 0
+
+
+def test_probation_pause_resume_via_real_studio_endpoints(client, db_session_factory):
+    sku_id = _create_flw(client)
+    _confirm_one_point(client, sku_id)
+    pub = client.post("/admin/studio/publish", json={"sku_id": sku_id}).json()["bundle"]
+    rev_id = pub["standard_revision_id"]
+    probation_id = client.get(f"/api/qc/probation/by-revision/{rev_id}").json()["probation_id"]
+
+    paused = client.post(f"/api/qc/probation/{probation_id}/pause").json()
+    assert paused["status"] == "paused"
+    resumed = client.post(f"/api/qc/probation/{probation_id}/resume").json()
+    assert resumed["status"] == "active"
+
+
+def test_probation_disagreement_report_endpoint(client, db_session_factory):
+    sku_id = _create_flw(client)
+    _confirm_one_point(client, sku_id)
+    pub = client.post("/admin/studio/publish", json={"sku_id": sku_id}).json()["bundle"]
+    rev_id = pub["standard_revision_id"]
+    probation_id = client.get(f"/api/qc/probation/by-revision/{rev_id}").json()["probation_id"]
+
+    session = db_session_factory()
+    try:
+        probation = probation_service.get_probation(session, probation_id, "default")
+        probation_service.record_probation_job(
+            session, probation.id, "pass", "fail", "default", job_ref="j1",
+            point_disagreements=[{"point_code": "STAMEN_CENTERING", "ai_verdict": "pass", "human_final_verdict": "fail"}],
+        )
+    finally:
+        session.close()
+
+    report = client.get(f"/api/qc/probation/{probation_id}/disagreement-report").json()
+    assert report["disagreements"] == 1
+    assert report["detection_points"][0]["point_code"] == "STAMEN_CENTERING"
