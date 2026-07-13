@@ -4,12 +4,14 @@
 Account A's WS3 admin health screen (via the already-existing server sync
 surface, § 3 — no new server endpoint needed).
 
-**Status:** `[PLANNED]` throughout — none of this exists in `apps/android-qc/`
-today. `PadReadiness.kt` currently models the retired MNN-era runtime states
-(`KEY_LOCAL_RUNTIME_NOT_READY`, `KEY_MNN_NATIVE_READY_MODEL_PENDING`, etc. —
-see `apps/android-qc/app/src/main/kotlin/com/giraffetechnology/qc/readiness/PadReadiness.kt`)
-and must be replaced, not extended, per WS4 § 1.4. This doc defines the
-replacement so WS3 can bind against it without waiting for WS4 to land.
+**Status: implemented in the WS4 round**, with one honest gap: § 3's health
+relay is wired (`JetsonServerRelay`), but the *pairing/bindings* relay
+(`POST /api/qc/jetson/bindings`) is **not** — it needs a `workstation_id`
+this scaffold has no clean source for at pairing time. `PadReadiness.kt` (the
+retired MNN-era readiness resolver) was kept, not deleted, and still backs
+the legacy MNN path behind `PadRuntimeConfig.legacyMnnRuntimeEnabled` — the
+new `JetsonPadReadiness.kt` (§ 2) is the one actually used by default. See
+§ 3 and § 4 below for the as-built detail.
 
 ## 1. Design goals
 
@@ -24,12 +26,16 @@ replacement so WS3 can bind against it without waiting for WS4 to land.
    already-existing `GET /api/qc/jetson/runners` / `GET
    /api/qc/jetson/runners/{id}` (§ 3) — so WS3 needs no new server work.
 
-## 2. Kotlin state model (to implement)
+## 2. Kotlin state model `[EXISTS]`
 
-Replaces `MnnRuntimeState`-derived readiness in `PadReadiness.kt`. Package:
-`com.giraffetechnology.qc.readiness` (or a new `com.giraffetechnology.qc.jetson`
-package if WS4 judges the MNN-era file not worth reusing — either way, publish
-the final package path in the WS4 PR body since WS3 imports it).
+Split across two packages, as built:
+`com.giraffetechnology.qc.jetson` (`JetsonReadinessState`, `JetsonHealthSnapshot`,
+`PadJetsonState`, `PairingState` — `JetsonHealthState.kt`) and
+`com.giraffetechnology.qc.readiness` (`JetsonPadReadiness.kt`, the Jetson-worded
+counterpart to the legacy `PadReadiness.kt`, both sharing the existing
+`PadReadinessInputs`/`PadReadinessView` shape rather than introducing a third
+readiness-view type). `PadReadiness.kt` itself was **not deleted** — it still
+backs the legacy MNN path.
 
 ```kotlin
 /** Mirrors jetson-runner-api.md §3 exactly — same state strings as Jetson/Server. */
@@ -54,7 +60,9 @@ data class JetsonHealthSnapshot(
     val readinessState: JetsonReadinessState,
     val jetsonDeviceId: String,
     val agentVersion: String,
-    val polledAt: Instant,
+    val adapterName: String?,   // as-built addition: which adapter served this (mock | llama_cpp)
+    val modelName: String?,     // as-built addition
+    val polledAtEpochMs: Long,  // as-built: epoch millis, not java.time.Instant
     /** True if this snapshot is from JETSON_MOCK_MODE=true — must be surfaced
      *  in the UI per the mock-labeling ground rule, never silently hidden. */
     val isMock: Boolean,

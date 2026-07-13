@@ -46,8 +46,11 @@ import com.giraffetechnology.qc.camera.CameraXCaptureController
 import com.giraffetechnology.qc.capture.AutoCaptureController
 import com.giraffetechnology.qc.capture.AutoCaptureState
 import com.giraffetechnology.qc.i18n.LanguageController
+import com.giraffetechnology.qc.jetson.JetsonRuntimeMonitor
 import com.giraffetechnology.qc.qwen.MnnRuntimeLoader
+import com.giraffetechnology.qc.readiness.JetsonPadReadiness
 import com.giraffetechnology.qc.readiness.PadReadiness
+import com.giraffetechnology.qc.sku.MnnRuntime
 import com.giraffetechnology.qc.sku.PadInspectionCoordinator
 import com.giraffetechnology.qc.sku.PadInspectionResult
 import com.giraffetechnology.qc.sku.QcTask
@@ -72,7 +75,7 @@ fun OperatorQcWorkScreen(
     task: QcTask,
     languageController: LanguageController,
     autoCaptureController: AutoCaptureController,
-    runtimeLoader: MnnRuntimeLoader,
+    runtimeLoader: MnnRuntime,
     cameraXController: CameraXCaptureController,
     inspectionCoordinator: PadInspectionCoordinator?,
     onInspectionResult: (PadInspectionResult) -> Unit,
@@ -90,14 +93,28 @@ fun OperatorQcWorkScreen(
     var inputText by remember { mutableStateOf("") }
     var voiceMode by remember { mutableStateOf(false) }
 
+    // Which readiness wording set applies depends on which concrete runtime
+    // PadRuntimeGraph wired in -- the coordinator/gating logic itself is
+    // identical either way (both satisfy MnnRuntime).
     val standardInstalled = task.standardPhotos.isNotEmpty() && task.qcPoints.isNotEmpty()
-    val readiness = PadReadiness.fromRuntimeState(
-        state = runtimeState,
-        inferenceVerified = MnnRuntimeLoader.JNI_INFERENCE_WIRED,
-        standardInstalled = standardInstalled,
-        skuSelected = true,
-        online = online,
-    )
+    val readiness = if (runtimeLoader is MnnRuntimeLoader) {
+        PadReadiness.fromRuntimeState(
+            state = runtimeState,
+            inferenceVerified = runtimeLoader.inferenceVerified,
+            standardInstalled = standardInstalled,
+            skuSelected = true,
+            online = online,
+        )
+    } else {
+        JetsonPadReadiness.fromRuntimeState(
+            state = runtimeState,
+            inferenceVerified = runtimeLoader.inferenceVerified,
+            standardInstalled = standardInstalled,
+            skuSelected = true,
+            online = online,
+        )
+    }
+    val jetsonHealth = (runtimeLoader as? JetsonRuntimeMonitor)?.jetsonState?.collectAsState()?.value?.lastHealth
 
     // Seed the log once when the page opens.
     LaunchedEffect(task.sku.id) {
@@ -124,7 +141,7 @@ fun OperatorQcWorkScreen(
                 PadInspectionResult(
                     overallResult = "MNN_PENDING",
                     reason = "Inspection unavailable",
-                    modelName = "Qwen3-VL-2B-Instruct-MNN",
+                    modelName = runtimeLoader.javaClass.simpleName,
                     localOnly = true,
                     cloudInferenceUsed = false,
                     capturedImagePath = photo?.rawImagePath,
@@ -143,7 +160,7 @@ fun OperatorQcWorkScreen(
                 ?: PadInspectionResult(
                     overallResult = "MNN_PENDING",
                     reason = "Inspection coordinator not available",
-                    modelName = "Qwen3-VL-2B-Instruct-MNN",
+                    modelName = runtimeLoader.javaClass.simpleName,
                     localOnly = true,
                     cloudInferenceUsed = false,
                     capturedImagePath = photo.rawImagePath,
@@ -190,6 +207,25 @@ fun OperatorQcWorkScreen(
                 Text(skill.t("pad.work.title"), fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
                 LanguageSwitch(languageController)
+            }
+
+            // Jetson health line (WS4 §3): model loaded / temperature / last
+            // latency, and an unmissable mock-inference warning when
+            // JETSON_MOCK_MODE=true on the paired runner -- this must never
+            // be mistaken for real output.
+            jetsonHealth?.let { health ->
+                Text(
+                    buildString {
+                        append(if (health.modelLoaded) "● " else "○ ")
+                        health.temperatureC?.let { append(skill.t("pad.jetson.health.temperature", mapOf("temp" to it.toInt().toString()))); append("  ") }
+                        health.lastInferenceLatencyMs?.let { append(skill.t("pad.jetson.health.latency", mapOf("ms" to it.toString()))) }
+                    },
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (health.isMock) {
+                    Text(skill.t("pad.jetson.health.mock_warning"), fontSize = 11.sp, color = Color(0xFFB71C1C), fontWeight = FontWeight.Bold)
+                }
             }
 
             // Right-top: 4:3 reference image.

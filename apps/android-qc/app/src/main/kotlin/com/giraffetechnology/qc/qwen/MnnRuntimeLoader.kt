@@ -47,6 +47,7 @@ class MnnRuntimeLoader(
 
     private val _runtimeState = MutableStateFlow<MnnRuntimeState>(MnnRuntimeState.NotReady)
     override val runtimeState: StateFlow<MnnRuntimeState> = _runtimeState.asStateFlow()
+    override val inferenceVerified: Boolean get() = JNI_INFERENCE_WIRED
 
     companion object {
         private const val TAG = "MnnRuntimeLoader"

@@ -19,7 +19,6 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.giraffetechnology.qc.camera.CameraXCaptureController
 import com.giraffetechnology.qc.capture.*
-import com.giraffetechnology.qc.qwen.MnnRuntimeLoader
 import com.giraffetechnology.qc.sku.*
 import kotlinx.coroutines.launch
 
@@ -43,7 +42,7 @@ internal fun resolvePermissionState(isGranted: Boolean): CameraPermissionState =
 fun QcCaptureScreen(
     task: QcTask,
     autoCaptureController: AutoCaptureController,
-    runtimeLoader: MnnRuntimeLoader,
+    runtimeLoader: MnnRuntime,
     cameraXController: CameraXCaptureController,
     inspectionCoordinator: PadInspectionCoordinator? = null,
     onInspectionResult: (PadInspectionResult) -> Unit,

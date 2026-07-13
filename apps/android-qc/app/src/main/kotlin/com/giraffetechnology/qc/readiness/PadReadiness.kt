@@ -76,8 +76,15 @@ object PadReadiness {
     )
 }
 
+/**
+ * Shared by [PadReadiness] (legacy MNN, gated behind
+ * `PadRuntimeConfig.legacyMnnRuntimeEnabled`) and [JetsonPadReadiness]
+ * (default, Jetson LAN) -- the field names are MNN-flavored for historical
+ * reasons but the shape is runtime-agnostic: "is the runtime reachable at
+ * all", "is a model loaded", "has real inference been verified".
+ */
 data class PadReadinessInputs(
-    /** MNN native libraries are loaded/available. */
+    /** MNN native libraries are loaded/available -- or, under [JetsonPadReadiness], the paired Jetson is reachable. */
     val mnnNativeReady: Boolean,
     /** Model weights are loaded into the native runtime (runtime reports Ready). */
     val modelLoaded: Boolean,

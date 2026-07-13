@@ -6,7 +6,6 @@ import com.giraffetechnology.qc.sku.QcTask
 sealed class PadScreen {
     /** Entry screen (S5 §3.1): Giraffe icon, Administrator / Operator branches. */
     object Welcome : PadScreen()
-
     /** Administrator module (WS3) — real, functional admin screens on the Pad. */
     object AdminLogin : PadScreen()
     object AdminHome : PadScreen()
@@ -17,6 +16,8 @@ sealed class PadScreen {
     object AdminHealth : PadScreen()
     object AdminProbation : PadScreen()
     object AdminResults : PadScreen()
+    /** Jetson Xavier NX pairing (WS4) — physical/LAN action, entered from AdminHome. */
+    object JetsonPairing : PadScreen()
     /** Operator branch (S5 §8.1): offline search of standards installed on this Pad. */
     object OperatorTaskSelection : PadScreen()
     /** QC Work page (S6 §8.2): split camera / reference / conversation / input. */

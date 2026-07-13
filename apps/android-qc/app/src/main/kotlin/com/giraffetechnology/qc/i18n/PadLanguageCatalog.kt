@@ -75,6 +75,11 @@ object PadLanguageCatalog {
         "readiness.no_sku_selected" to "No SKU selected",
         "readiness.offline" to "Offline",
         "readiness.online" to "Online",
+        // Jetson readiness (WS4) — copied verbatim from
+        // src/qc_model/jetson/constants.py's READINESS_LABELS so Pad and
+        // Server terminology stay identical.
+        "readiness.jetson_connecting" to "Jetson connecting...",
+        "readiness.jetson_unreachable" to "Jetson unreachable — offline mode",
 
         // ── result review + submission (S6 §9) ─────────────────────────────
         "pad.review.title" to "Review Result",
@@ -223,6 +228,30 @@ object PadLanguageCatalog {
         "admin.results.field.final" to "Final decision",
         "admin.results.review_required" to "Review required — record a final decision:",
         "admin.results.comment" to "Comment",
+        "admin.home.pairing" to "Jetson Pairing",
+        "admin.home.pairing.desc" to "Pair this Pad with a Jetson NX runner (USB or Wi-Fi)",
+        // ── Jetson pairing (WS4) — EN only for now; localize in the WS2 i18n
+        // sweep (00_OVERVIEW_AND_SEQUENCING.md schedules that sweep after
+        // WS3/WS4 land, not as part of WS4 itself).
+        "pad.jetson.pairing.title" to "Pair Jetson Inference Unit",
+        "pad.jetson.pairing.usb_instruction" to "Connect the Jetson to this Pad with a USB cable, then confirm.",
+        "pad.jetson.pairing.usb_button" to "Pair via USB",
+        "pad.jetson.pairing.wifi_instruction" to
+            "Open the pairing window on the Jetson, enter the chassis fingerprint shown on its sticker, then confirm.",
+        "pad.jetson.pairing.fingerprint_hint" to "Chassis fingerprint (e.g. 1234-5678-9012-3456)",
+        "pad.jetson.pairing.wifi_button" to "Pair via Wi-Fi",
+        "pad.jetson.pairing.host_hint" to "Jetson LAN IP address",
+        "pad.jetson.pairing.success" to "Paired with Jetson {device}.",
+        "pad.jetson.pairing.failed" to "Pairing failed: {reason}",
+        "pad.jetson.pairing.unpair" to "Unpair",
+        "pad.jetson.health.title" to "Jetson Health",
+        "pad.jetson.health.not_paired" to "No Jetson paired.",
+        "pad.jetson.health.temperature" to "Temperature: {temp}°C",
+        "pad.jetson.health.latency" to "Last inference: {ms} ms",
+        "pad.jetson.health.disk" to "Disk free: {pct}%",
+        "pad.jetson.health.mock_warning" to "⚠ MOCK INFERENCE — NOT REAL QC JUDGMENT",
+        "pad.jetson.submit_blocked" to
+            "Jetson was unreachable during this inspection — no real evidence was produced. Retake once the Jetson is ready; this result cannot be submitted as-is.",
     )
 
     val ZH_CN: Map<String, String> = mapOf(
@@ -264,6 +293,8 @@ object PadLanguageCatalog {
         "readiness.no_sku_selected" to "未选择 SKU",
         "readiness.offline" to "离线",
         "readiness.online" to "在线",
+        "readiness.jetson_connecting" to "Jetson 连接中...",
+        "readiness.jetson_unreachable" to "Jetson 不可达 — 离线模式",
 
         "pad.review.title" to "复核结果",
         "pad.review.confirm_pass" to "确认合格",
@@ -410,6 +441,8 @@ object PadLanguageCatalog {
         "admin.results.field.final" to "最终裁决",
         "admin.results.review_required" to "需复核 — 请记录最终裁决：",
         "admin.results.comment" to "备注",
+        "admin.home.pairing" to "Jetson 配对",
+        "admin.home.pairing.desc" to "将本 Pad 与 Jetson NX 运行器配对（USB 或 Wi-Fi）",
     )
 
     val JA: Map<String, String> = mapOf(
@@ -451,6 +484,8 @@ object PadLanguageCatalog {
         "readiness.no_sku_selected" to "SKU 未選択",
         "readiness.offline" to "オフライン",
         "readiness.online" to "オンライン",
+        "readiness.jetson_connecting" to "Jetson 接続中...",
+        "readiness.jetson_unreachable" to "Jetson に到達できません — オフラインモード",
 
         "pad.review.title" to "結果を確認",
         "pad.review.confirm_pass" to "合格を確定",
@@ -597,6 +632,8 @@ object PadLanguageCatalog {
         "admin.results.field.final" to "最終裁定",
         "admin.results.review_required" to "要確認 — 最終裁定を記録してください：",
         "admin.results.comment" to "コメント",
+        "admin.home.pairing" to "Jetson ペアリング",
+        "admin.home.pairing.desc" to "この Pad を Jetson NX ランナーとペアリング（USB / Wi-Fi）",
     )
 
     private val tables: Map<String, Map<String, String>> = mapOf(

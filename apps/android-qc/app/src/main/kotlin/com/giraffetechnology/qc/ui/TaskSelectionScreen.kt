@@ -14,7 +14,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.giraffetechnology.qc.sku.*
-import com.giraffetechnology.qc.qwen.MnnRuntimeLoader
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
@@ -45,7 +44,7 @@ internal fun shouldClearSelection(state: TaskSelectionState): Boolean = when (st
 @Composable
 fun TaskSelectionScreen(
     taskSelectionController: TaskSelectionController,
-    runtimeLoader: MnnRuntimeLoader,
+    runtimeLoader: MnnRuntime,
     skuRepository: ApiSkuRepository?,
     onTaskConfirmed: (QcTask) -> Unit,
 ) {
