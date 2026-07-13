@@ -23,6 +23,7 @@ from src.api.qc_sample_learning_router import router as qc_sample_learning_route
 from src.api.qc_source_router import router as qc_source_router
 from src.api.qc_bundle_router import router as qc_bundle_router
 from src.api.qc_verdict_router import router as qc_verdict_router
+from src.api.qc_probation_router import router as qc_probation_router
 from src.api.qc_studio_router import router as qc_studio_router
 from src.api.edge_cv_router import router as edge_cv_router
 from src.api.jetson_router import router as jetson_router
@@ -82,6 +83,7 @@ app.include_router(qc_qualification_router)
 app.include_router(qc_incident_router)
 app.include_router(qc_bundle_router)
 app.include_router(qc_verdict_router)
+app.include_router(qc_probation_router)
 app.include_router(qc_studio_router)
 app.include_router(edge_cv_router)
 app.include_router(jetson_router)

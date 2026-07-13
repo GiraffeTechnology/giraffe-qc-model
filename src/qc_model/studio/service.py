@@ -37,6 +37,7 @@ from src.db.sku_models import (
 from src.db.studio_models import QCPublishBundle
 from src.intake.service import create_standard_intake, extract_standard_draft
 from src.qc_model.bundle import ed25519 as _ed
+from src.qc_model.qualification import probation as _probation
 
 
 def _uid() -> str:
@@ -648,6 +649,16 @@ def publish_bundle(
     db.add(bundle)
     db.commit()
     db.refresh(bundle)
+
+    # Publishing a standard is exactly "newly installed" (PRD Authoring
+    # Extension §3.2): it must run under mandatory human confirmation until it
+    # qualifies solo. get_or_create so re-publishing the *same* revision (e.g.
+    # a region-only edit, which does not mint a new standard_revision_id) never
+    # resets progress -- only a genuinely new revision id gets a fresh record.
+    _probation.start_probation(
+        db, standard_revision_id=bundle.standard_revision_id, tenant_id=tenant_id, sku_id=sku.id,
+    )
+
     return bundle
 
 

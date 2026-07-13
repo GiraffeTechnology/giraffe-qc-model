@@ -22,6 +22,7 @@ from src.db.qc_verdict_models import (
     QCServerVerdict,
     QCSubmittedCheckpoint,
 )
+from src.qc_model.qualification import probation as _probation
 from src.qc_model.verdict.recompute import (
     PadSubmission,
     ServerVerdict,
@@ -209,4 +210,39 @@ def record_human_decision(
     verdict.human_decided_at = _utcnow()
     db.commit()
     db.refresh(verdict)
+    _maybe_record_probation_job(db, verdict, tenant_id)
     return verdict
+
+
+def _maybe_record_probation_job(db: Session, verdict: QCServerVerdict, tenant_id: str) -> None:
+    """Feed this human final decision into Standard Probation (§3.2) when the
+    standard revision it was judged against is currently on probation.
+
+    This is a real, mandatory-human-confirmation *result*, not a synthetic test
+    -- exactly the evidence probation.py requires (never a fabricated agree/
+    disagree pair). A no-op when the revision was never published through the
+    Studio publish flow (no probation record) or is paused/qualified: this
+    hook must never block a human's decision from being recorded.
+
+    Per-detection-point disagreement data is intentionally left unset here --
+    this flow only captures a single overall human final decision, not a
+    per-checkpoint human verdict, so there is no real per-point AI-vs-human
+    comparison to record without fabricating one.
+    """
+    probation = _probation.get_probation_for_revision(db, verdict.standard_revision_id, tenant_id)
+    if probation is None or probation.status != _probation.PROBATION_ACTIVE:
+        return
+    submission = db.get(QCPadSubmission, verdict.submission_id)
+    try:
+        _probation.record_probation_job(
+            db,
+            probation.id,
+            ai_verdict=verdict.server_overall_result,
+            human_final_verdict=verdict.human_final_decision,
+            tenant_id=tenant_id,
+            job_ref=submission.job_ref if submission else None,
+        )
+    except _probation.InvalidProbationJob:
+        # Same job_ref already recorded (e.g. the final decision was amended
+        # and resubmitted) -- probation only counts a job once.
+        pass

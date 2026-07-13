@@ -126,7 +126,8 @@
       `<div class="publish-row">` +
       `<button class="publish-btn" id="publish-btn" ${canPublish ? "" : "disabled"}>Publish to Pad (L2)</button>` +
       `<div class="bundle-note hidden" id="bundle-note"></div>` +
-      `</div>`;
+      `</div>` +
+      `<div id="probation-section" class="probation-section"></div>`;
 
     const pubBtn = $("#publish-btn");
     if (pubBtn) pubBtn.addEventListener("click", publish);
@@ -134,6 +135,74 @@
     skuCard.querySelectorAll(".dp-regions-btn").forEach((btn) => {
       btn.addEventListener("click", () => toggleRegionEditor(btn));
     });
+
+    if (sku.active_revision_id) loadProbation(sku.active_revision_id);
+  }
+
+  // ── Probation / qualification (§3, WS7) ─────────────────────────────────
+  // A published standard runs under mandatory human confirmation until it
+  // qualifies solo (90% agreement over >=30 real jobs). This section reads
+  // the real /api/qc/probation surface -- no separate mock state here.
+  function loadProbation(revisionId) {
+    const slot = $("#probation-section");
+    if (!slot) return;
+    api(`/api/qc/probation/by-revision/${revisionId}?tenant_id=${tenant}`)
+      .then((p) => renderProbation(slot, p))
+      .catch(() => {
+        slot.innerHTML = `<div class="probation-empty muted">Not yet on probation (publish to start).</div>`;
+      });
+  }
+
+  function renderProbation(slot, p) {
+    const g = p.gate;
+    const statusLabel = { active: "On probation", paused: "Probation paused", qualified: "Qualified — solo" }[p.status] || p.status;
+    slot.innerHTML =
+      `<div class="probation-head">` +
+      `<span class="status-badge status-probation-${esc(p.status)}">${esc(statusLabel)}</span>` +
+      `<span class="probation-stats">${g.jobs_recorded} job(s) · ${(g.agreement_rate * 100).toFixed(0)}% agreement` +
+      (g.min_sample_met ? "" : ` (min ${g.min_sample_size} required)`) +
+      `</span>` +
+      `</div>` +
+      `<div class="probation-actions">` +
+      (p.status === "active" ? `<button type="button" class="btn" id="probation-pause">Pause</button>` : "") +
+      (p.status === "paused" ? `<button type="button" class="btn btn-primary" id="probation-resume">Resume</button>` : "") +
+      (g.jobs_recorded > 0 ? `<button type="button" class="btn" id="probation-report">View disagreement report</button>` : "") +
+      `</div>`;
+
+    const pauseBtn = slot.querySelector("#probation-pause");
+    if (pauseBtn) pauseBtn.addEventListener("click", () => probationAction(p.probation_id, "pause"));
+    const resumeBtn = slot.querySelector("#probation-resume");
+    if (resumeBtn) resumeBtn.addEventListener("click", () => probationAction(p.probation_id, "resume"));
+    const reportBtn = slot.querySelector("#probation-report");
+    if (reportBtn) reportBtn.addEventListener("click", () => showDisagreementReport(p.probation_id));
+  }
+
+  function probationAction(probationId, action) {
+    api(`/api/qc/probation/${probationId}/${action}`, { method: "POST" })
+      .then((p) => {
+        addBubble(action === "pause" ? "Probation paused." : "Probation resumed.", "system");
+        const slot = $("#probation-section");
+        if (slot) renderProbation(slot, p);
+      })
+      .catch((err) => addBubble(`Could not ${action} probation: ${err.message}`, "system"));
+  }
+
+  // Reuses the existing conversation bubble component for the disagreement
+  // report (per the probation-api.md contract) rather than a new chart/table.
+  function showDisagreementReport(probationId) {
+    api(`/api/qc/probation/${probationId}/disagreement-report?tenant_id=${tenant}`)
+      .then((r) => {
+        if (!r.disagreements) {
+          addBubble("No disagreements recorded yet — AI and human decisions have matched on every job so far.", "system");
+          return;
+        }
+        const lines = [`${r.disagreements} disagreement(s) out of ${r.gate.jobs_recorded} job(s):`];
+        r.detection_points.slice(0, 5).forEach((dp) => {
+          lines.push(`  • ${dp.point_code}: ${dp.disagreement_count} disagreement(s)`);
+        });
+        addBubble(lines.join("\n"), "system");
+      })
+      .catch((err) => addBubble("Could not load disagreement report: " + err.message, "system"));
   }
 
   function publish() {
