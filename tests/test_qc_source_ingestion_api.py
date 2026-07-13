@@ -260,3 +260,88 @@ def test_ui_page_loads_form_submits_and_fragments_render(client):
     # Fragment list renders on the page.
     page2 = client.get(f"/admin/qc-model/training-packs/{tp}/sources")
     assert "possible_detection_point" in page2.text
+
+
+# ── Process-card file upload (WS6) — real endpoint, not just the extractor ─
+
+
+def test_upload_process_card_txt_is_really_extracted_end_to_end(client):
+    """A real multipart upload of a .txt process card: the file is stored,
+    the source document is created with source_type=process_card and REAL
+    text_content decoded from the uploaded bytes (not a placeholder), and
+    running extraction on it produces the same real statement-classification
+    fragments as a natural_language source -- proving the whole upload ->
+    store -> extract path is wired, not just the extractor function in
+    isolation."""
+    tp = "tp_upload_txt"
+    content = b"The stamen must be centered and aligned.\nRivet diameter must be 5.0 mm plus/minus 0.2 mm."
+    resp = client.post(
+        f"/admin/qc-model/training-packs/{tp}/sources/upload",
+        data={"title": "Uploaded card"},
+        files={"file": ("card.txt", content, "text/plain")},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+
+    sources = client.get(f"/api/qc/training-packs/{tp}/sources").json()["sources"]
+    assert len(sources) == 1
+    src = sources[0]
+    assert src["source_type"] == "process_card"
+    assert src["title"] == "Uploaded card"
+    assert src["text_content"] == content.decode("utf-8")
+    assert src["file_ref"] and src["file_ref"].endswith(".txt")
+
+    job = client.post(f"/api/qc/sources/{src['source_id']}/extract", json={}).json()
+    frags = client.get(f"/api/qc/source-extraction-jobs/{job['job_id']}/fragments").json()["fragments"]
+    types = {f["fragment_type"] for f in frags}
+    assert "possible_detection_point" in types
+    assert "possible_physical_measurement" in types
+
+
+def test_upload_process_card_pdf_is_stored_but_honestly_unextracted(client):
+    """A .pdf upload is accepted (process_card.py can classify it), stored on
+    disk, and registered -- but since no PDF parser exists in this
+    environment, text_content must stay unset (no fabricated extraction),
+    and running extraction must honestly report that no parser is wired
+    rather than silently produce a fake result."""
+    tp = "tp_upload_pdf"
+    resp = client.post(
+        f"/admin/qc-model/training-packs/{tp}/sources/upload",
+        data={},
+        files={"file": ("card.pdf", b"%PDF-1.4 fake pdf bytes", "application/pdf")},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+
+    src = client.get(f"/api/qc/training-packs/{tp}/sources").json()["sources"][0]
+    assert src["source_type"] == "process_card"
+    assert src["text_content"] is None
+    assert src["file_ref"] and src["file_ref"].endswith(".pdf")
+
+    job = client.post(f"/api/qc/sources/{src['source_id']}/extract", json={}).json()
+    frags = client.get(f"/api/qc/source-extraction-jobs/{job['job_id']}/fragments").json()["fragments"]
+    assert len(frags) == 1
+    assert frags[0]["fragment_type"] == "requires_supervisor_review"
+    assert "no document parser" in frags[0]["text"]
+
+
+def test_upload_process_card_rejects_unrecognized_extension(client):
+    resp = client.post(
+        "/admin/qc-model/training-packs/tp_upload_bad/sources/upload",
+        data={},
+        files={"file": ("card.xyz", b"whatever", "application/octet-stream")},
+    )
+    assert resp.status_code == 415
+
+
+def test_upload_process_card_rejects_oversized_file(client, monkeypatch):
+    monkeypatch.setenv("QC_MAX_UPLOAD_BYTES", "10")
+    try:
+        resp = client.post(
+            "/admin/qc-model/training-packs/tp_upload_big/sources/upload",
+            data={},
+            files={"file": ("card.txt", b"this is way more than ten bytes", "text/plain")},
+        )
+        assert resp.status_code == 413
+    finally:
+        monkeypatch.delenv("QC_MAX_UPLOAD_BYTES", raising=False)

@@ -79,6 +79,28 @@
     </div>
   </template>
 
+  <!-- Region annotation editor (§2) — cloned into a detection point row -->
+  <template id="region-editor-template">
+    <div class="region-editor">
+      <div class="region-editor__controls">
+        <label>Photo:
+          <select class="region-photo-select"></select>
+        </label>
+        <span class="muted region-hint">Drag on the image to draw a box.</span>
+      </div>
+      <div class="region-canvas-wrap">
+        <img class="region-image" alt="standard photo">
+        <canvas class="region-canvas"></canvas>
+      </div>
+      <ul class="region-list"></ul>
+      <div class="region-editor__actions">
+        <button type="button" class="btn btn-primary region-save">Save regions</button>
+        <button type="button" class="btn region-cancel">Cancel</button>
+      </div>
+      <div class="region-error muted"></div>
+    </div>
+  </template>
+
   <script src="/static/admin_studio.js"></script>
 </body>
 </html>

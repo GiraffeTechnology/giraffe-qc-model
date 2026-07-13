@@ -9,6 +9,7 @@ Mounts the three-panel ``/admin/studio`` page and its backend routes:
 * ``POST /admin/studio/upload``              — hardened standard-photo upload
 * ``GET  /admin/studio/photos/{photo_id}``   — serve a stored standard photo
 * ``POST /admin/studio/confirm``             — confirm / reject detection points
+* ``POST /admin/studio/detection-points/{detection_point_id}/regions`` — set region annotations (§2)
 * ``POST /admin/studio/publish``             — publish signed L2 bundle
 * ``GET  /admin/studio/bundles/{bundle_id}/download`` — download signed .tar.gz (re-verified)
 * ``GET  /admin/studio/skus/{sku_id}/bundles`` — bundle history (S3 owns the UI)
@@ -34,6 +35,7 @@ from src.db.sku_models import QCSkuItem, QCStandardPhoto
 from src.db.studio_models import QCPublishBundle
 from src.intake.service import confirm_standard_intake, reject_standard_intake
 from src.qc_model.studio import service as studio
+from src.qc_model.studio.regions import InvalidRegion, set_detection_point_regions
 from src.storage.upload_validation import (
     UploadValidationError,
     read_and_validate_upload,
@@ -307,6 +309,46 @@ def studio_reject(body: RejectRequest, db: Session = Depends(get_db_dep)):
     except Exception as exc:  # noqa: BLE001 - surface as 400
         return JSONResponse({"error": str(exc)}, status_code=400)
     return {"status": intake.status, "intake_id": intake.id}
+
+
+# ── Region annotation (§2) ────────────────────────────────────────────────────
+
+
+class SetRegionsRequest(BaseModel):
+    tenant_id: str = "default"
+    regions: List[Dict[str, Any]] = []
+
+
+@router.post("/admin/studio/detection-points/{detection_point_id}/regions")
+def studio_set_regions(
+    detection_point_id: str,
+    body: SetRegionsRequest,
+    db: Session = Depends(get_db_dep),
+):
+    """Spatially ground a detection point on one or more standard photos.
+
+    Real caller for :func:`~src.qc_model.studio.regions.set_detection_point_regions`
+    -- previously only exercised by tests. Fail-closed: an out-of-bounds box, an
+    unknown ``image_id``, or an extra key rejects the whole request (§2), and
+    the detection point's regions are left untouched.
+    """
+    try:
+        dp = set_detection_point_regions(
+            db,
+            detection_point_id=detection_point_id,
+            regions=body.regions,
+            tenant_id=body.tenant_id,
+        )
+    except InvalidRegion as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    sku = db.query(QCSkuItem).filter_by(id=dp.sku_id, tenant_id=body.tenant_id).first()
+    return {
+        "status": "regions_saved",
+        "detection_point_id": dp.id,
+        "regions": dp.regions_json or [],
+        "sku": studio.sku_summary(db, sku) if sku else None,
+    }
 
 
 # ── Publish signed L2 bundle (§5.6) ───────────────────────────────────────────
