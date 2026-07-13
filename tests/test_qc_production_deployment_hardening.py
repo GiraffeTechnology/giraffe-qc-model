@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import uuid
 from pathlib import Path
 
@@ -419,7 +420,10 @@ def test_migration_up_down_up(tmp_path):
     env = {**os.environ, "QC_DB_URL": f"sqlite:///{db_file}"}
 
     def alembic(*args):
-        return subprocess.run(["alembic", *args], cwd=REPO_ROOT, env=env,
+        # Invoke via the current interpreter so the test does not depend on the
+        # `alembic` console script being resolvable on the caller's PATH.
+        return subprocess.run([sys.executable, "-m", "alembic", *args],
+                              cwd=REPO_ROOT, env=env,
                               capture_output=True, text=True)
 
     assert alembic("upgrade", "head").returncode == 0
