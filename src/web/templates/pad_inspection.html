@@ -1,32 +1,33 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ current_language() }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QC Pad Inspection</title>
+    <title>{{ t('pad.inspection.title') }}</title>
     <link rel="manifest" href="/static/pad_manifest.json">
     <link rel="stylesheet" href="/static/pad_ui.css">
 </head>
 <body class="inspection-page">
     <div id="orientation-overlay">
         <div class="orientation-message">
-            <p>Please rotate your device to landscape mode to use QC Pad.</p>
+            <p>{{ t('pad.orientation') }}</p>
         </div>
     </div>
     <header class="pad-header">
-        <a href="/pad" class="btn-back">&larr; Back to Workspace</a>
-        <h2>Inspection Job #{{ job_id }}</h2>
+        <a href="/pad" class="btn-back">&larr; {{ t('pad.inspection.back') }}</a>
+        <h2>{{ t('pad.inspection.heading').format(id=job_id) }}</h2>
+        {% include "_language_switch.html" %}
     </header>
     <main class="inspection-main">
         <section class="inspection-checkpoints">
-            <h3>Checkpoints</h3>
+            <h3>{{ t('pad.inspection.checkpoints') }}</h3>
             <div id="checkpoints-list">
-                <p class="placeholder-text">Loading checkpoints...</p>
+                <p class="placeholder-text">{{ t('pad.inspection.loading') }}</p>
             </div>
         </section>
         <section class="inspection-actions">
-            <button class="btn-primary qc-action-btn" id="submit-results-btn">Submit Results</button>
-            <a href="/pad/inspections/{{ job_id }}/report" class="btn-secondary">View Report</a>
+            <button class="btn-primary qc-action-btn" id="submit-results-btn">{{ t('pad.inspection.submit') }}</button>
+            <a href="/pad/inspections/{{ job_id }}/report" class="btn-secondary">{{ t('pad.inspection.view_report') }}</a>
         </section>
     </main>
     <script src="/static/pad_orientation.js"></script>

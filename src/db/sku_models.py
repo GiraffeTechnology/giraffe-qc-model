@@ -6,6 +6,21 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.models import Base, _utcnow
 
+# PRD SKU lifecycle states, exposed by the Studio status filter (WS2) and the
+# Pad Administrator module (WS3). The column is a free String(32): rows written
+# before this lifecycle landed may still carry the legacy values
+# "active" | "inactive" | "archived"; migrating those values belongs to the
+# lifecycle business-logic work, not the UI enum swap.
+SKU_LIFECYCLE_STATES = (
+    "draft",
+    "needs_information",
+    "ready_for_review",
+    "confirmed",
+    "published",
+    "installed",
+    "needs_requalification",
+)
+
 
 class QCSkuItem(Base):
     """SKU / sample master entry — the operator-facing item catalog."""
@@ -20,7 +35,7 @@ class QCSkuItem(Base):
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     category: Mapped[Optional[str]] = mapped_column(String(128))
     description: Mapped[Optional[str]] = mapped_column(Text)
-    # "active" | "inactive" | "archived"
+    # One of SKU_LIFECYCLE_STATES (legacy rows: "active" | "inactive" | "archived")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

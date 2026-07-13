@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from src.api.admin_auth import is_admin_role, login_admin, logout_admin
 from src.api.deps import get_db_dep
 from src.pad.session_service import authenticate_operator
-from src.web.i18n import install_i18n
+from src.web.i18n import install_i18n, resolve_language, translate
 
 router = APIRouter(tags=["admin-auth"])
 
@@ -54,7 +54,8 @@ def login_submit(
         return templates.TemplateResponse(
             request,
             "admin_login.html",
-            {"error": "Invalid credentials or insufficient role", "next": _safe_next(next)},
+            {"error": translate("admin.login.invalid", resolve_language(request)),
+             "next": _safe_next(next)},
             status_code=401,
         )
     login_admin(request, operator)

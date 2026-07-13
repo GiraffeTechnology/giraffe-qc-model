@@ -67,8 +67,12 @@ def _now() -> datetime:
 
 @router.get("/admin/studio", response_class=HTMLResponse)
 def studio_page(request: Request, tenant_id: str = "default"):
+    from src.db.sku_models import SKU_LIFECYCLE_STATES
+
     return templates.TemplateResponse(
-        request, "admin_studio.html", {"tenant_id": tenant_id}
+        request,
+        "admin_studio.html",
+        {"tenant_id": tenant_id, "sku_lifecycle_states": list(SKU_LIFECYCLE_STATES)},
     )
 
 

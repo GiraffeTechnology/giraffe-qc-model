@@ -75,8 +75,9 @@ def test_welcome_shows_icon_and_both_branches(client):
     resp = client.get("/")
     assert resp.status_code == 200
     body = resp.text
-    # Giraffe icon present.
-    assert "🦒" in body
+    # Brand icon asset present (replaces the old 🦒 emoji).
+    assert "🦒" not in body
+    assert 'src="/static/giraffe-qc-model-icon.png"' in body
     # Both branches present and pointing at the right entrypoints.
     assert 'href="/admin"' in body
     assert 'href="/pad/login"' in body
@@ -183,6 +184,124 @@ def test_selection_persists_and_overrides_device_language(client):
     followup = client.get("/admin", headers={"Accept-Language": "ja"})
     assert '<html lang="zh-CN">' in followup.text
     assert translate("admin.home.title", "zh-CN") in followup.text
+
+
+def test_admin_studio_uses_persisted_language_for_static_and_js_copy(client):
+    client.cookies.set(LANGUAGE_COOKIE, "zh-CN")
+    resp = client.get("/admin/studio", headers={"Accept-Language": "en"})
+    assert resp.status_code == 200
+    body = resp.text
+    assert '<html lang="zh-CN">' in body
+    assert translate("studio.header.title", "zh-CN") in body
+    assert translate("studio.search.placeholder", "zh-CN") in body
+    assert translate("studio.empty.standard", "zh-CN") in body
+    assert "welcome:" in body
+    # Jinja's tojson safely escapes non-ASCII text in the injected JS payload.
+    assert "\\u6b22\\u8fce\\u8fdb\\u5165\\u7ba1\\u7406\\u5de5\\u4f5c\\u5ba4" in body
+    assert "Admin Studio" not in body
+    assert "Create a SKU or describe QC requirements" not in body
+
+
+def test_admin_studio_status_filter_uses_prd_lifecycle_states(client):
+    from src.db.sku_models import SKU_LIFECYCLE_STATES
+
+    client.cookies.clear()  # isolate from language cookies set by other tests
+    resp = client.get("/admin/studio")
+    body = resp.text
+    for state in SKU_LIFECYCLE_STATES:
+        assert f'value="{state}"' in body, state
+        assert translate(f"studio.status.{state}", "en") in body, state
+    # Legacy statuses are no longer offered by the filter.
+    for legacy in ("active", "inactive", "archived"):
+        assert f'<option value="{legacy}">' not in body, legacy
+
+
+def test_admin_login_page_i18n(client):
+    client.cookies.set(LANGUAGE_COOKIE, "zh-CN")
+    resp = client.get("/admin/login")
+    body = resp.text
+    assert '<html lang="zh-CN">' in body
+    assert translate("admin.login.heading", "zh-CN") in body
+    assert translate("admin.login.username", "zh-CN") in body
+    assert translate("admin.login.submit", "zh-CN") in body
+    assert "lang-switch" in body  # global language switch present
+    assert "Admin sign in" not in body
+
+
+def test_pad_login_page_i18n(client):
+    for lang in ("en", "zh-CN", "ja"):
+        client.cookies.set(LANGUAGE_COOKIE, lang)
+        resp = client.get("/pad/login")
+        body = resp.text
+        assert f'<html lang="{lang}">' in body
+        assert translate("pad.login.subtitle", lang) in body
+        assert translate("pad.login.username", lang) in body
+        assert translate("pad.login.submit", lang) in body
+        assert translate("pad.orientation", lang) in body
+        assert "lang-switch" in body
+    client.cookies.set(LANGUAGE_COOKIE, "zh-CN")
+    body = client.get("/pad/login").text
+    assert "Factory Quality Control" not in body
+    assert "Please rotate your device" not in body
+
+
+def _pad_login(client):
+    # seed_demo_operators runs inside the login POST; password == username.
+    resp = client.post(
+        "/pad/login",
+        data={"username": "operator_en", "password": "operator_en", "tenant_id": "demo"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+
+
+def test_pad_workspace_inspection_report_i18n(client):
+    _pad_login(client)
+    client.cookies.set(LANGUAGE_COOKIE, "zh-CN")
+
+    body = client.get("/pad").text
+    assert '<html lang="zh-CN">' in body
+    assert translate("pad.workspace.chat_placeholder", "zh-CN") in body
+    assert translate("pad.workspace.send", "zh-CN") in body
+    assert translate("pad.workspace.cards_placeholder", "zh-CN") in body
+    assert "GIRAFFE_PAD_I18N" in body
+    assert "Type your message" not in body
+    assert "Action cards will appear here" not in body
+
+    body = client.get("/pad/inspections/1").text
+    assert '<html lang="zh-CN">' in body
+    assert translate("pad.inspection.checkpoints", "zh-CN") in body
+    assert translate("pad.inspection.submit", "zh-CN") in body
+    assert translate("pad.inspection.heading", "zh-CN").format(id=1) in body
+    assert "Submit Results" not in body
+
+    body = client.get("/pad/inspections/1/report").text
+    assert '<html lang="zh-CN">' in body
+    assert translate("pad.report.summary", "zh-CN") in body
+    assert translate("pad.report.legend.pass", "zh-CN") in body
+    assert translate("pad.report.heading", "zh-CN").format(id=1) in body
+    assert "Report Summary" not in body
+
+
+def test_pad_language_api_syncs_shell_cookie(client):
+    client.cookies.clear()  # isolate from language cookies set by other tests
+    _pad_login(client)
+    resp = client.post("/api/v1/pad/language", json={"language": "ja"})
+    assert resp.status_code == 200
+    assert resp.cookies.get(LANGUAGE_COOKIE) == "ja"
+    # Page chrome follows the operator's preference after reload.
+    assert '<html lang="ja">' in client.get("/pad").text
+
+
+def test_pad_login_invalid_error_is_localized(client):
+    client.cookies.set(LANGUAGE_COOKIE, "ja")
+    resp = client.post(
+        "/pad/login",
+        data={"username": "nobody", "password": "wrong", "tenant_id": "demo"},
+    )
+    assert resp.status_code == 401
+    assert translate("pad.login.invalid", "ja") in resp.text
+    assert "Invalid credentials" not in resp.text
 
 
 def test_set_language_guards_against_open_redirect(client):

@@ -118,7 +118,7 @@ body.shell-body {
   padding: 24px;
   max-width: 640px;
 }
-.welcome__icon { font-size: 72px; line-height: 1; }
+.welcome__icon { font-size: 72px; line-height: 1; width: 72px; height: 72px; object-fit: contain; }
 .welcome__title { margin: 12px 0 4px; font-size: 28px; }
 .welcome__tagline { margin: 0 0 28px; color: var(--muted); font-size: 15px; }
 .welcome__branches {

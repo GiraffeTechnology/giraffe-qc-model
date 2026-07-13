@@ -1,38 +1,41 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ current_language() }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QC Pad Login</title>
+    <title>{{ t('pad.login.title') }}</title>
     <link rel="manifest" href="/static/pad_manifest.json">
     <link rel="stylesheet" href="/static/pad_ui.css">
 </head>
 <body class="login-page">
     <div id="orientation-overlay">
         <div class="orientation-message">
-            <p>Please rotate your device to landscape mode to use QC Pad.</p>
+            <p>{{ t('pad.orientation') }}</p>
         </div>
     </div>
     <div class="login-container">
         <div class="login-card">
+            <div class="login-lang" style="display: flex; justify-content: flex-end;">
+                {% include "_language_switch.html" %}
+            </div>
             <div class="login-header">
-                <h1>Giraffe QC Pad</h1>
-                <p>Factory Quality Control</p>
+                <h1>{{ t('pad.brand') }}</h1>
+                <p>{{ t('pad.login.subtitle') }}</p>
             </div>
             {% if error %}
             <div class="error-banner">{{ error }}</div>
             {% endif %}
             <form method="POST" action="/pad/login" class="login-form">
                 <div class="form-group">
-                    <label for="username">Username</label>
+                    <label for="username">{{ t('pad.login.username') }}</label>
                     <input type="text" id="username" name="username" required autocomplete="username">
                 </div>
                 <div class="form-group">
-                    <label for="password">Password</label>
+                    <label for="password">{{ t('pad.login.password') }}</label>
                     <input type="password" id="password" name="password" required autocomplete="current-password">
                 </div>
                 <input type="hidden" name="tenant_id" value="demo">
-                <button type="submit" class="btn-primary">Login</button>
+                <button type="submit" class="btn-primary">{{ t('pad.login.submit') }}</button>
             </form>
         </div>
     </div>
