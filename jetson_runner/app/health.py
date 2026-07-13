@@ -19,6 +19,10 @@ def collect_health(*, mock: bool = True, model_loaded: bool = True, last_inferen
             "disk_free_percent": 72.0,
             "last_inference_latency_ms": last_inference_latency_ms,
             "readiness_state": C.READY if model_loaded else C.CONNECTING,
+            # Explicit per docs/api-contracts/jetson-runner-api.md §4 — the
+            # Pad must be able to tell mock health from real health, not just
+            # infer it from other fields.
+            "mock": True,
         }
     try:  # pragma: no cover - real hardware path, not exercised in CI
         from jtop import jtop  # type: ignore
@@ -33,6 +37,7 @@ def collect_health(*, mock: bool = True, model_loaded: bool = True, last_inferen
                 "disk_free_percent": None,
                 "last_inference_latency_ms": last_inference_latency_ms,
                 "readiness_state": C.READY if model_loaded else C.CONNECTING,
+                "mock": False,
             }
     except Exception:
-        return {"service_up": True, "model_loaded": model_loaded, "readiness_state": C.CONNECTING}
+        return {"service_up": True, "model_loaded": model_loaded, "readiness_state": C.CONNECTING, "mock": False}

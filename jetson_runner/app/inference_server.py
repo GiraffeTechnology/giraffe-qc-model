@@ -24,11 +24,12 @@ def _deterministic_result(point_code: str) -> str:
     return _RESULT_CYCLE[h % len(_RESULT_CYCLE)]
 
 
-def run_inference(payload: dict) -> dict:
-    """Validate + run mock inference. Returns the §4 response dict.
+def infer(payload: dict) -> InferenceResponse:
+    """Validate + run mock inference. Returns the typed §4 response.
 
     Raises ``pydantic.ValidationError`` on a malformed request (the caller maps
-    that to a rejected request).
+    that to a rejected request). Shared core for both the legacy dict-in/
+    dict-out ``run_inference`` below and ``adapters.mock_adapter``.
     """
     req: InferenceRequest = validate_request(payload)
     results = []
@@ -45,4 +46,13 @@ def run_inference(payload: dict) -> dict:
                 evidence=f"mock qc-model inference for {dp.point_code} ({dp.label or 'point'})",
             )
         )
-    return InferenceResponse(job_id=req.job_id, per_point_results=results).model_dump()
+    return InferenceResponse(job_id=req.job_id, per_point_results=results)
+
+
+def run_inference(payload: dict) -> dict:
+    """Legacy dict-in/dict-out entrypoint, kept for direct callers/tests.
+
+    Raises ``pydantic.ValidationError`` on a malformed request (the caller maps
+    that to a rejected request).
+    """
+    return infer(payload).model_dump()

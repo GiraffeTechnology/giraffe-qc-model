@@ -1,6 +1,13 @@
 # Jetson runner runtime deps. Mock mode needs only fastapi+uvicorn for the LAN
 # endpoint; the contract/identity helpers are imported from the qc-model package.
-# A real Xavier NX build additionally installs the qc-model VLM runtime and
-# jetson-stats (jtop) for health — intentionally NOT required for CI/mock mode.
 fastapi>=0.115
 uvicorn[standard]>=0.30
+
+# Real-adapter deps (JETSON_MOCK_MODE=false). The llama.cpp adapter
+# (adapters/llama_cpp_adapter.py) talks to a separately-run llama-server
+# process over loopback HTTP, so this process only needs an HTTP client --
+# not a llama.cpp Python binding (see the adapter module docstring for why:
+# no cp311 aarch64/CUDA wheel exists for this hardware). jetson-stats (jtop)
+# is optional for health telemetry (temperature/throttling); its absence is
+# handled gracefully, not required for startup.
+httpx>=0.27
