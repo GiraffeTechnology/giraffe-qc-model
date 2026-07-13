@@ -20,6 +20,12 @@
     return text;
   }
 
+  // PRD lifecycle label for a stored status; legacy values (active/inactive/
+  // archived) have no translation and render raw so they stay recognizable.
+  function statusLabel(status) {
+    return (strings.statusLabels || {})[status] || status;
+  }
+
   function api(path, opts) {
     return fetch(path, opts).then(async (r) => {
       const data = await r.json().catch(() => ({}));
@@ -67,7 +73,7 @@
       li.innerHTML =
         `<div class="sku-item-number">${esc(sku.item_number)}</div>` +
         `<div class="sku-name">${esc(sku.name)}</div>` +
-        `<div class="sku-meta">${esc(sku.status)} · ${esc(sku.standard_status)}</div>`;
+        `<div class="sku-meta">${esc(statusLabel(sku.status))} · ${esc(sku.standard_status)}</div>`;
       li.addEventListener("click", () => selectSku(sku.id));
       skuList.appendChild(li);
     });

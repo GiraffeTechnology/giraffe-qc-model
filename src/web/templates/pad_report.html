@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ current_language() }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QC Pad Report</title>
+    <title>{{ t('pad.report.title') }}</title>
     <link rel="manifest" href="/static/pad_manifest.json">
     <link rel="stylesheet" href="/static/pad_ui.css">
     <style>
@@ -15,24 +15,25 @@
 <body class="report-page">
     <div id="orientation-overlay">
         <div class="orientation-message">
-            <p>Please rotate your device to landscape mode to use QC Pad.</p>
+            <p>{{ t('pad.orientation') }}</p>
         </div>
     </div>
     <header class="pad-header">
-        <a href="/pad/inspections/{{ job_id }}" class="btn-back">&larr; Back to Inspection</a>
-        <h2>Inspection Report #{{ job_id }}</h2>
+        <a href="/pad/inspections/{{ job_id }}" class="btn-back">&larr; {{ t('pad.report.back') }}</a>
+        <h2>{{ t('pad.report.heading').format(id=job_id) }}</h2>
+        {% include "_language_switch.html" %}
     </header>
     <main class="report-main">
         <section class="report-summary">
-            <h3>Report Summary</h3>
+            <h3>{{ t('pad.report.summary') }}</h3>
             <div id="report-content">
-                <p class="placeholder-text">Loading report data...</p>
+                <p class="placeholder-text">{{ t('pad.report.loading') }}</p>
             </div>
         </section>
         <div class="report-verdicts">
-            <span class="verdict-pass">PASS = Green</span>
-            <span class="verdict-fail">FAIL = Red</span>
-            <span class="verdict-review_required">REVIEW REQUIRED = Amber</span>
+            <span class="verdict-pass">{{ t('pad.report.legend.pass') }}</span>
+            <span class="verdict-fail">{{ t('pad.report.legend.fail') }}</span>
+            <span class="verdict-review_required">{{ t('pad.report.legend.review') }}</span>
         </div>
     </main>
     <script src="/static/pad_orientation.js"></script>

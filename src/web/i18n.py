@@ -319,20 +319,42 @@ _STRINGS = {
         LANG_ZH: "全部状态",
         LANG_JA: "すべての状態",
     },
-    "studio.status.active": {
-        LANG_EN: "Active",
-        LANG_ZH: "启用",
-        LANG_JA: "有効",
+    # PRD SKU lifecycle states (§ SKU lifecycle) — keys must stay aligned with
+    # src.db.sku_models.SKU_LIFECYCLE_STATES.
+    "studio.status.draft": {
+        LANG_EN: "Draft",
+        LANG_ZH: "草稿",
+        LANG_JA: "下書き",
     },
-    "studio.status.inactive": {
-        LANG_EN: "Inactive",
-        LANG_ZH: "停用",
-        LANG_JA: "無効",
+    "studio.status.needs_information": {
+        LANG_EN: "Needs Information",
+        LANG_ZH: "待补充信息",
+        LANG_JA: "情報不足",
     },
-    "studio.status.archived": {
-        LANG_EN: "Archived",
-        LANG_ZH: "已归档",
-        LANG_JA: "アーカイブ済み",
+    "studio.status.ready_for_review": {
+        LANG_EN: "Ready for Review",
+        LANG_ZH: "待审核",
+        LANG_JA: "レビュー待ち",
+    },
+    "studio.status.confirmed": {
+        LANG_EN: "Confirmed",
+        LANG_ZH: "已确认",
+        LANG_JA: "確認済み",
+    },
+    "studio.status.published": {
+        LANG_EN: "Published",
+        LANG_ZH: "已发布",
+        LANG_JA: "公開済み",
+    },
+    "studio.status.installed": {
+        LANG_EN: "Installed",
+        LANG_ZH: "已安装",
+        LANG_JA: "インストール済み",
+    },
+    "studio.status.needs_requalification": {
+        LANG_EN: "Needs Requalification",
+        LANG_ZH: "需重新认证",
+        LANG_JA: "再認定が必要",
     },
     "studio.center.title": {
         LANG_EN: "Conversation",
@@ -498,6 +520,288 @@ _STRINGS = {
         LANG_EN: "Welcome to Admin Studio. Create a SKU (e.g. \"create sku FLW-001 Flower Brooch\") or select one on the left to train its QC standard.",
         LANG_ZH: "欢迎进入管理工作室。创建一个 SKU（例如“create sku FLW-001 Flower Brooch”），或在左侧选择一个 SKU 来训练它的质检标准。",
         LANG_JA: "管理スタジオへようこそ。SKU（例: \"create sku FLW-001 Flower Brooch\"）を作成するか、左側で選択して QC 標準を学習させます。",
+    },
+    # Admin login
+    "admin.login.title": {
+        LANG_EN: "Sign in — QC Admin",
+        LANG_ZH: "登录 — 质检管理",
+        LANG_JA: "サインイン — QC 管理",
+    },
+    "admin.login.heading": {
+        LANG_EN: "Giraffe QC — Admin sign in",
+        LANG_ZH: "长颈鹿质检 — 管理员登录",
+        LANG_JA: "ジラフ QC — 管理者サインイン",
+    },
+    "admin.login.username": {
+        LANG_EN: "Username",
+        LANG_ZH: "用户名",
+        LANG_JA: "ユーザー名",
+    },
+    "admin.login.password": {
+        LANG_EN: "Password",
+        LANG_ZH: "密码",
+        LANG_JA: "パスワード",
+    },
+    "admin.login.tenant": {
+        LANG_EN: "Tenant",
+        LANG_ZH: "租户",
+        LANG_JA: "テナント",
+    },
+    "admin.login.submit": {
+        LANG_EN: "Sign in",
+        LANG_ZH: "登录",
+        LANG_JA: "サインイン",
+    },
+    "admin.login.invalid": {
+        LANG_EN: "Invalid credentials or insufficient role",
+        LANG_ZH: "凭据无效或权限不足",
+        LANG_JA: "認証情報が無効か、権限が不足しています",
+    },
+    # Pad (legacy web pages) — shared
+    "pad.brand": {
+        LANG_EN: "Giraffe QC Pad",
+        LANG_ZH: "长颈鹿质检 Pad",
+        LANG_JA: "ジラフ QC Pad",
+    },
+    "pad.orientation": {
+        LANG_EN: "Please rotate your device to landscape mode to use QC Pad.",
+        LANG_ZH: "请将设备旋转至横屏模式以使用质检 Pad。",
+        LANG_JA: "QC Pad を使用するには、デバイスを横向きにしてください。",
+    },
+    # Pad login
+    "pad.login.title": {
+        LANG_EN: "QC Pad Login",
+        LANG_ZH: "质检 Pad 登录",
+        LANG_JA: "QC Pad ログイン",
+    },
+    "pad.login.subtitle": {
+        LANG_EN: "Factory Quality Control",
+        LANG_ZH: "工厂质量控制",
+        LANG_JA: "工場品質管理",
+    },
+    "pad.login.username": {
+        LANG_EN: "Username",
+        LANG_ZH: "用户名",
+        LANG_JA: "ユーザー名",
+    },
+    "pad.login.password": {
+        LANG_EN: "Password",
+        LANG_ZH: "密码",
+        LANG_JA: "パスワード",
+    },
+    "pad.login.submit": {
+        LANG_EN: "Login",
+        LANG_ZH: "登录",
+        LANG_JA: "ログイン",
+    },
+    "pad.login.invalid": {
+        LANG_EN: "Invalid credentials",
+        LANG_ZH: "凭据无效",
+        LANG_JA: "認証情報が無効です",
+    },
+    # Pad workspace
+    "pad.workspace.title": {
+        LANG_EN: "QC Pad Workspace",
+        LANG_ZH: "质检 Pad 工作台",
+        LANG_JA: "QC Pad ワークスペース",
+    },
+    "pad.workspace.logout": {
+        LANG_EN: "Logout",
+        LANG_ZH: "退出登录",
+        LANG_JA: "ログアウト",
+    },
+    "pad.workspace.language": {
+        LANG_EN: "Language:",
+        LANG_ZH: "语言：",
+        LANG_JA: "言語:",
+    },
+    "pad.workspace.chat_placeholder": {
+        LANG_EN: "Type your message (English, Chinese or Japanese)...",
+        LANG_ZH: "输入消息（支持中文、英文或日文）...",
+        LANG_JA: "メッセージを入力（日本語・英語・中国語対応）...",
+    },
+    "pad.workspace.send": {
+        LANG_EN: "Send",
+        LANG_ZH: "发送",
+        LANG_JA: "送信",
+    },
+    "pad.workspace.voice": {
+        LANG_EN: "Voice",
+        LANG_ZH: "语音",
+        LANG_JA: "音声",
+    },
+    "pad.workspace.image": {
+        LANG_EN: "Image",
+        LANG_ZH: "图片",
+        LANG_JA: "画像",
+    },
+    "pad.workspace.cards_placeholder": {
+        LANG_EN: "Action cards will appear here after sending a message.",
+        LANG_ZH: "发送消息后，操作卡片将显示在这里。",
+        LANG_JA: "メッセージを送信すると、ここにアクションカードが表示されます。",
+    },
+    # Pad chat runtime (JS)
+    "pad.js.confirm_standard": {
+        LANG_EN: "Confirm Standard",
+        LANG_ZH: "确认标准",
+        LANG_JA: "標準を確認",
+    },
+    "pad.js.edit": {
+        LANG_EN: "Edit",
+        LANG_ZH: "编辑",
+        LANG_JA: "編集",
+    },
+    "pad.js.reject": {
+        LANG_EN: "Reject",
+        LANG_ZH: "拒绝",
+        LANG_JA: "却下",
+    },
+    "pad.js.confirm": {
+        LANG_EN: "Confirm",
+        LANG_ZH: "确认",
+        LANG_JA: "確認",
+    },
+    "pad.js.standard_activated": {
+        LANG_EN: "✓ Standard activated",
+        LANG_ZH: "✓ 标准已生效",
+        LANG_JA: "✓ 標準が有効になりました",
+    },
+    "pad.js.voice_transcript_hint": {
+        LANG_EN: "Voice transcript — edit before sending:",
+        LANG_ZH: "语音转写 — 发送前可编辑：",
+        LANG_JA: "音声の書き起こし — 送信前に編集できます:",
+    },
+    "pad.js.send_transcript": {
+        LANG_EN: "Send Transcript",
+        LANG_ZH: "发送转写内容",
+        LANG_JA: "書き起こしを送信",
+    },
+    "pad.js.stop": {
+        LANG_EN: "Stop",
+        LANG_ZH: "停止",
+        LANG_JA: "停止",
+    },
+    "pad.js.standard_confirmation_required": {
+        LANG_EN: "Standard Confirmation Required",
+        LANG_ZH: "需要确认标准",
+        LANG_JA: "標準の確認が必要です",
+    },
+    "pad.js.source_label": {
+        LANG_EN: "Source:",
+        LANG_ZH: "来源：",
+        LANG_JA: "ソース:",
+    },
+    "pad.js.standard_rejected": {
+        LANG_EN: "Standard rejected.",
+        LANG_ZH: "已拒绝该标准。",
+        LANG_JA: "標準を却下しました。",
+    },
+    "pad.js.no_reply": {
+        LANG_EN: "No reply",
+        LANG_ZH: "无回复",
+        LANG_JA: "応答がありません",
+    },
+    "pad.js.error_prefix": {
+        LANG_EN: "Error:",
+        LANG_ZH: "错误：",
+        LANG_JA: "エラー:",
+    },
+    "pad.js.standard_confirmed_prefix": {
+        LANG_EN: "Standard confirmed. Revision ID:",
+        LANG_ZH: "标准已确认。修订 ID：",
+        LANG_JA: "標準を確認しました。リビジョン ID:",
+    },
+    "pad.js.confirm_failed_prefix": {
+        LANG_EN: "Confirmation failed:",
+        LANG_ZH: "确认失败：",
+        LANG_JA: "確認に失敗しました:",
+    },
+    "pad.js.unknown_error": {
+        LANG_EN: "unknown error",
+        LANG_ZH: "未知错误",
+        LANG_JA: "不明なエラー",
+    },
+    "pad.js.voice_not_supported": {
+        LANG_EN: "Voice input not supported in this browser.",
+        LANG_ZH: "当前浏览器不支持语音输入。",
+        LANG_JA: "このブラウザは音声入力に対応していません。",
+    },
+    # Pad inspection
+    "pad.inspection.title": {
+        LANG_EN: "QC Pad Inspection",
+        LANG_ZH: "质检 Pad 检验",
+        LANG_JA: "QC Pad 検査",
+    },
+    "pad.inspection.back": {
+        LANG_EN: "Back to Workspace",
+        LANG_ZH: "返回工作台",
+        LANG_JA: "ワークスペースへ戻る",
+    },
+    "pad.inspection.heading": {
+        LANG_EN: "Inspection Job #{id}",
+        LANG_ZH: "检验任务 #{id}",
+        LANG_JA: "検査ジョブ #{id}",
+    },
+    "pad.inspection.checkpoints": {
+        LANG_EN: "Checkpoints",
+        LANG_ZH: "检查点",
+        LANG_JA: "チェックポイント",
+    },
+    "pad.inspection.loading": {
+        LANG_EN: "Loading checkpoints...",
+        LANG_ZH: "正在加载检查点...",
+        LANG_JA: "チェックポイントを読み込み中...",
+    },
+    "pad.inspection.submit": {
+        LANG_EN: "Submit Results",
+        LANG_ZH: "提交结果",
+        LANG_JA: "結果を送信",
+    },
+    "pad.inspection.view_report": {
+        LANG_EN: "View Report",
+        LANG_ZH: "查看报告",
+        LANG_JA: "レポートを表示",
+    },
+    # Pad report
+    "pad.report.title": {
+        LANG_EN: "QC Pad Report",
+        LANG_ZH: "质检 Pad 报告",
+        LANG_JA: "QC Pad レポート",
+    },
+    "pad.report.back": {
+        LANG_EN: "Back to Inspection",
+        LANG_ZH: "返回检验",
+        LANG_JA: "検査へ戻る",
+    },
+    "pad.report.heading": {
+        LANG_EN: "Inspection Report #{id}",
+        LANG_ZH: "检验报告 #{id}",
+        LANG_JA: "検査レポート #{id}",
+    },
+    "pad.report.summary": {
+        LANG_EN: "Report Summary",
+        LANG_ZH: "报告摘要",
+        LANG_JA: "レポート概要",
+    },
+    "pad.report.loading": {
+        LANG_EN: "Loading report data...",
+        LANG_ZH: "正在加载报告数据...",
+        LANG_JA: "レポートデータを読み込み中...",
+    },
+    "pad.report.legend.pass": {
+        LANG_EN: "PASS = Green",
+        LANG_ZH: "合格 = 绿色",
+        LANG_JA: "合格 = 緑",
+    },
+    "pad.report.legend.fail": {
+        LANG_EN: "FAIL = Red",
+        LANG_ZH: "不合格 = 红色",
+        LANG_JA: "不合格 = 赤",
+    },
+    "pad.report.legend.review": {
+        LANG_EN: "REVIEW REQUIRED = Amber",
+        LANG_ZH: "需复核 = 琥珀色",
+        LANG_JA: "要レビュー = 琥珀色",
     },
 }
 

@@ -8,7 +8,7 @@
 </head>
 <body data-tenant="{{ tenant_id }}">
   <header class="studio-header">
-    <a href="/admin/samples" class="brand">Giraffe QC</a>
+    <a href="/admin/samples" class="brand">{{ t('app.title') }}</a>
     <span class="studio-title">{{ t('studio.header.title') }}</span>
     <nav class="studio-nav">
       <a href="/admin/qc-model">{{ t('studio.nav.qc_model') }}</a>
@@ -29,9 +29,9 @@
         <input type="search" id="sku-search" placeholder="{{ t('studio.search.placeholder') }}" autocomplete="off">
         <select id="sku-status-filter">
           <option value="">{{ t('studio.status.all') }}</option>
-          <option value="active">{{ t('studio.status.active') }}</option>
-          <option value="inactive">{{ t('studio.status.inactive') }}</option>
-          <option value="archived">{{ t('studio.status.archived') }}</option>
+          {% for state in sku_lifecycle_states %}
+          <option value="{{ state }}">{{ t('studio.status.' + state) }}</option>
+          {% endfor %}
         </select>
       </div>
       <ul id="sku-list" class="sku-list"></ul>
@@ -126,7 +126,12 @@
       photoUploaded: {{ t('studio.js.photo_uploaded') | tojson }},
       uploadFailed: {{ t('studio.js.upload_failed') | tojson }},
       voiceDisabled: {{ t('studio.js.voice_disabled') | tojson }},
-      welcome: {{ t('studio.js.welcome') | tojson }}
+      welcome: {{ t('studio.js.welcome') | tojson }},
+      statusLabels: {
+        {% for state in sku_lifecycle_states %}
+        {{ state | tojson }}: {{ t('studio.status.' + state) | tojson }}{{ "," if not loop.last }}
+        {% endfor %}
+      }
     };
   </script>
   <script src="/static/admin_studio.js"></script>

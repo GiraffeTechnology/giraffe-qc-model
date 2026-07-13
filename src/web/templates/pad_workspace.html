@@ -1,27 +1,27 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ current_language() }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QC Pad Workspace</title>
+    <title>{{ t('pad.workspace.title') }}</title>
     <link rel="manifest" href="/static/pad_manifest.json">
     <link rel="stylesheet" href="/static/pad_ui.css">
 </head>
 <body class="workspace-page">
     <div id="orientation-overlay">
         <div class="orientation-message">
-            <p>Please rotate your device to landscape mode to use QC Pad.</p>
+            <p>{{ t('pad.orientation') }}</p>
         </div>
     </div>
     <header class="pad-header">
         <div class="pad-header-left">
-            <span class="pad-logo">Giraffe QC Pad</span>
+            <span class="pad-logo">{{ t('pad.brand') }}</span>
         </div>
         <div class="pad-header-right">
             <span class="operator-name">{{ operator.display_name }}</span>
             <span class="operator-lang">[{{ preferred_language }}]</span>
             <form method="POST" action="/pad/logout" style="display:inline">
-                <button type="submit" class="btn-logout">Logout</button>
+                <button type="submit" class="btn-logout">{{ t('pad.workspace.logout') }}</button>
             </form>
         </div>
     </header>
@@ -31,20 +31,20 @@
             <div class="chat-input-area">
                 <textarea
                     id="chat-input"
-                    placeholder="Type your message (English, Chinese or Japanese)..."
+                    placeholder="{{ t('pad.workspace.chat_placeholder') }}"
                     rows="3"
                 ></textarea>
                 <div class="chat-actions">
-                    <button id="send-btn" class="btn-primary qc-action-btn">Send</button>
-                    <button id="voice-btn" class="btn-secondary qc-action-btn">Voice</button>
-                    <label class="btn-secondary qc-action-btn" for="image-upload">Image</label>
+                    <button id="send-btn" class="btn-primary qc-action-btn">{{ t('pad.workspace.send') }}</button>
+                    <button id="voice-btn" class="btn-secondary qc-action-btn">{{ t('pad.workspace.voice') }}</button>
+                    <label class="btn-secondary qc-action-btn" for="image-upload">{{ t('pad.workspace.image') }}</label>
                     <input type="file" id="image-upload" accept="image/*" style="display:none">
                 </div>
             </div>
         </section>
         <section class="info-panel">
             <div class="language-selector">
-                <label>Language:</label>
+                <label>{{ t('pad.workspace.language') }}</label>
                 <select id="language-select">
                     <option value="en" {% if preferred_language == 'en' %}selected{% endif %}>English</option>
                     <option value="zh-CN" {% if preferred_language == 'zh-CN' %}selected{% endif %}>中文</option>
@@ -52,10 +52,32 @@
                 </select>
             </div>
             <div class="action-cards" id="action-cards">
-                <p class="placeholder-text">Action cards will appear here after sending a message.</p>
+                <p class="placeholder-text">{{ t('pad.workspace.cards_placeholder') }}</p>
             </div>
         </section>
     </main>
+    <script>
+      window.GIRAFFE_PAD_I18N = {
+        confirmStandard: {{ t('pad.js.confirm_standard') | tojson }},
+        edit: {{ t('pad.js.edit') | tojson }},
+        reject: {{ t('pad.js.reject') | tojson }},
+        confirm: {{ t('pad.js.confirm') | tojson }},
+        standardActivated: {{ t('pad.js.standard_activated') | tojson }},
+        voiceTranscriptHint: {{ t('pad.js.voice_transcript_hint') | tojson }},
+        sendTranscript: {{ t('pad.js.send_transcript') | tojson }},
+        stop: {{ t('pad.js.stop') | tojson }},
+        voice: {{ t('pad.workspace.voice') | tojson }},
+        standardConfirmationRequired: {{ t('pad.js.standard_confirmation_required') | tojson }},
+        sourceLabel: {{ t('pad.js.source_label') | tojson }},
+        standardRejected: {{ t('pad.js.standard_rejected') | tojson }},
+        noReply: {{ t('pad.js.no_reply') | tojson }},
+        errorPrefix: {{ t('pad.js.error_prefix') | tojson }},
+        standardConfirmedPrefix: {{ t('pad.js.standard_confirmed_prefix') | tojson }},
+        confirmFailedPrefix: {{ t('pad.js.confirm_failed_prefix') | tojson }},
+        unknownError: {{ t('pad.js.unknown_error') | tojson }},
+        voiceNotSupported: {{ t('pad.js.voice_not_supported') | tojson }}
+      };
+    </script>
     <script src="/static/pad_chat.js"></script>
     <script src="/static/pad_orientation.js"></script>
 </body>

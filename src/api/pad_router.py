@@ -19,9 +19,11 @@ from src.pad.session_service import (
     seed_demo_operators,
     update_preferred_language,
 )
+from src.web.i18n import install_i18n, persist_language, resolve_language, translate
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "web" / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+install_i18n(templates)
 
 router = APIRouter()
 
@@ -58,7 +60,10 @@ async def pad_login_submit(
     operator = authenticate_operator(db, username, password, tenant_id)
     if operator is None:
         return templates.TemplateResponse(
-            request, "pad_login.html", {"error": "Invalid credentials"}, status_code=401
+            request,
+            "pad_login.html",
+            {"error": translate("pad.login.invalid", resolve_language(request))},
+            status_code=401,
         )
     request.session["operator_id"] = str(operator.id)
     request.session["tenant_id"] = tenant_id
@@ -235,7 +240,11 @@ async def pad_set_language(
     operator = update_preferred_language(db, operator_id, language)
     if operator is None:
         return JSONResponse({"error": "operator not found"}, status_code=404)
-    return JSONResponse({"preferred_language": operator.preferred_language})
+    response = JSONResponse({"preferred_language": operator.preferred_language})
+    # Keep the shell language cookie in sync so page chrome (templates) renders
+    # in the operator's language after reload, not just agent replies.
+    persist_language(response, operator.preferred_language)
+    return response
 
 
 @router.post("/api/v1/pad/confirm_standard")

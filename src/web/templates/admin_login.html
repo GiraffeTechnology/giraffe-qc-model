@@ -1,23 +1,26 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ current_language() }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sign in — QC Admin</title>
+  <title>{{ t('admin.login.title') }}</title>
   <link rel="stylesheet" href="/static/shell.css">
 </head>
 <body class="shell-body">
   <main class="shell-main" style="max-width: 420px; margin: 8vh auto;">
-    <h1>Giraffe QC — Admin sign in</h1>
+    <div style="display: flex; justify-content: flex-end;">
+      {% include "_language_switch.html" %}
+    </div>
+    <h1>{{ t('admin.login.heading') }}</h1>
     {% if error %}
     <p role="alert" style="color: #b00020;">{{ error }}</p>
     {% endif %}
     <form method="post" action="/admin/login">
       <input type="hidden" name="next" value="{{ next }}">
-      <p><label>Username<br><input type="text" name="username" required autofocus></label></p>
-      <p><label>Password<br><input type="password" name="password" required></label></p>
-      <p><label>Tenant<br><input type="text" name="tenant_id" value="demo"></label></p>
-      <p><button type="submit" class="btn btn-primary">Sign in</button></p>
+      <p><label>{{ t('admin.login.username') }}<br><input type="text" name="username" required autofocus></label></p>
+      <p><label>{{ t('admin.login.password') }}<br><input type="password" name="password" required></label></p>
+      <p><label>{{ t('admin.login.tenant') }}<br><input type="text" name="tenant_id" value="demo"></label></p>
+      <p><button type="submit" class="btn btn-primary">{{ t('admin.login.submit') }}</button></p>
     </form>
   </main>
 </body>
