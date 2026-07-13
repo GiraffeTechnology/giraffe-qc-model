@@ -3,11 +3,16 @@
 **Owner:** WS5 (`claude/ws5-xavier-runner-real-adapter`). **Consumed by:** WS4
 (Pad LAN client) and Account A's WS3 (admin Jetson fleet/health screen).
 
-**Status legend:** `[EXISTS]` = implemented in PR #51/#52 (unmerged, being
-carried into `main` by WS5) and can be integrated against today. `[PLANNED]` =
-does not exist yet; WS5 will add it in this round so WS4 has something real to
-call, not just this doc's promise. `[MOCK]` = the current implementation is a
-labeled mock (§ Mock/real labeling), not real VLM inference.
+**Status legend:** `[EXISTS]` = implemented (PR #51/#52 content, plus WS5's
+de-mock/real-adapter/pairing-endpoint round) and can be integrated against
+today. `[PLANNED]` = does not exist yet. `[MOCK]` = the current
+implementation is a labeled mock (§ Mock/real labeling), not real VLM
+inference.
+
+**Update (WS5 round):** § 1.4's pairing endpoints and § 4's mock-mode gating
+were `[PLANNED]` gaps when this doc was first published (Step 0) and are now
+`[EXISTS]` — implemented in the same PR as this update. Both sections below
+reflect the as-built state, not the original gap description.
 
 There are **two separate HTTP surfaces** — do not conflate them:
 
@@ -43,17 +48,25 @@ in application code). Returns:
   "last_inference_latency_ms": 340,
   "readiness_state": "jetson_ready",
   "jetson_device_id": "jetson-a1b2c3d4",
-  "agent_version": "0.1.0"
+  "agent_version": "0.2.0",
+  "mock": true,
+  "adapter_name": "mock",
+  "model_name": "mock-deterministic"
 }
 ```
 
-`readiness_state` is one of the enum in § 3. In `JETSON_MOCK_MODE=true` (the
-CI/dev default) these values are deterministic stand-ins, not sensor reads —
-see § 4 for the labeling requirement. A real build reads `tegrastats`/`jtop`
-for `temperature_c`/`throttling`; `disk_free_percent` on real hardware is not
-yet wired (`None` today) — WS5 should fill this in the real-adapter PR.
+`readiness_state` is one of the enum in § 3. `mock` is explicit (added in the
+WS5 round) so callers never have to infer mock-vs-real from other fields. In
+`JETSON_MOCK_MODE=true` these values are deterministic stand-ins, not sensor
+reads. A real build reads `tegrastats`/`jtop` for `temperature_c`/
+`throttling` when the optional `jtop` package is installed; `disk_free_percent`
+on real hardware is still not wired (`None`) — a real deployment must not
+treat that as "disk is fine," it means "not measured yet."
 
-### 1.2 `POST /infer` `[EXISTS]` `[MOCK — real adapter is WS5's core deliverable]`
+`model_loaded` under a real adapter reflects `adapter.is_ready()` (a live
+`GET {llama_server_url}/health` check), not a cached/assumed value.
+
+### 1.2 `POST /infer` `[EXISTS]` `[MOCK by default; real path is an unvalidated scaffold, see § 4]`
 
 Request envelope (what the Pad POSTs):
 
@@ -70,15 +83,20 @@ Request envelope (what the Pad POSTs):
   (see `jetson_runner/app/signing.py`). `pair_key` is the per-pair secret
   established at pairing (§ 1.4) — **never** a global/shared secret.
 - On success: `200` with an `InferenceResponse` (§ 2).
-- On rejection: `403` with `{"detail": "<reason>"}`, `reason` ∈
-  `unpaired_caller | bad_signature`. A malformed request body (fails the § 2
-  schema) currently surfaces as `403 invalid_request:<pydantic error>` — WS5
-  should consider splitting this to `422` to distinguish "bad payload" from
-  "bad auth", since callers (WS4) need to tell those apart to render the right
-  Pad-side error. Flagging this as a contract nit, not blocking WS4 from
-  building against the current behavior.
-- **Fail-closed, unconditionally**: an unpaired caller or bad signature never
-  falls through to any inference path, mock or real.
+- On rejection, status now distinguishes the failure kind (resolved in the
+  WS5 round — was uniformly `403` at Step 0):
+  - `403 {"detail": "unpaired_caller"}` / `403 {"detail": "bad_signature"}` —
+    auth failures.
+  - `422 {"detail": "invalid_request:<pydantic error>"}` — payload fails the
+    § 2 schema.
+  - `503 {"detail": "runtime_not_ready"}` — real adapter selected but not
+    ready (backend unreachable / no model loaded). Never falls through to
+    mock, never lets a doomed call through.
+- **Fail-closed, unconditionally**: an unpaired caller, bad signature, or
+  not-ready real backend never falls through to any inference path.
+- A per-detection-point backend/parse failure in the real adapter (once one
+  is actually certified — see § 4) downgrades only that point to
+  `"uncertain"`, not the whole request.
 
 ### 1.3 `POST /phase1/pair-loopback` `[EXISTS]` `[TEST-ONLY — never enable in production]`
 
@@ -87,43 +105,40 @@ even then only accepts `127.0.0.1`/`::1` callers (`403 loopback_only`
 otherwise). This exists solely for the same-device Phase 1 CV validation
 harness. **Not a substitute for real LAN pairing** — see § 1.4.
 
-### 1.4 Real LAN pairing endpoints `[PLANNED — gap WS5 must close]`
-
-**This is the most important gap in this contract.** Today, USB pairing
-(`PairingAgent.pair_usb`) and Wi-Fi pairing (`PairingAgent.pair_wifi`) exist
-only as **in-process Python methods** — there is no HTTP endpoint a real
-Android Pad can call over LAN to invoke them. The only HTTP-reachable pairing
-path is the loopback-only Phase 1 harness (§ 1.3), which is explicitly
-same-device and test-only.
-
-WS4 (Pad LAN client) needs real endpoints. WS5 should add, following the
-existing `/phase1/pair-loopback` pattern but LAN-scoped instead of
-loopback-scoped:
+### 1.4 Real LAN pairing endpoints `[EXISTS — implemented in the WS5 round]`
 
 ```
 POST /pair/usb
   body: {"pad_device_id": str, "pad_pubkey": str}
   -> 200 {"jetson_device_id", "jetson_pubkey", "pair_key", "pairing_path": "usb"}
-  -> USB-path semantics per PairingAgent.pair_usb: physical connection is the
-     proof of presence. If the Jetson can distinguish "request arrived over
-     the USB gadget interface" from "request arrived over Wi-Fi LAN" at the
-     network layer, enforce that distinction here; if it cannot (e.g. USB
-     gadget Ethernet looks like any other NIC to the app), say so explicitly
-     in the PR rather than silently accepting Wi-Fi callers on this endpoint.
+  -> 422 {"detail": "pad_device_id_and_pad_pubkey_required"}
 
 POST /pair/wifi
   body: {"pad_device_id": str, "pad_pubkey": str, "confirmed_fingerprint": str}
   -> 200 {"jetson_device_id", "jetson_pubkey", "pair_key", "pairing_path": "wifi"}
   -> 403 {"detail": "pairing_window_closed"} | {"detail": "fingerprint_mismatch"}
+  -> 422 {"detail": "pad_device_id_and_pad_pubkey_and_confirmed_fingerprint_required"}
   -> Only accepted while PairingAgent.pairing_window_open() is true (opened by
      a physical trigger on the Jetson — out of scope for the HTTP layer itself).
 ```
 
+**Known limitation, not silently papered over:** `/pair/usb` currently
+accepts *any* caller that reaches it — the HTTP layer cannot distinguish "this
+request arrived over the USB gadget interface" from "this request arrived
+over Wi-Fi LAN" (both look like a normal NIC to the FastAPI app). The
+physical-presence guarantee that makes the USB path meaningful (per
+`PairingAgent.pair_usb`'s docstring: "the physical cable is the
+authorization") is therefore enforced, if at all, by whatever network
+topology puts the USB gadget interface on its own unroutable link at
+deployment time — not by this handler. WS4/deployment should not assume
+`/pair/usb` is LAN-unreachable unless that topology is actually in place;
+verifying/enforcing it is unresolved and should be tracked as a follow-up,
+not assumed solved by this endpoint's name.
+
 Re-pairing (either path) replaces the previous binding **immediately, no
 grace period** — the old Pad's signed `/infer` calls start failing with
 `bad_signature`/`unpaired_caller` the instant a new pairing completes. This is
-existing `PairingAgent._establish` behavior; the new HTTP endpoints must not
-change it.
+existing `PairingAgent._establish` behavior, unchanged by the new endpoints.
 
 ## 2. Inference request/response schema (`src/qc_model/jetson/contract.py`)
 
@@ -185,21 +200,31 @@ Fail-closed rule (binding on every consumer, not just WS5's own code): when
 disabled — no silent fallback to a mock/pass result. This is WS4's § "fail-
 closed gate" requirement, but the state values it must gate on come from here.
 
-## 4. Mock/real labeling requirement
+## 4. Mock/real labeling requirement `[EXISTS — implemented in the WS5 round]`
 
 Per the audit's ground rule (Overview § "Ground rule for every workstream"),
 retained mock behavior must be impossible to mistake for real inference:
 
-- `JETSON_MOCK_MODE` (default `true`) must gate which inference path runs —
-  currently (`inference_server.run_inference`) it does **not** actually
-  branch on this flag; the mock is unconditionally what runs. WS5's de-mock
-  work must make this a real switch, log
-  `"MOCK INFERENCE — NOT REAL QC JUDGMENT"` at call time when mock is active,
-  and make mock mode unselectable in a config explicitly marked
-  `APP_ENV=production` / `production` build.
-- `PerPointResult.evidence` in mock mode should keep saying "mock qc-model
-  inference for …" (already true today) so it is visually obvious in logs,
-  UI, and stored results.
+- `JETSON_MOCK_MODE` now actually gates which of two `InferenceAdapter`
+  implementations runs (`jetson_runner/app/adapters/`): `mock` or
+  `llama_cpp`. Every mock-served `/infer` call logs
+  `"MOCK INFERENCE — NOT REAL QC JUDGMENT"` at WARNING.
+- `RunnerConfig` **raises** `MockModeNotAllowedInProduction` at construction
+  if `JETSON_MOCK_MODE=true` under `APP_ENV=production` — a misconfigured
+  production deployment refuses to start rather than silently running mock.
+  `mock_mode` defaults to `false` under `APP_ENV=production`, `true`
+  otherwise, so no special config is needed for the safe default.
+- `PerPointResult.evidence` in mock mode keeps saying "mock qc-model
+  inference for …" so it is visually obvious in logs, UI, and stored results.
+
+**The `llama_cpp` adapter is an unvalidated scaffold, not a certified
+backend.** It has never been run against a real model or real Xavier NX
+hardware — the JetPack 5.1.x reflash + llama-server setup it depends on is a
+pending Phase 1.5 device-side step (see `JETSON_NX_RUNTIME_FEASIBILITY.md`).
+Selecting `JETSON_MOCK_MODE=false` today gives you a real, complete,
+fail-closed code path (backend readiness check → per-point HTTP call → strict
+JSON parse → per-point `uncertain` on any failure) — not measured accuracy or
+latency. Do not read "the adapter exists" as "real inference is certified."
 
 ## 5. Server sync surface (`/api/qc/jetson/*`, `src/api/jetson_router.py`) `[EXISTS]`
 
