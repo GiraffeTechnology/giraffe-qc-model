@@ -14,10 +14,12 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("qc_detection_points", sa.Column("expected_features_json", sa.JSON(), nullable=True))
-    op.add_column("qc_detection_points", sa.Column("cv_config_json", sa.JSON(), nullable=True))
+    with op.batch_alter_table("qc_detection_points") as batch:
+        batch.add_column(sa.Column("expected_features_json", sa.JSON(), nullable=True))
+        batch.add_column(sa.Column("cv_config_json", sa.JSON(), nullable=True))
 
 
 def downgrade() -> None:
-    op.drop_column("qc_detection_points", "cv_config_json")
-    op.drop_column("qc_detection_points", "expected_features_json")
+    with op.batch_alter_table("qc_detection_points") as batch:
+        batch.drop_column("cv_config_json")
+        batch.drop_column("expected_features_json")
