@@ -29,6 +29,9 @@ class HttpSubmissionClient(
             if (batch.isEmpty()) return@withContext SubmitResult.Accepted(emptyList())
             val accepted = mutableListOf<String>()
             for (submission in batch) {
+                if (submission.humanDecidedBy.isBlank()) {
+                    return@withContext SubmitResult.Failed("operator_identity_missing")
+                }
                 val url = URL(baseUrl.trimEnd('/') + path)
                 val conn = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"; connectTimeout = timeoutMs; readTimeout = timeoutMs; doOutput = true
@@ -72,6 +75,10 @@ class HttpSubmissionClient(
                 .put("bundle_version", s.bundleVersion ?: "")
                 .put("pad_overall_result", overall).put("checkpoints", mapped)
                 .put("expected_bundle_version", s.bundleVersion ?: JSONObject.NULL)
+                .put("human_final_decision", when (s.humanDecision) {
+                    HumanDecision.PASS -> "pass"; HumanDecision.FAIL -> "fail"; HumanDecision.REVIEW_REQUIRED -> "review"
+                })
+                .put("human_decided_by", s.humanDecidedBy)
                 .put("cloud_recognition", checkpoints)
                 .put("client_timing", runCatching { JSONObject(s.timingJson ?: "{}") }.getOrDefault(JSONObject()))
                 .toString()

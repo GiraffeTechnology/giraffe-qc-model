@@ -41,7 +41,10 @@ from src.db.qc_probation_models import (
 # ── Reset rule (§3.4) ─────────────────────────────────────────────────────────
 # Editing what "correct" means invalidates prior agreement data; clarifying the
 # description or adding spatial grounding does not change the judgment tested.
-PROBATION_RESET_FIELDS = frozenset({"expected_value", "pass_criteria"})
+PROBATION_RESET_FIELDS = frozenset({
+    "expected_value", "pass_criteria", "expected_features", "expected_features_json",
+    "cv_config", "cv_config_json", "point_code", "method_hint", "severity",
+})
 PROBATION_PRESERVE_FIELDS = frozenset({"description", "regions", "regions_json"})
 
 DEFAULT_MIN_SAMPLE_SIZE = 30

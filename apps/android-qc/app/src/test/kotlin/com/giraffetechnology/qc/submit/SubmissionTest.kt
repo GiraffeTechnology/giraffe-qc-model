@@ -31,7 +31,7 @@ class SubmissionTest {
     )
 
     private fun submission(id: String, rev: String? = "rev-9", bundle: String? = "20") =
-        ResultSubmission.from(task(rev, bundle), result, HumanDecision.PASS, id, 1000L)
+        ResultSubmission.from(task(rev, bundle), result, HumanDecision.PASS, "operator-1", id, 1000L)
 
     @Test fun `submission carries standard revision id and bundle version`() {
         val s = submission("job-1")
@@ -120,5 +120,7 @@ class SubmissionTest {
         assertEquals("p1", json.getJSONArray("checkpoints").getJSONObject(0).getString("checkpoint_id"))
         assertEquals("pass", json.getJSONArray("checkpoints").getJSONObject(0).getString("result"))
         assertEquals(0.9, json.getJSONArray("cloud_recognition").getJSONObject(0).getDouble("confidence"), 0.0)
+        assertEquals("pass", json.getString("human_final_decision"))
+        assertEquals("operator-1", json.getString("human_decided_by"))
     }
 }

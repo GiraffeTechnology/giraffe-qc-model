@@ -39,7 +39,7 @@ class AndroidSqliteOutboxStore(
     private suspend fun query(where: String?): List<OutboxEntry> = withContext(Dispatchers.IO) {
         val out = mutableListOf<OutboxEntry>()
         val sql = "SELECT client_job_id, tenant_id, sku_id, item_number, standard_revision_id, " +
-            "bundle_version, model_result, human_decision, reason, model_name, captured_image_path, " +
+            "bundle_version, model_result, human_decision, human_decided_by, reason, model_name, captured_image_path, " +
             "created_at, cloud_job_id, point_results_json, timing_json, uploaded FROM outbox_entry" +
             (where?.let { " WHERE $it" } ?: "") + " ORDER BY created_at"
         helper.readableDatabase.rawQuery(sql, null).use { c ->
@@ -53,15 +53,16 @@ class AndroidSqliteOutboxStore(
                     bundleVersion = if (c.isNull(5)) null else c.getString(5),
                     modelResult = c.getString(6),
                     humanDecision = HumanDecision.fromWire(c.getString(7)) ?: HumanDecision.REVIEW_REQUIRED,
-                    reason = c.getString(8),
-                    modelName = c.getString(9),
-                    capturedImagePath = if (c.isNull(10)) null else c.getString(10),
-                    createdAtEpochMs = c.getLong(11),
-                    cloudJobId = if (c.isNull(12)) null else c.getString(12),
-                    pointResultsJson = if (c.isNull(13)) null else c.getString(13),
-                    timingJson = if (c.isNull(14)) null else c.getString(14),
+                    humanDecidedBy = c.getString(8),
+                    reason = c.getString(9),
+                    modelName = c.getString(10),
+                    capturedImagePath = if (c.isNull(11)) null else c.getString(11),
+                    createdAtEpochMs = c.getLong(12),
+                    cloudJobId = if (c.isNull(13)) null else c.getString(13),
+                    pointResultsJson = if (c.isNull(14)) null else c.getString(14),
+                    timingJson = if (c.isNull(15)) null else c.getString(15),
                 )
-                out += OutboxEntry(submission = submission, uploaded = c.getInt(15) != 0)
+                out += OutboxEntry(submission = submission, uploaded = c.getInt(16) != 0)
             }
         }
         out
@@ -76,6 +77,7 @@ class AndroidSqliteOutboxStore(
         put("bundle_version", submission.bundleVersion)
         put("model_result", submission.modelResult)
         put("human_decision", submission.humanDecision.wire)
+        put("human_decided_by", submission.humanDecidedBy)
         put("reason", submission.reason)
         put("model_name", submission.modelName)
         put("captured_image_path", submission.capturedImagePath)
@@ -93,7 +95,7 @@ class AndroidSqliteOutboxStore(
                 "CREATE TABLE outbox_entry (" +
                     "client_job_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, sku_id TEXT NOT NULL, " +
                     "item_number TEXT NOT NULL, standard_revision_id TEXT, bundle_version TEXT, " +
-                    "model_result TEXT NOT NULL, human_decision TEXT NOT NULL, reason TEXT NOT NULL, " +
+                    "model_result TEXT NOT NULL, human_decision TEXT NOT NULL, human_decided_by TEXT NOT NULL, reason TEXT NOT NULL, " +
                     "model_name TEXT NOT NULL, captured_image_path TEXT, created_at INTEGER NOT NULL, " +
                     "cloud_job_id TEXT, point_results_json TEXT, timing_json TEXT, " +
                     "uploaded INTEGER NOT NULL DEFAULT 0)"
@@ -106,11 +108,14 @@ class AndroidSqliteOutboxStore(
                 db.execSQL("ALTER TABLE outbox_entry ADD COLUMN point_results_json TEXT")
                 db.execSQL("ALTER TABLE outbox_entry ADD COLUMN timing_json TEXT")
             }
+            if (oldVersion < 3) {
+                db.execSQL("ALTER TABLE outbox_entry ADD COLUMN human_decided_by TEXT NOT NULL DEFAULT ''")
+            }
         }
     }
 
     companion object {
         const val DEFAULT_DB_NAME = "giraffe_pad_outbox.db"
-        private const val DB_VERSION = 2
+        private const val DB_VERSION = 3
     }
 }

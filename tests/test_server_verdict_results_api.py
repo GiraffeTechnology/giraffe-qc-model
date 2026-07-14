@@ -17,6 +17,7 @@ from sqlalchemy.pool import StaticPool
 from src.db.models import Base
 import src.db.sku_models  # noqa: F401
 import src.db.qc_verdict_models  # noqa: F401
+from src.db.qc_verdict_models import QCPadSubmission
 from src.db.sku_models import QCDetectionPoint, QCSkuItem, QCSkuStandardRevision
 from src.api.deps import get_db_dep
 from src.api.main import app
@@ -195,40 +196,83 @@ def test_final_decision_records_probation_job_when_revision_is_on_probation(clie
     assert report["gate"]["agreements"] == 1  # server_overall_result "pass" == human "pass"
 
 
-def test_pad_submission_retry_is_idempotent(client, db_session):
+def test_pad_submission_with_human_decision_records_probation_in_one_real_call(client, db_session):
+    """Architecture v2 Pad outbox sends cloud results and the audited human
+    confirmation together; this real S4 call must advance probation."""
     rev = _seed_revision(db_session)
+    probation = probation_service.start_probation(db_session, standard_revision_id=rev, tenant_id=T1)
     body = {
         "tenant_id": T1,
-        "job_ref": "same-cloud-job",
+        "job_ref": "cloud-job-1",
         "standard_revision_id": rev,
-        "bundle_version": "1",
+        "bundle_version": "1.0.0",
         "pad_overall_result": "pass",
-        "checkpoints": [{"checkpoint_id": "cp1", "result": "pass"}],
+        "checkpoints": [{"checkpoint_id": "cp1", "result": "pass"}, {"checkpoint_id": "cp2", "result": "pass"}],
+        "human_final_decision": "pass",
+        "human_decided_by": "operator-17",
     }
-    first = client.post("/api/qc/results/submissions", json=body)
+    response = client.post("/api/qc/results/submissions", json=body)
+    assert response.status_code == 201, response.text
+    assert response.json()["human_final_decision"] == "pass"
+    report = client.get(
+        f"/api/qc/probation/{probation.id}/disagreement-report", params={"tenant_id": T1}
+    ).json()
+    assert report["gate"]["jobs_recorded"] == 1
+
     retry = client.post("/api/qc/results/submissions", json=body)
-    assert first.status_code == 201
     assert retry.status_code == 201
-    assert retry.json()["submission_id"] == first.json()["submission_id"]
+    report = client.get(
+        f"/api/qc/probation/{probation.id}/disagreement-report", params={"tenant_id": T1}
+    ).json()
+    assert report["gate"]["jobs_recorded"] == 1
 
 
 def test_pad_submission_idempotency_conflict_fails_closed(client, db_session):
     rev = _seed_revision(db_session)
     body = {
-        "tenant_id": T1,
-        "job_ref": "conflicting-cloud-job",
-        "standard_revision_id": rev,
-        "bundle_version": "1",
-        "pad_overall_result": "pass",
+        "tenant_id": T1, "job_ref": "same-job", "standard_revision_id": rev,
+        "bundle_version": "1", "pad_overall_result": "pass",
         "checkpoints": [{"checkpoint_id": "cp1", "result": "pass"}],
     }
     assert client.post("/api/qc/results/submissions", json=body).status_code == 201
-    response = client.post(
-        "/api/qc/results/submissions",
-        json=dict(body, pad_overall_result="fail"),
-    )
+    changed = dict(body, pad_overall_result="fail")
+    response = client.post("/api/qc/results/submissions", json=changed)
     assert response.status_code == 409
     assert response.json()["detail"] == "idempotency_conflict"
+
+
+def test_inline_human_decision_requires_identity(client, db_session):
+    rev = _seed_revision(db_session)
+    response = client.post("/api/qc/results/submissions", json={
+        "tenant_id": T1, "job_ref": "missing-identity", "standard_revision_id": rev,
+        "pad_overall_result": "pass", "human_final_decision": "pass",
+    })
+    assert response.status_code == 400
+
+
+def test_cloud_evidence_and_client_timing_are_persisted_unchanged(client, db_session):
+    rev = _seed_revision(db_session)
+    cloud = [{
+        "point_code": "cp1",
+        "crop_id": "crop-1",
+        "result": "pass",
+        "confidence": 0.93,
+        "evidence": "configured provider evidence",
+    }]
+    timing = {"capture_confirmed_at": "2026-07-14T00:00:00Z", "elapsed_ms": 8123}
+    response = client.post("/api/qc/results/submissions", json={
+        "tenant_id": T1,
+        "job_ref": "cloud-evidence-job",
+        "standard_revision_id": rev,
+        "pad_overall_result": "pass",
+        "checkpoints": [{"checkpoint_id": "cp1", "result": "pass"}],
+        "cloud_recognition": cloud,
+        "client_timing": timing,
+    })
+    assert response.status_code == 201, response.text
+    stored = db_session.query(QCPadSubmission).filter_by(job_ref="cloud-evidence-job").one()
+    assert stored.raw_json["cloud_recognition"] == cloud
+    assert stored.raw_json["client_timing"] == timing
 
 
 def test_final_decision_records_disagreement_on_probation(client, db_session):

@@ -13,6 +13,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -58,6 +59,7 @@ fun OperatorResultReviewScreen(
     // Stable idempotency key for this reviewed result across recompositions.
     val clientJobId = remember(task.sku.id, result.capturedImagePath) { UUID.randomUUID().toString() }
     var submitting by remember { mutableStateOf(false) }
+    var decidedBy by remember { mutableStateOf("") }
 
     // Fail-closed submit gate (WS4 §6 / docs/api-contracts/jetson-runner-api.md
     // §3): "MNN_PENDING" means the coordinator never actually ran inference
@@ -70,7 +72,7 @@ fun OperatorResultReviewScreen(
     fun submit(decision: HumanDecision) {
         submitting = true
         scope.launch {
-            outbox.enqueue(ResultSubmission.from(task, result, decision, clientJobId, now()))
+            outbox.enqueue(ResultSubmission.from(task, result, decision, decidedBy, clientJobId, now()))
             onSubmitted()
         }
     }
@@ -108,6 +110,14 @@ fun OperatorResultReviewScreen(
         )
         Text("${result.modelName}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
+        OutlinedTextField(
+            value = decidedBy,
+            onValueChange = { decidedBy = it },
+            label = { Text("Operator identity (required for audit)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
         Spacer(Modifier.weight(1f))
 
         if (submitBlocked) {
@@ -130,19 +140,19 @@ fun OperatorResultReviewScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             Button(
                 onClick = { submit(HumanDecision.PASS) },
-                enabled = !submitting && !submitBlocked,
+                enabled = !submitting && !submitBlocked && decidedBy.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B5E20)),
                 modifier = Modifier.weight(1f),
             ) { Text(skill.t("pad.review.confirm_pass")) }
             Button(
                 onClick = { submit(HumanDecision.FAIL) },
-                enabled = !submitting && !submitBlocked,
+                enabled = !submitting && !submitBlocked && decidedBy.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB71C1C)),
                 modifier = Modifier.weight(1f),
             ) { Text(skill.t("pad.review.confirm_fail")) }
             OutlinedButton(
                 onClick = { submit(HumanDecision.REVIEW_REQUIRED) },
-                enabled = !submitting && !submitBlocked,
+                enabled = !submitting && !submitBlocked && decidedBy.isNotBlank(),
                 modifier = Modifier.weight(1f),
             ) { Text(skill.t("pad.review.mark_review")) }
         }

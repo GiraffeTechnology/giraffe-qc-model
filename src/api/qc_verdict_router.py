@@ -7,12 +7,12 @@ implement Pad-side submission (S6 owns that).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_db_dep
@@ -39,9 +39,14 @@ class SubmitVerdictBody(BaseModel):
     standard_revision_id: str
     bundle_version: str = ""
     pad_overall_result: str
-    checkpoints: list[CheckpointResultIn] = []
+    checkpoints: list[CheckpointResultIn] = Field(default_factory=list)
     workstation_id: Optional[str] = None
     expected_bundle_version: Optional[str] = None
+    human_final_decision: Optional[str] = None
+    human_decided_by: Optional[str] = None
+    human_decision_comment: str = ""
+    cloud_recognition: list[dict[str, Any]] = Field(default_factory=list)
+    client_timing: dict[str, Any] = Field(default_factory=dict)
 
 
 class HumanDecisionBody(BaseModel):
@@ -74,6 +79,8 @@ def _verdict_view(v) -> dict:
 
 @router.post("/api/qc/results/submissions", status_code=201)
 def submit_verdict(body: SubmitVerdictBody, db: Session = Depends(get_db_dep)):
+    if bool(body.human_final_decision) != bool(body.human_decided_by):
+        raise HTTPException(status_code=400, detail="human decision and identity are both required")
     try:
         _, verdict_model, _ = service.ingest_submission(
             db,
@@ -91,6 +98,21 @@ def submit_verdict(body: SubmitVerdictBody, db: Session = Depends(get_db_dep)):
         if str(exc) == "idempotency_conflict":
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         raise
+    if body.human_final_decision:
+        if verdict_model.human_final_decision is None:
+            verdict_model = service.record_human_decision(
+                db,
+                tenant_id=body.tenant_id,
+                submission_id=verdict_model.submission_id,
+                decision=body.human_final_decision,
+                decided_by=body.human_decided_by or "",
+                comment=body.human_decision_comment,
+            )
+        elif (
+            verdict_model.human_final_decision != body.human_final_decision
+            or verdict_model.human_decided_by != body.human_decided_by
+        ):
+            raise HTTPException(status_code=409, detail="idempotency_conflict")
     return _verdict_view(verdict_model)
 
 
