@@ -199,6 +199,45 @@ def test_openai_client_extracts_real_envelope_without_logging_endpoint():
     assert response.raw_output == response.parser_input
 
 
+def test_openai_parser_probe_normalizes_real_split_reasoning_field():
+    content = _valid_raw("p")
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": content,
+                            "reasoning_content": "real provider reasoning",
+                        }
+                    }
+                ]
+            },
+        )
+    )
+    client = SandboxVLMClient(_config(), transport=transport)
+    try:
+        response = client.infer(
+            case={
+                "qc_point_id": "p",
+                "name": "point",
+                "category": "visual_defect",
+                "criterion": "clean",
+                "expected_behavior": "pass",
+                "require_think_wrapper": True,
+            },
+            image_path=ROOT / "tests" / "fixtures" / "red_square.png",
+            cv_result={"schema_version": "1.0"},
+        )
+    finally:
+        client.close()
+    parsed = parse_strict_sandbox_output(response.parser_input, expected_qc_point_ids=["p"])
+    assert response.raw_output.startswith("<think>real provider reasoning</think>")
+    assert parsed.verdict == "pass"
+    assert parsed.think_tags_stripped is True
+
+
 def test_inspection_client_preserves_raw_body_and_maps_strict_schema():
     body = {
         "detection_point_code": "p",

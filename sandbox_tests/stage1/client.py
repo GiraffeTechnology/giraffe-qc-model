@@ -88,13 +88,21 @@ class SandboxVLMClient:
             raise SandboxInferenceError(f"model_transport_or_decode_error:{type(exc).__name__}") from exc
         if self.config.api_style == "openai_chat":
             try:
-                content = body["choices"][0]["message"]["content"]
+                message = body["choices"][0]["message"]
+                content = message["content"]
             except (KeyError, IndexError, TypeError) as exc:
                 raise SandboxInferenceError("model_response_envelope_invalid") from exc
             if isinstance(content, list):
                 content = "".join(str(item.get("text", "")) for item in content if isinstance(item, dict))
             if not isinstance(content, str):
                 raise SandboxInferenceError("model_content_not_text")
+            reasoning_content = message.get("reasoning_content")
+            if reasoning_content is not None and not isinstance(reasoning_content, str):
+                raise SandboxInferenceError("model_reasoning_content_not_text")
+            if case.get("require_think_wrapper") and reasoning_content:
+                # Normalize the provider's real split reasoning field back to
+                # the tagged representation consumed by the production parser.
+                content = f"<think>{reasoning_content}</think>\n{content}"
             if len(content) > self.config.max_output_chars:
                 raise SandboxInferenceError("model_content_exceeds_configured_limit")
             return SandboxModelResponse(raw_output=content, parser_input=content)
