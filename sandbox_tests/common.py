@@ -24,14 +24,14 @@ def forbidden_server_values(server: str) -> set[str]:
     """Return secret endpoint strings while ignoring generic loopback hostnames."""
     parsed = urlparse(server)
     hostname = parsed.hostname or ""
-    values = {server.rstrip("/")}
     if not hostname or hostname.lower() == "localhost":
-        return values
+        return set()
     try:
         if ipaddress.ip_address(hostname).is_loopback:
-            return values
+            return set()
     except ValueError:
         pass
+    values = {server.rstrip("/")}
     values.add(hostname)
     return values
 

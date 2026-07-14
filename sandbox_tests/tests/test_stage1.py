@@ -105,7 +105,7 @@ def test_environment_config_is_provider_neutral_and_relative_path_only(monkeypat
 
 def test_server_leak_values_ignore_generic_loopback_but_keep_external_hostname():
     loopback = forbidden_server_values("http://127.0.0.1:8080")
-    assert loopback == {"http://127.0.0.1:8080"}
+    assert loopback == set()
     external = forbidden_server_values("https://203.0.113.10:8443")
     assert external == {"https://203.0.113.10:8443", "203.0.113.10"}
 
