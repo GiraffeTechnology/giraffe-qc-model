@@ -36,7 +36,7 @@ import com.giraffetechnology.qc.admin.AdminResultsController
 import com.giraffetechnology.qc.admin.AdminSkuController
 import com.giraffetechnology.qc.admin.AdminStandardController
 import com.giraffetechnology.qc.admin.AdminWorkstationController
-import com.giraffetechnology.qc.admin.AndroidPadHealthProbe
+import com.giraffetechnology.qc.admin.BackendPendingPadHealthStateSource
 import com.giraffetechnology.qc.sku.ApiSkuRepository
 import com.giraffetechnology.qc.sku.MnnRuntime
 import com.giraffetechnology.qc.sku.MnnSkuMatcher
@@ -234,13 +234,11 @@ object PadRuntimeGraph {
             _adminWorkstationController = AdminWorkstationController(adminClient)
             _adminResultsController = AdminResultsController(adminClient)
             _adminProbationController = AdminProbationController(adminClient)
+            // WS3 reads one Architecture v2 health state. WS4 replaces this
+            // explicit backend-pending producer with the Nano/cloud aggregator;
+            // the signed Xavier adapter is provisioned against the same seam.
             _adminHealthController = AdminHealthController(
-                client = adminClient,
-                probe = AndroidPadHealthProbe(appContext),
-                // Post-WS4 the active runtime is Jetson-backed by default (MNN
-                // only behind legacyMnnRuntimeEnabled); the health screen shows
-                // whichever runtime is actually serving inference.
-                runtimeState = runtime.runtimeState,
+                BackendPendingPadHealthStateSource()
             )
 
             _initialized = true

@@ -1,9 +1,9 @@
 package com.giraffetechnology.qc.admin
 
-import com.giraffetechnology.qc.sku.MnnRuntimeState
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -62,6 +62,10 @@ class AdminSkuControllerTest {
         val transport = FakeAdminTransport()
         val client = loggedInClient(transport)
         transport.stub(
+            "GET", "/admin/studio/config",
+            AdminHttpResponse(200, """{"sku_lifecycle_states":["draft","needs_information","ready_for_review","confirmed","published","installed","needs_requalification"]}"""),
+        )
+        transport.stub(
             "GET", "/admin/studio/skus",
             AdminHttpResponse(200, """{"items":[{"id":"s1","item_number":"A","name":"N","status":"draft","standard_status":"no_standard"}]}"""),
         )
@@ -84,7 +88,11 @@ class AdminSkuControllerTest {
     fun `create success refreshes list and selects the new sku`() {
         val transport = FakeAdminTransport()
         val client = loggedInClient(transport)
-        transport.stub("POST", "/api/v1/sku", AdminHttpResponse(201, """{"id":"s2"}"""))
+        transport.stub("POST", "/admin/studio/skus", AdminHttpResponse(201, """{"id":"s2"}"""))
+        transport.stub(
+            "GET", "/admin/studio/config",
+            AdminHttpResponse(200, """{"sku_lifecycle_states":["draft","needs_information","ready_for_review","confirmed","published","installed","needs_requalification"]}"""),
+        )
         transport.stub("GET", "/admin/studio/skus", AdminHttpResponse(200, """{"items":[]}"""))
         transport.stub(
             "GET", "/admin/studio/skus/s2",
@@ -97,13 +105,22 @@ class AdminSkuControllerTest {
     }
 
     @Test
-    fun `lifecycle states match the PRD seven states`() {
+    fun `lifecycle states load from the shared backend config`() {
+        val transport = FakeAdminTransport()
+        val client = loggedInClient(transport)
+        transport.stub(
+            "GET", "/admin/studio/config",
+            AdminHttpResponse(200, """{"sku_lifecycle_states":["draft","needs_information","ready_for_review","confirmed","published","installed","needs_requalification"]}"""),
+        )
+        transport.stub("GET", "/admin/studio/skus", AdminHttpResponse(200, """{"items":[]}"""))
+        val controller = AdminSkuController(client)
+        controller.refresh()
         assertEquals(
             listOf(
                 "draft", "needs_information", "ready_for_review", "confirmed",
                 "published", "installed", "needs_requalification",
             ),
-            SKU_LIFECYCLE_STATES,
+            (controller.configState.value as AdminSkuConfigState.Loaded).lifecycleStates,
         )
     }
 }
@@ -148,16 +165,20 @@ class AdminStandardControllerTest {
     }
 
     @Test
-    fun `valid regions queue as pending-backend while the WS6 route is missing`() {
+    fun `valid regions persist through the real studio route`() {
         val transport = FakeAdminTransport()
         val store = PendingRegionStore()
-        val controller = AdminStandardController(loggedInClient(transport), store)
+        val client = loggedInClient(transport)
+        transport.stub(
+            "POST", "/admin/studio/detection-points/dp1/regions",
+            AdminHttpResponse(200, """{"status":"regions_saved","detection_point_id":"dp1","regions":[]}"""),
+        )
+        val controller = AdminStandardController(client, store)
         val regions = listOf(Region("p1", 0.1f, 0.1f, 0.2f, 0.2f))
         controller.saveRegions("dp1", regions, validImageIds = setOf("p1"))
         val state = controller.regionState.value
-        assertTrue(state is AdminRegionSaveState.QueuedPendingBackend)
-        assertEquals(1, (state as AdminRegionSaveState.QueuedPendingBackend).count)
-        assertEquals(regions, store.get("dp1"))
+        assertTrue(state is AdminRegionSaveState.SavedToServer)
+        assertEquals(emptyList<Region>(), store.get("dp1"))
     }
 }
 
@@ -200,57 +221,121 @@ class AdminResultsControllerTest {
 }
 
 class AdminHealthControllerTest {
-
-    private class FakeProbe : PadHealthProbe {
-        override fun diskFreeBytes() = 5_000_000_000L
-        override fun diskTotalBytes() = 32_000_000_000L
-        override fun appVersionName() = "0.2.0-test"
-        override fun buildProvenance() = "commit=abc123def456 branch=test"
+    private class FakeSource(initial: PadHealthState) : PadHealthStateSource {
+        private val mutable = MutableStateFlow(initial)
+        override val state: StateFlow<PadHealthState> = mutable
+        var refreshes = 0
+        override suspend fun refresh() { refreshes += 1 }
     }
 
     @Test
-    fun `pad panel is real and jetson panel is labeled backend-pending`() {
-        val transport = FakeAdminTransport()
-        val runtime = MutableStateFlow<MnnRuntimeState>(MnnRuntimeState.Ready)
-        val controller = AdminHealthController(loggedInClient(transport), FakeProbe(), runtime)
+    fun `controller consumes one v2 health source without collapsing subsystems`() = runBlocking {
+        val snapshot = PadHealthState(
+            observedAt = "2026-07-14T00:00:00Z",
+            operatorPipelineReadiness = "ready",
+            canStartJob = true,
+            nanoCv = NanoCvHealth(status = "ready", lastCvDurationMs = 120),
+            cloudLink = CloudLinkHealth(
+                state = "healthy", cloudService = "reachable", acceptingJobs = true,
+                currentNetwork = "wifi", effectiveUplinkMbps = 8.0,
+            ),
+            offlineQueue = OfflineQueueHealth(pendingUploadJobs = 0),
+            xavierAdmin = XavierAdminHealth(
+                status = "ready", runtimeEngine = "mnn", modelName = "configured-vlm",
+                modelLoaded = true,
+            ),
+        )
+        val source = FakeSource(snapshot)
+        val controller = AdminHealthController(source)
         controller.refresh()
-        val state = controller.state.value
-        val pad = state.pad
-        assertNotNull(pad)
-        assertEquals("ready", pad!!.modelState)
-        assertEquals(5_000_000_000L, pad.diskFreeBytes)
-        assertTrue(pad.buildProvenance.startsWith("commit="))
-        val jetson = state.jetson
-        assertTrue(jetson is JetsonHealthState.BackendPending)
-        assertTrue((jetson as JetsonHealthState.BackendPending).reason.contains("docs/api-contracts/"))
+        assertEquals(1, source.refreshes)
+        assertEquals("ready", controller.state.value.snapshot.nanoCv.status)
+        assertEquals("wifi", controller.state.value.snapshot.cloudLink.currentNetwork)
+        assertEquals("configured-vlm", controller.state.value.snapshot.xavierAdmin.modelName)
     }
 
     @Test
-    fun `model state follows the runtime loader`() {
-        val transport = FakeAdminTransport()
-        val runtime = MutableStateFlow<MnnRuntimeState>(MnnRuntimeState.Loading)
-        val controller = AdminHealthController(loggedInClient(transport), FakeProbe(), runtime)
+    fun `backend pending source fails closed with null measurements`() = runBlocking {
+        val controller = AdminHealthController(BackendPendingPadHealthStateSource())
         controller.refresh()
-        assertEquals("loading", controller.state.value.pad!!.modelState)
+        val state = controller.state.value.snapshot
+        assertEquals("unknown", state.operatorPipelineReadiness)
+        assertTrue(!state.canStartJob)
+        assertEquals(null, state.nanoCv.lastCvDurationMs)
+        assertEquals(null, state.cloudLink.effectiveUplinkMbps)
+        assertEquals("not_configured", state.xavierAdmin.status)
+        assertTrue(state.limitations.all { it.startsWith("TODO(backend-pending)") })
     }
 }
 
 class AdminProbationControllerTest {
 
     @Test
-    fun `suspensions load and probation gate reports backend-pending`() {
+    fun `suspensions and live probation gate load together`() {
         val transport = FakeAdminTransport()
         val client = loggedInClient(transport)
         transport.stub(
             "GET", "/api/qc/suspensions",
             AdminHttpResponse(200, """{"suspensions":[{"id":"su1","training_pack_id":"tp1","status":"active","reason":"false_pass"}]}"""),
         )
+        transport.stub(
+            "GET", "/api/qc/probation/by-revision/r1",
+            AdminHttpResponse(200, probationJson(status = "active")),
+        )
         val controller = AdminProbationController(client)
-        controller.refresh()
+        controller.refresh("r1")
         val state = controller.state.value as AdminProbationState.Loaded
         assertEquals(1, state.suspensions.size)
-        assertTrue(state.probationBackendPending.contains("docs/api-contracts/"))
+        assertEquals(24, state.probation!!.gate.jobsRecorded)
+        assertEquals("active", state.probation.status)
     }
+
+    @Test
+    fun `pause uses server transition and refreshes without optimistic state`() {
+        val transport = FakeAdminTransport()
+        val client = loggedInClient(transport)
+        transport.stub("GET", "/api/qc/suspensions", AdminHttpResponse(200, """{"suspensions":[]}"""))
+        transport.stub("GET", "/api/qc/probation/by-revision/r1", AdminHttpResponse(200, probationJson("active")))
+        transport.stub("POST", "/api/qc/probation/p1/pause", AdminHttpResponse(200, probationJson("paused")))
+        val controller = AdminProbationController(client)
+        controller.refresh("r1")
+        controller.pause()
+        assertTrue(transport.requests.any { it.method == "POST" && it.url.contains("/p1/pause") })
+        assertTrue(controller.mutation.value is AdminProbationMutationState.Idle)
+    }
+
+    @Test
+    fun `disagreement report is loaded from server`() {
+        val transport = FakeAdminTransport()
+        val client = loggedInClient(transport)
+        transport.stub("GET", "/api/qc/suspensions", AdminHttpResponse(200, """{"suspensions":[]}"""))
+        transport.stub("GET", "/api/qc/probation/by-revision/r1", AdminHttpResponse(200, probationJson("active")))
+        transport.stub(
+            "GET", "/api/qc/probation/p1/disagreement-report",
+            AdminHttpResponse(
+                200,
+                """{"probation_id":"p1","standard_revision_id":"r1","status":"active",
+                    "gate":{},"disagreements":1,
+                    "detection_points":[{"point_code":"DP-1","disagreement_count":1,"examples":[]}],
+                    "jobs":[{"job_ref":"j1","sequence_no":1,"ai_verdict":"pass",
+                    "human_final_verdict":"fail","agreed":false,"points":[]}]}""",
+            ),
+        )
+        val controller = AdminProbationController(client)
+        controller.refresh("r1")
+        controller.loadDisagreementReport()
+        val loaded = controller.state.value as AdminProbationState.Loaded
+        assertEquals(1, loaded.report!!.disagreements)
+        assertEquals("DP-1", loaded.report.detectionPoints.single().pointCode)
+    }
+
+    private fun probationJson(status: String) =
+        """{"probation_id":"p1","tenant_id":"demo","sku_id":"s1",
+            "standard_revision_id":"r1","status":"$status","gate":{
+            "jobs_recorded":24,"agreements":22,"agreement_rate":0.916666,
+            "min_sample_size":30,"agreement_threshold":0.9,"recheck_interval":10,
+            "min_sample_met":false,"threshold_met":true,"is_check_due":false,
+            "qualified":false}}"""
 }
 
 class AdminBundleControllerTest {

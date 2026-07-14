@@ -35,9 +35,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.giraffetechnology.qc.admin.AdminSkuController
+import com.giraffetechnology.qc.admin.AdminSkuConfigState
 import com.giraffetechnology.qc.admin.AdminSkuCreateState
 import com.giraffetechnology.qc.admin.AdminSkuListState
-import com.giraffetechnology.qc.admin.SKU_LIFECYCLE_STATES
 import com.giraffetechnology.qc.i18n.LanguageController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -57,6 +57,7 @@ fun AdminSkuScreen(
     val scope = rememberCoroutineScope()
     val skill by languageController.skill.collectAsState()
     val listState by controller.listState.collectAsState()
+    val configState by controller.configState.collectAsState()
     val createState by controller.createState.collectAsState()
     val selected by controller.selected.collectAsState()
 
@@ -113,7 +114,9 @@ fun AdminSkuScreen(
                                     scope.launch(Dispatchers.IO) { controller.refresh(query, "") }
                                 },
                             )
-                            SKU_LIFECYCLE_STATES.forEach { state ->
+                            val lifecycleStates =
+                                (configState as? AdminSkuConfigState.Loaded)?.lifecycleStates.orEmpty()
+                            lifecycleStates.forEach { state ->
                                 DropdownMenuItem(
                                     text = { Text(skill.t("admin.skus.status.$state")) },
                                     onClick = {
@@ -129,6 +132,11 @@ fun AdminSkuScreen(
                     }) { Text(skill.t("common.search")) }
                 }
                 Spacer(Modifier.height(8.dp))
+
+                if (configState is AdminSkuConfigState.Error) {
+                    AdminErrorBanner((configState as AdminSkuConfigState.Error).message)
+                    Spacer(Modifier.height(4.dp))
+                }
 
                 when (val s = listState) {
                     is AdminSkuListState.Loading -> Text(skill.t("common.loading"), fontSize = 13.sp)

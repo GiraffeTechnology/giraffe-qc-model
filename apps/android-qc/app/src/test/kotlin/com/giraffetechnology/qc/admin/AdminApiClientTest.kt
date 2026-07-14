@@ -52,6 +52,16 @@ class AdminApiClientTest {
         assertEquals("session=abc123", listReq.headers["Cookie"])
     }
 
+    @Test
+    fun `admin action without bound identity fails before network`() {
+        val transport = FakeAdminTransport()
+        val client = AdminApiClient("http://test", transport)
+        val result = client.createSku("A", "B", null, null)
+        assertTrue(result is AdminApiResult.Error)
+        assertEquals(401, (result as AdminApiResult.Error).httpCode)
+        assertEquals(0, transport.requests.size)
+    }
+
     // ── SKU list / create ────────────────────────────────────────────────────
 
     @Test
@@ -91,7 +101,7 @@ class AdminApiClientTest {
     fun `createSku posts tenant-scoped body and returns id`() {
         val transport = FakeAdminTransport()
         val client = loggedInClient(transport)
-        transport.stub("POST", "/api/v1/sku", AdminHttpResponse(201, """{"id":"sku9","tenant_id":"demo","item_number":"A","name":"B","category":null,"description":null,"status":"active","created_at":"2026-01-01T00:00:00"}"""))
+        transport.stub("POST", "/admin/studio/skus", AdminHttpResponse(201, """{"id":"sku9","tenant_id":"demo","item_number":"A","name":"B","status":"draft"}"""))
 
         val result = client.createSku("A", "B", null, null)
         assertEquals("sku9", (result as AdminApiResult.Ok).value)
@@ -105,12 +115,58 @@ class AdminApiClientTest {
         val transport = FakeAdminTransport()
         val client = loggedInClient(transport)
         transport.stub(
-            "POST", "/api/v1/sku",
+            "POST", "/admin/studio/skus",
             AdminHttpResponse(409, """{"detail":"item_number 'A' already exists for tenant 'demo'"}"""),
         )
         val result = client.createSku("A", "B", null, null)
         assertTrue(result is AdminApiResult.Error)
         assertTrue((result as AdminApiResult.Error).message.contains("already exists"))
+    }
+
+    @Test
+    fun `sku lifecycle states are read from shared Studio config`() {
+        val transport = FakeAdminTransport()
+        val client = loggedInClient(transport)
+        transport.stub(
+            "GET", "/admin/studio/config",
+            AdminHttpResponse(200, """{"sku_lifecycle_states":["draft","needs_information","ready_for_review","confirmed","published","installed","needs_requalification"]}"""),
+        )
+        val result = client.fetchSkuLifecycleStates() as AdminApiResult.Ok
+        assertEquals("draft", result.value.first())
+        assertEquals(7, result.value.size)
+    }
+
+    @Test
+    fun `detection point edit uses authenticated patch`() {
+        val transport = FakeAdminTransport()
+        val client = loggedInClient(transport)
+        transport.stub(
+            "PATCH", "/api/v1/sku/detection-points/dp1",
+            AdminHttpResponse(200, """{"id":"dp1"}"""),
+        )
+        val result = client.updateDetectionPoint(
+            "dp1", "DP-1", "Count", null, "counting", "12", "critical",
+        )
+        assertEquals("dp1", (result as AdminApiResult.Ok).value)
+        assertEquals("PATCH", transport.requests.last().method)
+        assertEquals("session=abc123", transport.requests.last().headers["Cookie"])
+    }
+
+    @Test
+    fun `checkpoint category confirmation carries administrator identity`() {
+        val transport = FakeAdminTransport()
+        val client = loggedInClient(transport)
+        transport.stub(
+            "POST", "/api/qc/detection-points/dp1/confirm-category",
+            AdminHttpResponse(
+                200,
+                """{"detection_point_id":"dp1","proposed_checkpoint_category":"visual_defect","confirmed_checkpoint_category":"visual_defect","category_confirmed_by":"admin_en","ai_role":"primary_visual_judge","ai_can_be_primary_judge":true}""",
+            ),
+        )
+        val result = client.confirmDetectionPointCategory("dp1", "visual_defect")
+            as AdminApiResult.Ok
+        assertTrue(result.value.aiCanBePrimaryJudge)
+        assertTrue(String(transport.requests.last().body!!).contains("confirmed_by=admin_en"))
     }
 
     // ── upload ───────────────────────────────────────────────────────────────
@@ -226,24 +282,71 @@ class AdminApiClientTest {
         assertTrue(body.contains("\"decision\":\"fail\""))
     }
 
-    // ── labeled backend-pending stubs ────────────────────────────────────────
+    // ── probation API ───────────────────────────────────────────────────────
 
     @Test
-    fun `region persistence and jetson health and probation are labeled backend-pending`() {
+    fun `probation state parses gate and carries authenticated tenant`() {
         val transport = FakeAdminTransport()
         val client = loggedInClient(transport)
+        transport.stub(
+            "GET", "/api/qc/probation/by-revision/rev1",
+            AdminHttpResponse(
+                200,
+                """{"probation_id":"p1","tenant_id":"demo","sku_id":"s1",
+                    "standard_revision_id":"rev1","status":"active","gate":{
+                    "jobs_recorded":30,"agreements":28,"agreement_rate":0.9333,
+                    "min_sample_size":30,"agreement_threshold":0.9,"recheck_interval":10,
+                    "min_sample_met":true,"threshold_met":true,"is_check_due":true,
+                    "qualified":false}}""",
+            ),
+        )
+        val result = client.fetchProbation("rev1") as AdminApiResult.Ok
+        val probation = result.value
+        assertEquals(30, probation.gate.jobsRecorded)
+        assertEquals("active", probation.status)
+        val request = transport.requests.last()
+        assertTrue(request.url.contains("tenant_id=demo"))
+        assertEquals("session=abc123", request.headers["Cookie"])
+    }
 
-        listOf(
-            client.saveDetectionPointRegions("dp1", emptyList()),
-            client.fetchJetsonHealth(),
-            client.fetchProbation("rev1"),
-        ).forEach { result ->
-            assertTrue(result is AdminApiResult.Error)
-            val message = (result as AdminApiResult.Error).message
-            assertTrue(message, message.startsWith("backend-pending"))
-            assertTrue(message, message.contains("docs/api-contracts/"))
-        }
-        // And crucially: no network request was fabricated for them.
-        assertEquals(1, transport.requests.size) // only the login
+    @Test
+    fun `probation pause uses authenticated real endpoint`() {
+        val transport = FakeAdminTransport()
+        val client = loggedInClient(transport)
+        transport.stub(
+            "POST", "/api/qc/probation/p1/pause",
+            AdminHttpResponse(
+                200,
+                """{"probation_id":"p1","tenant_id":"demo","sku_id":"s1",
+                    "standard_revision_id":"rev1","status":"paused","gate":{
+                    "jobs_recorded":0,"agreements":0,"agreement_rate":0.0,
+                    "min_sample_size":30,"agreement_threshold":0.9,"recheck_interval":10,
+                    "min_sample_met":false,"threshold_met":false,"is_check_due":false,
+                    "qualified":false}}""",
+            ),
+        )
+        val result = client.pauseProbation("p1") as AdminApiResult.Ok
+        assertEquals("paused", result.value.status)
+        assertEquals("session=abc123", transport.requests.last().headers["Cookie"])
+    }
+
+    // ── standard authoring APIs ─────────────────────────────────────────────
+
+    @Test
+    fun `region persistence posts the normalized model to the real route`() {
+        val transport = FakeAdminTransport()
+        val client = loggedInClient(transport)
+        transport.stub(
+            "POST", "/admin/studio/detection-points/dp1/regions",
+            AdminHttpResponse(200, """{"status":"regions_saved","detection_point_id":"dp1"}"""),
+        )
+
+        val result = client.saveDetectionPointRegions(
+            "dp1", listOf(Region("photo1", 0.1f, 0.2f, 0.3f, 0.4f)),
+        )
+        assertTrue(result is AdminApiResult.Ok)
+        val request = transport.requests.last()
+        assertTrue(String(request.body!!).contains("\"image_id\":\"photo1\""))
+        assertEquals("session=abc123", request.headers["Cookie"])
     }
 }

@@ -4,20 +4,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * PRD SKU lifecycle states — must stay aligned with the backend's
- * `SKU_LIFECYCLE_STATES` in src/db/sku_models.py (installed by WS2). The Pad
- * never binds to the legacy active/inactive/archived values.
- */
-val SKU_LIFECYCLE_STATES: List<String> = listOf(
-    "draft",
-    "needs_information",
-    "ready_for_review",
-    "confirmed",
-    "published",
-    "installed",
-    "needs_requalification",
-)
+sealed class AdminSkuConfigState {
+    object Loading : AdminSkuConfigState()
+    data class Loaded(val lifecycleStates: List<String>) : AdminSkuConfigState()
+    data class Error(val message: String) : AdminSkuConfigState()
+}
 
 sealed class AdminSkuListState {
     object Loading : AdminSkuListState()
@@ -35,6 +26,9 @@ sealed class AdminSkuCreateState {
 /** SKU create / select (WS3 item 2) — structured form-based Phase-1 parity. */
 class AdminSkuController(private val client: AdminApiClient) {
 
+    private val _configState = MutableStateFlow<AdminSkuConfigState>(AdminSkuConfigState.Loading)
+    val configState: StateFlow<AdminSkuConfigState> = _configState.asStateFlow()
+
     private val _listState = MutableStateFlow<AdminSkuListState>(AdminSkuListState.Loading)
     val listState: StateFlow<AdminSkuListState> = _listState.asStateFlow()
 
@@ -45,6 +39,16 @@ class AdminSkuController(private val client: AdminApiClient) {
     val selected: StateFlow<AdminSkuSummary?> = _selected.asStateFlow()
 
     fun refresh(query: String = "", statusFilter: String = "") {
+        if (_configState.value !is AdminSkuConfigState.Loaded) {
+            _configState.value = when (val config = client.fetchSkuLifecycleStates()) {
+                is AdminApiResult.Ok -> {
+                    val states = config.value.filter { it.isNotBlank() }.distinct()
+                    if (states.size == 7) AdminSkuConfigState.Loaded(states)
+                    else AdminSkuConfigState.Error("backend returned an invalid SKU lifecycle")
+                }
+                is AdminApiResult.Error -> AdminSkuConfigState.Error(config.message)
+            }
+        }
         _listState.value = AdminSkuListState.Loading
         _listState.value = when (val r = client.listSkus(query, statusFilter)) {
             is AdminApiResult.Ok -> AdminSkuListState.Loaded(r.value)

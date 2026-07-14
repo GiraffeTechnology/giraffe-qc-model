@@ -6,8 +6,11 @@
 
 **Consumer:** WS3 Administrator health screen
 
-**Implementation status on `main`:** `[PLANNED]`. Existing Android health state
-is tied to the retired Operator MNN/Jetson architecture.
+**Implementation status:** `[PARTIAL]`. WS3 now consumes this exact state as one
+immutable `StateFlow` and renders Nano, cloud/network, queue, and Xavier as
+separate panels. WS5 implements the Xavier v2 health source. WS4 still owns the
+Operator/Nano/cloud producer, so the WS3 fallback remains explicitly unknown
+and fail-closed until that source is connected.
 
 This contract is an Android-side state boundary, not a fourth inference API.
 WS3 reads one immutable `PadHealthState`/`StateFlow` and does not poll three

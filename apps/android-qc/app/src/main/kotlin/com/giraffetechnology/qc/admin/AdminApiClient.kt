@@ -114,6 +114,21 @@ data class AdminDetectionPoint(
     val regions: List<Region> = emptyList(),
 )
 
+data class AdminCheckpointCategory(
+    val category: String,
+    val defaultAiRole: String,
+    val aiCanBePrimaryJudge: Boolean,
+)
+
+data class AdminDetectionPointCategory(
+    val detectionPointId: String,
+    val proposedCategory: String,
+    val confirmedCategory: String?,
+    val confirmedBy: String?,
+    val aiRole: String,
+    val aiCanBePrimaryJudge: Boolean,
+)
+
 data class AdminBundle(
     val id: String,
     val bundleVersion: String,
@@ -155,6 +170,47 @@ data class AdminSuspension(
     val trainingPackId: String?,
     val status: String,
     val reason: String?,
+)
+
+data class AdminProbationGate(
+    val jobsRecorded: Int,
+    val agreements: Int,
+    val agreementRate: Double,
+    val minSampleSize: Int,
+    val agreementThreshold: Double,
+    val recheckInterval: Int,
+    val minSampleMet: Boolean,
+    val thresholdMet: Boolean,
+    val checkDue: Boolean,
+    val qualified: Boolean,
+)
+
+data class AdminProbationView(
+    val probationId: String,
+    val skuId: String,
+    val standardRevisionId: String,
+    val status: String,
+    val gate: AdminProbationGate,
+)
+
+data class AdminDisagreementPoint(
+    val pointCode: String,
+    val disagreementCount: Int,
+)
+
+data class AdminDisagreementJob(
+    val jobRef: String,
+    val sequenceNo: Int,
+    val aiVerdict: String,
+    val humanFinalVerdict: String,
+)
+
+data class AdminDisagreementReport(
+    val probationId: String,
+    val status: String,
+    val disagreements: Int,
+    val detectionPoints: List<AdminDisagreementPoint>,
+    val jobs: List<AdminDisagreementJob>,
 )
 
 /**
@@ -220,6 +276,12 @@ class AdminApiClient internal constructor(
         }
     }
 
+    fun fetchSkuLifecycleStates(): AdminApiResult<List<String>> =
+        getJson("$baseUrl/admin/studio/config") { json ->
+            val states = json.getJSONArray("sku_lifecycle_states")
+            (0 until states.length()).map { states.getString(it) }
+        }
+
     fun getSku(skuId: String): AdminApiResult<AdminSkuSummary> {
         val tenant = identity?.tenantId ?: "default"
         return getJson("$baseUrl/admin/studio/skus/${enc(skuId)}?tenant_id=${enc(tenant)}") {
@@ -239,7 +301,7 @@ class AdminApiClient internal constructor(
             .put("name", name)
             .putOpt("category", category)
             .putOpt("description", description)
-        return postJson("$baseUrl/api/v1/sku", body) { it.getString("id") }
+        return postJson("$baseUrl/admin/studio/skus", body) { it.getString("id") }
     }
 
     // ── 3. Standard photo / process-card upload ─────────────────────────────
@@ -251,6 +313,7 @@ class AdminApiClient internal constructor(
         bytes: ByteArray,
         viewType: String? = null,
     ): AdminApiResult<String> {
+        if (identity == null) return AdminApiResult.Error("administrator authentication required", 401)
         val tenant = identity?.tenantId ?: "default"
         val boundary = "----GiraffeQcPad${UUID.randomUUID().toString().replace("-", "")}"
         val out = ByteArrayOutputStream()
@@ -303,6 +366,71 @@ class AdminApiClient internal constructor(
         }
     }
 
+    fun updateDetectionPoint(
+        detectionPointId: String,
+        pointCode: String,
+        label: String,
+        description: String?,
+        methodHint: String?,
+        expectedValue: String?,
+        severity: String,
+    ): AdminApiResult<String> {
+        val body = JSONObject()
+            .put("tenant_id", identity?.tenantId ?: "default")
+            .put("point_code", pointCode)
+            .put("label", label)
+            .putOpt("description", description)
+            .putOpt("method_hint", methodHint)
+            .putOpt("expected_value", expectedValue)
+            .put("severity", severity)
+        return requestJson(
+            "PATCH", "$baseUrl/api/v1/sku/detection-points/${enc(detectionPointId)}", body,
+        ) { it.getString("id") }
+    }
+
+    fun fetchCheckpointCategories(): AdminApiResult<List<AdminCheckpointCategory>> =
+        getJson("$baseUrl/api/qc-model/checkpoint-categories") { json ->
+            val items = json.getJSONArray("categories")
+            (0 until items.length()).map { i ->
+                val item = items.getJSONObject(i)
+                AdminCheckpointCategory(
+                    category = item.getString("category"),
+                    defaultAiRole = item.getString("default_ai_role"),
+                    aiCanBePrimaryJudge = item.getBoolean("ai_can_be_primary_judge"),
+                )
+            }
+        }
+
+    fun fetchDetectionPointCategories(skuId: String): AdminApiResult<List<AdminDetectionPointCategory>> {
+        val tenant = identity?.tenantId ?: "default"
+        return getJson(
+            "$baseUrl/api/qc/skus/${enc(skuId)}/detection-points?tenant_id=${enc(tenant)}"
+        ) { json ->
+            val items = json.getJSONArray("detection_points")
+            (0 until items.length()).map { i -> parseDetectionPointCategory(items.getJSONObject(i)) }
+        }
+    }
+
+    fun confirmDetectionPointCategory(
+        detectionPointId: String,
+        category: String,
+        rationale: String = "",
+    ): AdminApiResult<AdminDetectionPointCategory> {
+        val admin = identity ?: return AdminApiResult.Error("administrator authentication required", 401)
+        val form = "confirmed_category=${enc(category)}&confirmed_by=${enc(admin.username)}" +
+            "&rationale=${enc(rationale)}"
+        val resp = runCatching {
+            transport.request(
+                "POST",
+                "$baseUrl/api/qc/detection-points/${enc(detectionPointId)}/confirm-category",
+                headers = cookieHeaders(),
+                body = form.toByteArray(),
+                contentType = "application/x-www-form-urlencoded",
+            )
+        }.getOrElse { e -> return AdminApiResult.Error(e.message ?: "network error") }
+        return parseResponse(resp) { parseDetectionPointCategory(it) }
+    }
+
     /** Confirm a standard-intake's candidate checkpoints (category confirmation). */
     fun confirmIntake(
         intakeId: String,
@@ -318,23 +446,28 @@ class AdminApiClient internal constructor(
     }
 
     // ── 5. Region drawing persistence ────────────────────────────────────────
-    //
-    // TODO(backend-pending: docs/api-contracts/standard-authoring-regions.md):
-    // the server-side write route for set_detection_point_regions() is being
-    // added by WS6 (Standard Authoring wiring). The Pad keeps the exact
-    // backend data model ({image_id, x, y, w, h}, normalized 0–1, bbox only —
-    // see src/qc_model/studio/regions.py) and queues drawn regions in
-    // PendingRegionStore until that route exists. This stubs ONLY the network
-    // call — drawing, validation, and state are fully real.
 
     fun saveDetectionPointRegions(
         detectionPointId: String,
         regions: List<Region>,
     ): AdminApiResult<Unit> {
-        return AdminApiResult.Error(
-            "backend-pending: region persistence route not published yet " +
-                "(docs/api-contracts/standard-authoring-regions.md)"
-        )
+        val serialized = JSONArray()
+        regions.forEach { region ->
+            serialized.put(
+                JSONObject()
+                    .put("image_id", region.imageId)
+                    .put("x", region.x)
+                    .put("y", region.y)
+                    .put("w", region.w)
+                    .put("h", region.h)
+            )
+        }
+        val body = JSONObject()
+            .put("tenant_id", identity?.tenantId ?: "default")
+            .put("regions", serialized)
+        return postJson(
+            "$baseUrl/admin/studio/detection-points/${enc(detectionPointId)}/regions", body,
+        ) { Unit }
     }
 
     // ── 6. Bundle publish / download status ─────────────────────────────────
@@ -396,33 +529,38 @@ class AdminApiClient internal constructor(
         }
     }
 
-    // ── 8. Jetson health ─────────────────────────────────────────────────────
-    //
-    // TODO(backend-pending: docs/api-contracts/jetson-health.md): the Jetson NX
-    // runner health endpoint is delivered by WS4/WS5 and its contract file is
-    // not yet published to docs/api-contracts/. Only this network call is
-    // stubbed; the health screen itself renders real Pad-side health and a
-    // clearly labeled "awaiting backend" Jetson panel.
+    // ── 9. Probation / qualification (probation-api.md v2) ─────────────────
 
-    fun fetchJetsonHealth(): AdminApiResult<Unit> {
-        return AdminApiResult.Error(
-            "backend-pending: Jetson health contract not published yet " +
-                "(docs/api-contracts/jetson-health.md)"
-        )
+    fun fetchProbation(revisionId: String): AdminApiResult<AdminProbationView> {
+        if (revisionId.isBlank()) return AdminApiResult.Error("standard revision id is required")
+        val tenant = identity?.tenantId ?: "default"
+        return getJson(
+            "$baseUrl/api/qc/probation/by-revision/${enc(revisionId)}?tenant_id=${enc(tenant)}"
+        ) { parseProbation(it) }
     }
 
-    // ── 9. Probation / qualification ────────────────────────────────────────
-    //
-    // TODO(backend-pending: docs/api-contracts/probation-service.md): probation
-    // logic exists server-side (src/qc_model/qualification/probation.py) but
-    // WS7 owns its production HTTP wiring; the contract file is not yet in
-    // docs/api-contracts/. Only the network calls are stubbed.
+    fun pauseProbation(probationId: String): AdminApiResult<AdminProbationView> {
+        val tenant = identity?.tenantId ?: "default"
+        return postJson(
+            "$baseUrl/api/qc/probation/${enc(probationId)}/pause?tenant_id=${enc(tenant)}",
+            JSONObject(),
+        ) { parseProbation(it) }
+    }
 
-    fun fetchProbation(revisionId: String): AdminApiResult<Unit> {
-        return AdminApiResult.Error(
-            "backend-pending: probation service contract not published yet " +
-                "(docs/api-contracts/probation-service.md)"
-        )
+    fun resumeProbation(probationId: String): AdminApiResult<AdminProbationView> {
+        val tenant = identity?.tenantId ?: "default"
+        return postJson(
+            "$baseUrl/api/qc/probation/${enc(probationId)}/resume?tenant_id=${enc(tenant)}",
+            JSONObject(),
+        ) { parseProbation(it) }
+    }
+
+    fun fetchDisagreementReport(probationId: String): AdminApiResult<AdminDisagreementReport> {
+        val tenant = identity?.tenantId ?: "default"
+        return getJson(
+            "$baseUrl/api/qc/probation/${enc(probationId)}/disagreement-report" +
+                "?tenant_id=${enc(tenant)}"
+        ) { parseDisagreementReport(it) }
     }
 
     fun listSuspensions(): AdminApiResult<List<AdminSuspension>> {
@@ -468,6 +606,7 @@ class AdminApiClient internal constructor(
     // ── plumbing ─────────────────────────────────────────────────────────────
 
     private fun <T> getJson(url: String, parse: (JSONObject) -> T): AdminApiResult<T> {
+        if (identity == null) return AdminApiResult.Error("administrator authentication required", 401)
         val resp = runCatching {
             transport.request("GET", url, headers = cookieHeaders())
         }.getOrElse { e -> return AdminApiResult.Error(e.message ?: "network error") }
@@ -475,6 +614,7 @@ class AdminApiClient internal constructor(
     }
 
     private fun <T> getJsonArray(url: String, parse: (JSONArray) -> T): AdminApiResult<T> {
+        if (identity == null) return AdminApiResult.Error("administrator authentication required", 401)
         val resp = runCatching {
             transport.request("GET", url, headers = cookieHeaders())
         }.getOrElse { e -> return AdminApiResult.Error(e.message ?: "network error") }
@@ -486,9 +626,19 @@ class AdminApiClient internal constructor(
     }
 
     private fun <T> postJson(url: String, body: JSONObject, parse: (JSONObject) -> T): AdminApiResult<T> {
+        return requestJson("POST", url, body, parse)
+    }
+
+    private fun <T> requestJson(
+        method: String,
+        url: String,
+        body: JSONObject,
+        parse: (JSONObject) -> T,
+    ): AdminApiResult<T> {
+        if (identity == null) return AdminApiResult.Error("administrator authentication required", 401)
         val resp = runCatching {
             transport.request(
-                "POST", url,
+                method, url,
                 headers = cookieHeaders(),
                 body = body.toString().toByteArray(),
                 contentType = "application/json",
@@ -569,6 +719,15 @@ class AdminApiClient internal constructor(
         )
     }
 
+    private fun parseDetectionPointCategory(o: JSONObject) = AdminDetectionPointCategory(
+        detectionPointId = o.getString("detection_point_id"),
+        proposedCategory = o.optString("proposed_checkpoint_category"),
+        confirmedCategory = o.optString("confirmed_checkpoint_category").takeIf { it.isNotEmpty() },
+        confirmedBy = o.optString("category_confirmed_by").takeIf { it.isNotEmpty() },
+        aiRole = o.optString("ai_role"),
+        aiCanBePrimaryJudge = o.optBoolean("ai_can_be_primary_judge"),
+    )
+
     private fun parseBundle(o: JSONObject) = AdminBundle(
         id = o.getString("id"),
         bundleVersion = o.optString("bundle_version"),
@@ -606,4 +765,52 @@ class AdminApiClient internal constructor(
         humanFinalDecision = o.optString("human_final_decision").takeIf { it.isNotEmpty() },
         recomputedAt = o.optString("recomputed_at").takeIf { it.isNotEmpty() },
     )
+
+    private fun parseProbation(o: JSONObject): AdminProbationView {
+        val gate = o.getJSONObject("gate")
+        return AdminProbationView(
+            probationId = o.getString("probation_id"),
+            skuId = o.getString("sku_id"),
+            standardRevisionId = o.getString("standard_revision_id"),
+            status = o.getString("status"),
+            gate = AdminProbationGate(
+                jobsRecorded = gate.getInt("jobs_recorded"),
+                agreements = gate.getInt("agreements"),
+                agreementRate = gate.getDouble("agreement_rate"),
+                minSampleSize = gate.getInt("min_sample_size"),
+                agreementThreshold = gate.getDouble("agreement_threshold"),
+                recheckInterval = gate.getInt("recheck_interval"),
+                minSampleMet = gate.getBoolean("min_sample_met"),
+                thresholdMet = gate.getBoolean("threshold_met"),
+                checkDue = gate.getBoolean("is_check_due"),
+                qualified = gate.getBoolean("qualified"),
+            ),
+        )
+    }
+
+    private fun parseDisagreementReport(o: JSONObject): AdminDisagreementReport {
+        val points = o.getJSONArray("detection_points")
+        val jobs = o.getJSONArray("jobs")
+        return AdminDisagreementReport(
+            probationId = o.getString("probation_id"),
+            status = o.getString("status"),
+            disagreements = o.getInt("disagreements"),
+            detectionPoints = (0 until points.length()).map { i ->
+                val point = points.getJSONObject(i)
+                AdminDisagreementPoint(
+                    pointCode = point.getString("point_code"),
+                    disagreementCount = point.getInt("disagreement_count"),
+                )
+            },
+            jobs = (0 until jobs.length()).map { i ->
+                val job = jobs.getJSONObject(i)
+                AdminDisagreementJob(
+                    jobRef = job.getString("job_ref"),
+                    sequenceNo = job.getInt("sequence_no"),
+                    aiVerdict = job.getString("ai_verdict"),
+                    humanFinalVerdict = job.getString("human_final_verdict"),
+                )
+            },
+        )
+    }
 }

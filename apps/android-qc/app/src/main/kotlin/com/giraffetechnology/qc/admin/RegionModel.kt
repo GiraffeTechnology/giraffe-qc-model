@@ -8,8 +8,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * Region annotation on a standard photo — the exact backend data model of
  * `set_detection_point_regions()` (src/qc_model/studio/regions.py): a
  * normalized bounding box `{image_id, x, y, w, h}` with 0–1 coordinates,
- * top-left origin, bounding box only. WS6b integrates on top of this model
- * after merge, so the shape must not drift.
+ * top-left origin, bounding box only. The Pad posts this shape directly to the
+ * Studio region route, so it must not drift.
  */
 data class Region(
     val imageId: String,
@@ -60,14 +60,8 @@ object RegionValidator {
 }
 
 /**
- * In-memory queue of regions drawn on the Pad that could not be persisted yet.
- *
- * TODO(backend-pending: docs/api-contracts/standard-authoring-regions.md):
- * WS6 is adding the HTTP route for `set_detection_point_regions()`. Until it
- * lands, validated regions are held here (keyed by detection point id) so the
- * admin's drawing work is not lost within a session, and the UI shows an
- * explicit "pending backend" state — nothing pretends the save reached the
- * server.
+ * In-memory retry queue for validated regions when the real server call fails.
+ * The UI distinguishes queued-for-retry from a confirmed server save.
  */
 class PendingRegionStore {
     private val _pending = MutableStateFlow<Map<String, List<Region>>>(emptyMap())

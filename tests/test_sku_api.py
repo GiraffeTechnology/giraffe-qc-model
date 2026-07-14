@@ -317,6 +317,40 @@ class TestDetectionPointCreation:
         })
         assert resp.status_code == 404
 
+    def test_edit_detection_point_persists_fields_and_preserves_identity(self, client):
+        created = client.post(f"/api/v1/sku/{self.sku_id}/detection-points", json={
+            "tenant_id": TENANT,
+            "point_code": "DP-EDIT-001",
+            "label": "Before",
+        }).json()
+        resp = client.patch(f"/api/v1/sku/detection-points/{created['id']}", json={
+            "tenant_id": TENANT,
+            "point_code": "DP-EDIT-001",
+            "label": "After",
+            "method_hint": "counting",
+            "expected_value": "12",
+            "severity": "critical",
+        })
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["id"] == created["id"]
+        assert resp.json()["label"] == "After"
+        assert resp.json()["expected_value"] == "12"
+
+    def test_edit_counting_point_without_expected_value_fails_closed(self, client):
+        created = client.post(f"/api/v1/sku/{self.sku_id}/detection-points", json={
+            "tenant_id": TENANT,
+            "point_code": "DP-EDIT-002",
+            "label": "Before",
+        }).json()
+        resp = client.patch(f"/api/v1/sku/detection-points/{created['id']}", json={
+            "tenant_id": TENANT,
+            "point_code": "DP-EDIT-002",
+            "label": "After",
+            "method_hint": "counting",
+            "severity": "major",
+        })
+        assert resp.status_code == 400
+
 
 # ─── P2: Detection Point requirement_id Validation ────────────────────────────────────────────
 
