@@ -12,7 +12,9 @@ Pad-to-Jetson paths do not implement this contract.
 
 This is the only VLM inference API in the production Operator path. The Pad and
 Jetson Nano detect QC points, create bounded crops, and send all crops for one
-job in one request to the cloud qwen3-vl-30b-A3B service. The Nano runs no VLM.
+job in one request to the configured cloud VLM provider. The Architecture v2
+deployment default is `qwen3-vl-30b-A3B`; it is a replaceable provider default,
+not the product identity or an ecosystem lock-in. The Nano runs no VLM.
 
 ## 1. Binding rules
 
@@ -175,6 +177,7 @@ and does not block VLM recognition.
     }
   ],
   "model": {
+    "provider_adapter": "configured-cloud-vlm",
     "family": "qwen3-vl-30b-A3B",
     "deployment_revision": "opaque-deployment-id"
   },
@@ -277,4 +280,6 @@ Additive optional fields are backward compatible. Renaming/removing a field,
 changing enum meaning, changing signature canonicalization, or permitting full
 frames requires a contract version change in the same PR as producer and
 consumer updates. The legacy `cloud_qwen_dev` route and the old Pad-to-Jetson
-contract are not compatible implementations of this API.
+contract are not compatible implementations of this API. A different LLM/VLM
+may replace the default model without changing this contract when its adapter
+preserves the schemas, fail-closed semantics, evidence fields, and timing.

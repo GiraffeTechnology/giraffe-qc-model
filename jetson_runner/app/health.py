@@ -1,43 +1,90 @@
-"""Jetson health/readiness reporting (§6.1) — surfaced on the Pad, the only screen.
-
-Mock mode returns deterministic healthy values so CI is stable; a real Xavier NX
-build would read tegrastats / jetson_stats here. There is no local display: this
-data is what the Pad shows so an operator never plugs a monitor into the Jetson.
-"""
+"""Truthful Xavier health telemetry for the Administrator runner."""
 from __future__ import annotations
 
-from src.qc_model.jetson import constants as C
+import shutil
+from datetime import datetime, timezone
 
 
-def collect_health(*, mock: bool = True, model_loaded: bool = True, last_inference_latency_ms: int | None = None) -> dict:
-    if mock:
-        return {
-            "service_up": True,
-            "model_loaded": model_loaded,
-            "temperature_c": 61.5,
-            "throttling": False,
-            "disk_free_percent": 72.0,
-            "last_inference_latency_ms": last_inference_latency_ms,
-            "readiness_state": C.READY if model_loaded else C.CONNECTING,
-            # Explicit per docs/api-contracts/jetson-runner-api.md §4 — the
-            # Pad must be able to tell mock health from real health, not just
-            # infer it from other fields.
-            "mock": True,
-        }
-    try:  # pragma: no cover - real hardware path, not exercised in CI
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _device_health() -> dict:
+    """Return measured values or explicit unknowns; never healthy fixtures."""
+    total = free = None
+    try:
+        usage = shutil.disk_usage("/")
+        total, free = usage.total, usage.free
+    except OSError:
+        pass
+
+    temperature = None
+    throttling = None
+    try:  # pragma: no cover - Xavier-only optional telemetry
         from jtop import jtop  # type: ignore
 
-        with jtop() as jt:
-            stats = jt.stats
-            return {
-                "service_up": True,
-                "model_loaded": model_loaded,
-                "temperature_c": stats.get("Temp CPU"),
-                "throttling": bool(stats.get("jetson_clocks") is False),
-                "disk_free_percent": None,
-                "last_inference_latency_ms": last_inference_latency_ms,
-                "readiness_state": C.READY if model_loaded else C.CONNECTING,
-                "mock": False,
-            }
+        with jtop() as jetson:
+            temperature = jetson.stats.get("Temp CPU")
+            clocks = jetson.stats.get("jetson_clocks")
+            throttling = clocks is False if clocks is not None else None
     except Exception:
-        return {"service_up": True, "model_loaded": model_loaded, "readiness_state": C.CONNECTING, "mock": False}
+        pass
+
+    if throttling is True:
+        thermal_state = "throttled"
+    elif temperature is None:
+        thermal_state = "unknown"
+    elif temperature >= 75:
+        thermal_state = "warm"
+    else:
+        thermal_state = "normal"
+    return {
+        "temperature_c": temperature,
+        "thermal_state": thermal_state,
+        "throttling": throttling,
+        "disk_free_bytes": free,
+        "disk_total_bytes": total,
+    }
+
+
+def collect_admin_health(
+    *,
+    runner_id: str,
+    agent_version: str,
+    adapter_mode: str,
+    model_name: str,
+    model_revision: str,
+    model_loaded: bool,
+    loaded_at: str | None,
+    credentials_configured: bool,
+    last_recognition: dict | None,
+    hardware_validation_status: str,
+    hardware_validation_evidence_ref: str | None,
+) -> dict:
+    ready = model_loaded and credentials_configured
+    return {
+        "schema_version": "2.0",
+        "runner_id": runner_id,
+        "agent_version": agent_version,
+        "observed_at": utc_now(),
+        "readiness": "ready" if ready else "not_ready",
+        "service_up": True,
+        "runtime": {
+            "engine": "mnn",
+            "adapter_mode": adapter_mode,
+            "model_name": model_name,
+            "model_revision": model_revision,
+            "model_loaded": model_loaded,
+            "loaded_at": loaded_at if model_loaded else None,
+        },
+        # WS8 owns analyzer execution. Until then the service must not claim a
+        # configured or validated CV pipeline merely because fields exist.
+        "cv_pipeline": {"status": "not_configured", "package_version": None},
+        "device": _device_health(),
+        "last_recognition": last_recognition,
+        "hardware_validation": {
+            "status": hardware_validation_status,
+            "evidence_ref": hardware_validation_evidence_ref,
+        },
+        "mock": adapter_mode == "mock",
+    }

@@ -39,11 +39,9 @@ data class JetsonInferenceRequest(
      * Per docs/api-contracts/jetson-runner-api.md §2, a "reference/URI or
      * inline-encoded frame". This client always sends an inline
      * `data:<mime>;base64,<...>` data URI so the Jetson never needs a shared
-     * filesystem mount with the Pad -- and a llama.cpp-backed real adapter
-     * can pass this string straight through as a chat-completions-style
-     * `image_url.url` value unmodified (see jetson_runner's
-     * LlamaCppInferenceAdapter). This is LAN-local inference on the Jetson,
-     * never a cloud endpoint.
+     * filesystem mount with the Pad. This entire Pad-to-Xavier shape is a
+     * migration-only Architecture v1 contract; WS4 replaces production
+     * Operator inference with bounded crop batches sent to the cloud API.
      */
     val image: String,
     val detectionPoints: List<JetsonDetectionPointSpec>,

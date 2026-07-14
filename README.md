@@ -132,7 +132,7 @@ The edge profile is tablet, not desktop. Do not use `desktop_pc_mnn` for this pr
 The visual QC engine introduces:
 
 ```text
-provider abstraction for Qwen3.5-VL and other adapters
+provider abstraction for configurable LLM/VLM adapters (Qwen is the default only)
 SKU Training Pack
 Playbook
 Capture Protocol
