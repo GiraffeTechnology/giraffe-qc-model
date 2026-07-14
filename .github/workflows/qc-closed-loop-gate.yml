@@ -1,0 +1,56 @@
+name: qc-closed-loop-gate (manual, hardware-required)
+
+# Architecture v2 integration gate (CLAUDE_CODE_A_CI_BRIEF §4 / CI doc §3).
+# This job can only prove the closed loop on REAL hardware and a REAL
+# cellular/thresholded link:
+#
+#   Operator: real APK → Nano/Pad CV + crop → batched crop upload →
+#             cloud qwen3-vl-30b-A3B → verdict on Pad → outbox → S4 recompute
+#             → Admin Results UI
+#   Admin:    Xavier NX local CV + qwen3-vl-4b-MNN per xavier-admin-runner-api
+#
+# plus telemetry assertions: ≤10 s capture→verdict SLO on a real link, and
+# link-failover behavior (Wi-Fi→cellular below threshold, pending-upload queue
+# when both fail, hysteresis on switch-back, every switch logged).
+#
+# It is therefore workflow_dispatch-ONLY and fails closed unless a human
+# explicitly attests that hardware evidence inputs are being provided.
+# It must NEVER be wired to run automatically or report a mock-based pass.
+
+on:
+  workflow_dispatch:
+    inputs:
+      hardware_attestation:
+        description: >-
+          Type "real-hardware" to confirm this run is driven against physical
+          Pad + Nano + Xavier + a real cellular/thresholded link, with evidence
+          artifacts attached. Any other value fails the job.
+        required: true
+        default: ""
+      evidence_notes:
+        description: Where the run evidence (logs/screenshots/timing) is stored.
+        required: false
+        default: ""
+
+jobs:
+  closed-loop-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard — hardware attestation required
+        run: |
+          if [ "${{ github.event.inputs.hardware_attestation }}" != "real-hardware" ]; then
+            echo "::error::HARDWARE-REQUIRED: this gate cannot pass from CI alone."
+            echo "The v2 closed loop (real APK → cloud inference → S4 → Admin Results,"
+            echo "10s SLO on a real link, Wi-Fi→cellular failover) needs physical"
+            echo "devices and a real network. Run the harness on-site and re-dispatch"
+            echo "with hardware_attestation=real-hardware plus evidence_notes."
+            exit 1
+          fi
+          echo "Attestation received. Evidence: ${{ github.event.inputs.evidence_notes }}"
+      - name: Record evidence pointer
+        run: |
+          echo "## Closed-loop gate run (human-attested)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Evidence location: ${{ github.event.inputs.evidence_notes }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "NOTE: this workflow records the attestation and evidence pointer;" >> "$GITHUB_STEP_SUMMARY"
+          echo "the verdict on the gate itself is made in the follow-up audit report," >> "$GITHUB_STEP_SUMMARY"
+          echo "never by this job alone." >> "$GITHUB_STEP_SUMMARY"

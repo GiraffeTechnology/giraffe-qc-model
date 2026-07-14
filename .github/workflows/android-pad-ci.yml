@@ -51,6 +51,12 @@ jobs:
           echo "GIT_BRANCH=${{ github.head_ref || github.ref_name }}" >> "$GITHUB_ENV"
           echo "BUILD_TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
+      - name: Gradle audit tasks (no-cloud-inference / no-mocks / MNN deps)
+        working-directory: apps/android-qc
+        run: |
+          ./gradlew :app:verifyMnnNativeDeps :app:auditNoMocksInMainSrc \
+            :app:auditNoCloudInference --stacktrace
+
       - name: Run 1 of 3 — assemble padLocalDebug + unit tests
         working-directory: apps/android-qc
         run: |
