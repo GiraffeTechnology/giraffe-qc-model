@@ -195,6 +195,42 @@ def test_final_decision_records_probation_job_when_revision_is_on_probation(clie
     assert report["gate"]["agreements"] == 1  # server_overall_result "pass" == human "pass"
 
 
+def test_pad_submission_retry_is_idempotent(client, db_session):
+    rev = _seed_revision(db_session)
+    body = {
+        "tenant_id": T1,
+        "job_ref": "same-cloud-job",
+        "standard_revision_id": rev,
+        "bundle_version": "1",
+        "pad_overall_result": "pass",
+        "checkpoints": [{"checkpoint_id": "cp1", "result": "pass"}],
+    }
+    first = client.post("/api/qc/results/submissions", json=body)
+    retry = client.post("/api/qc/results/submissions", json=body)
+    assert first.status_code == 201
+    assert retry.status_code == 201
+    assert retry.json()["submission_id"] == first.json()["submission_id"]
+
+
+def test_pad_submission_idempotency_conflict_fails_closed(client, db_session):
+    rev = _seed_revision(db_session)
+    body = {
+        "tenant_id": T1,
+        "job_ref": "conflicting-cloud-job",
+        "standard_revision_id": rev,
+        "bundle_version": "1",
+        "pad_overall_result": "pass",
+        "checkpoints": [{"checkpoint_id": "cp1", "result": "pass"}],
+    }
+    assert client.post("/api/qc/results/submissions", json=body).status_code == 201
+    response = client.post(
+        "/api/qc/results/submissions",
+        json=dict(body, pad_overall_result="fail"),
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "idempotency_conflict"
+
+
 def test_final_decision_records_disagreement_on_probation(client, db_session):
     rev = _seed_revision(db_session)
     probation = probation_service.start_probation(db_session, standard_revision_id=rev, tenant_id=T1)

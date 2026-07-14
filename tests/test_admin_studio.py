@@ -876,6 +876,29 @@ def test_analysis_config_change_after_publish_requires_new_revision(client):
     assert "new revision" in response.json()["error"]
 
 
+def test_judgment_field_edit_after_publish_requires_new_revision(client):
+    sku_id = _create_flw(client)
+    client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": "default"},
+        files={"image": ("flw.png", _tiny_png(), "image/png")},
+    )
+    dp_id = _confirm_one_point(client, sku_id)
+    assert client.post("/admin/studio/publish", json={"sku_id": sku_id}).status_code == 200
+
+    response = client.patch(
+        f"/admin/studio/detection-points/{dp_id}",
+        json={
+            "point_code": "STAMEN_CENTERING",
+            "label": "Changed historical judgment",
+            "method_hint": "visual",
+            "severity": "critical",
+        },
+    )
+    assert response.status_code == 409
+    assert "new qualified revision" in response.json()["detail"]
+
+
 # ── Probation auto-start on publish (WS7 §1.1) ────────────────────────────────
 
 

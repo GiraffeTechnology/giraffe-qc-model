@@ -104,9 +104,29 @@ def ingest_submission(
     workstation_id: Optional[str] = None,
     expected_bundle_version: Optional[str] = None,
     raw: Optional[dict] = None,
-) -> tuple[QCPadSubmission, QCServerVerdict, ServerVerdict]:
+) -> tuple[QCPadSubmission, QCServerVerdict, Optional[ServerVerdict]]:
     """Persist a Pad submission and its server-recomputed verdict."""
     checkpoint_list = list(checkpoints)
+
+    existing = db.scalar(
+        select(QCPadSubmission).where(
+            QCPadSubmission.tenant_id == tenant_id,
+            QCPadSubmission.job_ref == job_ref,
+        )
+    )
+    if existing is not None:
+        existing_points = sorted((p.checkpoint_id, p.result) for p in existing.checkpoints)
+        same = (
+            existing.standard_revision_id == standard_revision_id
+            and (existing.bundle_version or "") == (bundle_version or "")
+            and existing.pad_overall_result == pad_overall_result
+            and existing_points == sorted(checkpoint_list)
+        )
+        if not same:
+            raise ValueError("idempotency_conflict")
+        if existing.verdict is None:
+            raise ValueError("incomplete_existing_submission")
+        return existing, existing.verdict, None
 
     submission = QCPadSubmission(
         id=_uid(),
