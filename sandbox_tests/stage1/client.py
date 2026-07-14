@@ -60,6 +60,9 @@ class SandboxVLMClient:
                 ],
                 "temperature": 0,
                 "max_tokens": self.config.max_tokens,
+                "chat_template_kwargs": {
+                    "enable_thinking": bool(case.get("require_think_wrapper"))
+                },
             }
         else:
             payload = {
