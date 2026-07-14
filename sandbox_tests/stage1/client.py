@@ -102,7 +102,11 @@ class SandboxVLMClient:
             reasoning_content = message.get("reasoning_content")
             if reasoning_content is not None and not isinstance(reasoning_content, str):
                 raise SandboxInferenceError("model_reasoning_content_not_text")
-            if case.get("require_think_wrapper") and reasoning_content:
+            if (
+                case.get("require_think_wrapper")
+                and reasoning_content
+                and "<think" not in content.lower()
+            ):
                 # Normalize the provider's real split reasoning field back to
                 # the tagged representation consumed by the production parser.
                 content = f"<think>{reasoning_content}</think>\n{content}"
