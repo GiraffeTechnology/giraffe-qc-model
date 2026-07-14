@@ -26,6 +26,10 @@
     return (strings.statusLabels || {})[status] || status;
   }
 
+  function standardStatusLabel(status) {
+    return (strings.standardStatusLabels || {})[status] || status;
+  }
+
   function api(path, opts) {
     return fetch(path, opts).then(async (r) => {
       const data = await r.json().catch(() => ({}));
@@ -73,7 +77,7 @@
       li.innerHTML =
         `<div class="sku-item-number">${esc(sku.item_number)}</div>` +
         `<div class="sku-name">${esc(sku.name)}</div>` +
-        `<div class="sku-meta">${esc(statusLabel(sku.status))} · ${esc(sku.standard_status)}</div>`;
+        `<div class="sku-meta">${esc(statusLabel(sku.status))} · ${esc(standardStatusLabel(sku.standard_status))}</div>`;
       li.addEventListener("click", () => selectSku(sku.id));
       skuList.appendChild(li);
     });
@@ -123,10 +127,10 @@
           `<div class="dp-meta">${esc(bits.join(" · "))}</div>` +
           (dp.pass_criteria ? `<div class="dp-meta">${esc(dp.pass_criteria)}</div>` : "") +
           `<button type="button" class="btn dp-regions-btn" data-dp-id="${esc(dp.id)}">` +
-          (regionCount ? `Regions (${regionCount})` : "Add regions") +
+          (regionCount ? t("regions", { count: regionCount }) : t("addRegions")) +
           `</button>` +
           `<button type="button" class="btn dp-analysis-btn" data-dp-id="${esc(dp.id)}">` +
-          ((dp.cv_config && (dp.cv_config.analyzers || []).length) ? "Edit CV config" : "Add CV config") +
+          ((dp.cv_config && (dp.cv_config.analyzers || []).length) ? t("editCvConfig") : t("addCvConfig")) +
           `</button>` +
           `<div class="region-editor-slot"></div>` +
           `</li>`
@@ -139,7 +143,7 @@
       `<h3>${esc(sku.name)}</h3>` +
       `<div class="sku-sub">${esc(sku.item_number)}${sku.category ? " · " + esc(sku.category) : ""}</div>` +
       preview +
-      `<div><span class="status-badge status-${esc(sku.standard_status)}">${esc(sku.standard_status.replace(/_/g, " "))}</span></div>` +
+      `<div><span class="status-badge status-${esc(sku.standard_status)}">${esc(standardStatusLabel(sku.standard_status))}</span></div>` +
       (dps ? `<ul class="dp-list">${dps}</ul>` : `<p class="muted" style="margin-top:12px">${esc(t("noDetectionPoints"))}</p>`) +
       `<div class="publish-row">` +
       `<button class="publish-btn" id="publish-btn" ${canPublish ? "" : "disabled"}>${esc(t("publish"))}</button>` +
@@ -164,12 +168,12 @@
     const dp = findDp(dpId);
     if (!dp) return;
     const expectedRaw = window.prompt(
-      "Expected features JSON (example: {\"rhinestone_count\":24})",
+      t("expectedFeaturesPrompt"),
       JSON.stringify(dp.expected_features || {})
     );
     if (expectedRaw === null) return;
     const configRaw = window.prompt(
-      "CV config JSON (analyzers: rhinestone_count, petal_segmentation, pistil_localization)",
+      t("cvConfigPrompt"),
       JSON.stringify(dp.cv_config || {})
     );
     if (configRaw === null) return;
@@ -178,7 +182,7 @@
       expectedFeatures = JSON.parse(expectedRaw || "{}");
       cvConfig = JSON.parse(configRaw || "{}");
     } catch (err) {
-      addBubble("Analysis config must be valid JSON: " + err.message, "system");
+      addBubble(t("invalidAnalysisJson", { message: err.message }), "system");
       return;
     }
     api(`/admin/studio/detection-points/${dpId}/analysis-config`, {
@@ -188,9 +192,9 @@
     })
       .then((data) => {
         setActiveSku(data.sku);
-        addBubble("Detection-point CV configuration saved.", "system");
+        addBubble(t("analysisSaved"), "system");
       })
-      .catch((err) => addBubble("Could not save CV configuration: " + err.message, "system"));
+      .catch((err) => addBubble(t("analysisSaveFailed", { message: err.message }), "system"));
   }
 
   // ── Probation / qualification (§3, WS7) ─────────────────────────────────
@@ -203,24 +207,25 @@
     api(`/api/qc/probation/by-revision/${revisionId}?tenant_id=${tenant}`)
       .then((p) => renderProbation(slot, p))
       .catch(() => {
-        slot.innerHTML = `<div class="probation-empty muted">Not yet on probation (publish to start).</div>`;
+        slot.innerHTML = `<div class="probation-empty muted">${esc(t("probationNotStarted"))}</div>`;
       });
   }
 
   function renderProbation(slot, p) {
     const g = p.gate;
-    const statusLabel = { active: "On probation", paused: "Probation paused", qualified: "Qualified — solo" }[p.status] || p.status;
+    const statusLabel = { active: t("probationActive"), paused: t("probationPaused"), qualified: t("probationQualified") }[p.status] || p.status;
+    const stats = t("probationStats", { jobs: g.jobs_recorded, rate: (g.agreement_rate * 100).toFixed(0) });
     slot.innerHTML =
       `<div class="probation-head">` +
       `<span class="status-badge status-probation-${esc(p.status)}">${esc(statusLabel)}</span>` +
-      `<span class="probation-stats">${g.jobs_recorded} job(s) · ${(g.agreement_rate * 100).toFixed(0)}% agreement` +
-      (g.min_sample_met ? "" : ` (min ${g.min_sample_size} required)`) +
+      `<span class="probation-stats">${esc(stats)}` +
+      (g.min_sample_met ? "" : ` ${esc(t("probationMinimum", { count: g.min_sample_size }))}`) +
       `</span>` +
       `</div>` +
       `<div class="probation-actions">` +
-      (p.status === "active" ? `<button type="button" class="btn" id="probation-pause">Pause</button>` : "") +
-      (p.status === "paused" ? `<button type="button" class="btn btn-primary" id="probation-resume">Resume</button>` : "") +
-      (g.jobs_recorded > 0 ? `<button type="button" class="btn" id="probation-report">View disagreement report</button>` : "") +
+      (p.status === "active" ? `<button type="button" class="btn" id="probation-pause">${esc(t("pause"))}</button>` : "") +
+      (p.status === "paused" ? `<button type="button" class="btn btn-primary" id="probation-resume">${esc(t("resume"))}</button>` : "") +
+      (g.jobs_recorded > 0 ? `<button type="button" class="btn" id="probation-report">${esc(t("disagreementReport"))}</button>` : "") +
       `</div>`;
 
     const pauseBtn = slot.querySelector("#probation-pause");
@@ -234,11 +239,14 @@
   function probationAction(probationId, action) {
     api(`/api/qc/probation/${probationId}/${action}`, { method: "POST" })
       .then((p) => {
-        addBubble(action === "pause" ? "Probation paused." : "Probation resumed.", "system");
+        addBubble(t("probationActionDone", { action: action === "pause" ? t("pause") : t("resume") }), "system");
         const slot = $("#probation-section");
         if (slot) renderProbation(slot, p);
       })
-      .catch((err) => addBubble(`Could not ${action} probation: ${err.message}`, "system"));
+      .catch((err) => addBubble(t("probationActionFailed", {
+        action: action === "pause" ? t("pause") : t("resume"),
+        message: err.message,
+      }), "system"));
   }
 
   // Reuses the existing conversation bubble component for the disagreement
@@ -247,16 +255,16 @@
     api(`/api/qc/probation/${probationId}/disagreement-report?tenant_id=${tenant}`)
       .then((r) => {
         if (!r.disagreements) {
-          addBubble("No disagreements recorded yet — AI and human decisions have matched on every job so far.", "system");
+          addBubble(t("noDisagreements"), "system");
           return;
         }
-        const lines = [`${r.disagreements} disagreement(s) out of ${r.gate.jobs_recorded} job(s):`];
+        const lines = [t("disagreementSummary", { count: r.disagreements, jobs: r.gate.jobs_recorded })];
         r.detection_points.slice(0, 5).forEach((dp) => {
-          lines.push(`  • ${dp.point_code}: ${dp.disagreement_count} disagreement(s)`);
+          lines.push(t("disagreementLine", { point: dp.point_code, count: dp.disagreement_count }));
         });
         addBubble(lines.join("\n"), "system");
       })
-      .catch((err) => addBubble("Could not load disagreement report: " + err.message, "system"));
+      .catch((err) => addBubble(t("disagreementLoadFailed", { message: err.message }), "system"));
   }
 
   function publish() {
@@ -319,7 +327,7 @@
     const dp = findDp(dpId);
     const photos = (state.sku && state.sku.photos) || [];
     if (!photos.length) {
-      addBubble("Upload a standard photo before adding regions.", "system");
+      addBubble(t("uploadPhotoBeforeRegions"), "system");
       return;
     }
 
@@ -334,7 +342,7 @@
     photos.forEach((p) => {
       const opt = document.createElement("option");
       opt.value = p.id;
-      opt.textContent = (p.view_type || p.angle || p.id.slice(0, 8)) + (p.is_primary ? " (primary)" : "");
+      opt.textContent = (p.view_type || p.angle || p.id.slice(0, 8)) + (p.is_primary ? ` (${t("primary")})` : "");
       select.appendChild(opt);
     });
 
@@ -351,7 +359,7 @@
         const rm = document.createElement("button");
         rm.type = "button";
         rm.className = "region-remove";
-        rm.textContent = "Remove";
+        rm.textContent = t("remove");
         rm.addEventListener("click", () => {
           regions.splice(idx, 1);
           renderList();
@@ -442,7 +450,7 @@
         body: JSON.stringify({ tenant_id: tenant, regions: regions }),
       })
         .then((res) => {
-          addBubble(`Saved ${regions.length} region(s) for ${dp.point_code}.`, "system");
+          addBubble(t("regionsSaved", { count: regions.length, point: dp.point_code }), "system");
           if (res.sku) setActiveSku(res.sku);
         })
         .catch((err) => { errorEl.textContent = err.message; });
