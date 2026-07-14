@@ -16,29 +16,34 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from jetson_runner.app.admin_contract import AdminPointResult, AdminRecognitionRequest
 from src.qc_model.jetson.contract import InferenceResponse
 
 
 class InferenceAdapter(ABC):
-    """All Jetson inference backends (mock, llama.cpp, ...) implement this."""
+    """All Xavier Administrator inference providers implement this seam."""
 
     @property
     @abstractmethod
     def adapter_name(self) -> str:
-        """Stable adapter identifier, e.g. ``mock`` or ``llama_cpp``."""
+        """Stable provider-adapter identifier, e.g. ``mock`` or ``mnn``."""
 
     @property
     @abstractmethod
     def model_name(self) -> str:
-        """Concrete model identifier, e.g. ``qwen3.5-vl-2b-int4``."""
+        """Configured model identifier; Qwen is a default, not a product lock."""
+
+    @property
+    def model_revision(self) -> str:
+        """Auditable model revision, or ``unvalidated`` when not certified."""
+        return "unvalidated"
 
     @abstractmethod
     def is_ready(self) -> bool:
         """Whether this adapter can serve a real ``run_inference`` call right now.
 
         For the mock adapter this is always ``True``. For a real backend this
-        must reflect the actual backend/model state (e.g. a reachable
-        llama.cpp server with a model loaded) -- ``JetsonRunnerService``
+        must reflect the actual backend/model state (a live MNN model handle) -- ``JetsonRunnerService``
         checks this *before* calling ``run_inference`` and fails closed
         (rejects ``/infer`` with ``runtime_not_ready``) when it is ``False``,
         rather than letting a backend call fail mid-request.
@@ -63,3 +68,11 @@ class InferenceAdapter(ABC):
         should treat as the whole request failing (e.g. the backend became
         unreachable mid-call).
         """
+
+    def run_admin_recognition(
+        self,
+        request: AdminRecognitionRequest,
+        image_paths: dict[str, str],
+    ) -> list[AdminPointResult]:
+        """Run the Architecture v2 Administrator recognition contract."""
+        raise NotImplementedError("adapter does not implement Administrator recognition")

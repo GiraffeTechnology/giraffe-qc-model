@@ -136,8 +136,10 @@ timing must not populate it in a production health snapshot.
 `xavier_admin.status` is `not_configured | connecting | ready | degraded |
 unreachable | unknown`. It maps directly from
 `xavier-admin-runner-api.md`; it must report `runtime_engine=mnn` and
-`model_name=qwen3-vl-4b` for Architecture v2. This state gates only
-Administrator local-recognition actions.
+the configured `model_name` truthfully. Architecture v2 defaults that field to
+`qwen3-vl-4b`, but consumers must not use a Qwen-specific enum or assume the
+product is tied to that provider. This state gates only Administrator
+local-recognition actions.
 
 If `mock=true`, WS3 must show the exact banner `MOCK INFERENCE — NOT REAL QC
 JUDGMENT`. A production configuration must never emit a mock-ready state.

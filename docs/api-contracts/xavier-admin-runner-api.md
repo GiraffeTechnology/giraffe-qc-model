@@ -7,14 +7,17 @@
 **Consumers:** Pad Administrator workflows, WS3 health screen through
 `pad-health-state.md`, and WS8 CV pre-analysis
 
-**Implementation status on `main`:** `[PLANNED]`. The existing Xavier runner is
-a Pad/Operator-oriented, llama.cpp-shaped implementation and does not satisfy
-this contract.
+**Implementation status:** `[IMPLEMENTED IN WS5; HARDWARE VALIDATION NOT RUN]`.
+The HTTP/authentication/MNN adapter path is covered by software tests. Native
+bridge compilation and model inference on the approved Xavier image remain the
+manual evidence gate in `jetson_runner/HARDWARE_VALIDATION.md`.
 
 The Xavier NX is the Administrator-side local recognition node. It runs
-classical CV followed by qwen3-vl-4b through MNN for authoring and qualification
-workflows. It is not in the production Operator path and is not a fallback when
-the Operator cloud request fails.
+classical CV followed by a configured MNN VLM provider for authoring and
+qualification workflows. The Architecture v2 deployment default is
+`qwen3-vl-4b`; it is a replaceable provider default, not the product identity
+or an ecosystem lock-in. The Xavier is not in the production Operator path and
+is not a fallback when the Operator cloud request fails.
 
 ## 1. Transport and authentication
 
@@ -231,3 +234,7 @@ synthetic pass/fail values.
 Pad-to-Xavier path and its llama.cpp-shaped adapter. It is not an alias for this
 API. WS5 may reuse implementation pieces, but must expose the endpoints,
 runtime identity, health truthfulness, and MNN model in this contract.
+
+The provider boundary is model-agnostic: another MNN-compatible VLM may replace
+the default without changing the HTTP contract when it preserves schemas,
+evidence semantics, fail-closed behavior, and truthful runtime identity.
