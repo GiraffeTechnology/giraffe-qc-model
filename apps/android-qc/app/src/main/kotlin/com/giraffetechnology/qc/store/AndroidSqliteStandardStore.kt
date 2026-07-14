@@ -5,6 +5,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.giraffetechnology.qc.contracts.DetectionPoint
+import com.giraffetechnology.qc.contracts.DetectionPointRegion
 import com.giraffetechnology.qc.contracts.DetectionSeverity
 import com.giraffetechnology.qc.contracts.IncidentalFindingPolicy
 import com.giraffetechnology.qc.contracts.InstalledSku
@@ -200,6 +201,17 @@ class AndroidSqliteStandardStore(
                         put("required_view", p.requiredView.wire)
                         put("evidence_required", p.evidenceRequired)
                         put("incidental_finding_policy", p.incidentalFindingPolicy.wire)
+                        put("regions", JSONArray().apply {
+                            p.regions.forEach { region ->
+                                put(JSONObject().apply {
+                                    put("image_id", region.imageId)
+                                    put("x", region.x)
+                                    put("y", region.y)
+                                    put("w", region.w)
+                                    put("h", region.h)
+                                })
+                            }
+                        })
                     }
                 )
             }
@@ -224,6 +236,18 @@ class AndroidSqliteStandardStore(
                     incidentalFindingPolicy = IncidentalFindingPolicy.fromWire(
                         o.optString("incidental_finding_policy")
                     ) ?: IncidentalFindingPolicy.FLAG_FOR_REVIEW,
+                    regions = o.optJSONArray("regions")?.let { regions ->
+                        (0 until regions.length()).map { index ->
+                            val region = regions.getJSONObject(index)
+                            DetectionPointRegion(
+                                imageId = region.getString("image_id"),
+                                x = region.getDouble("x"),
+                                y = region.getDouble("y"),
+                                w = region.getDouble("w"),
+                                h = region.getDouble("h"),
+                            )
+                        }
+                    } ?: emptyList(),
                 )
             }
         }

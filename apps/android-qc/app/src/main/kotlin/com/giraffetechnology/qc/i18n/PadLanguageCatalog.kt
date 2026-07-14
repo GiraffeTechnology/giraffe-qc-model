@@ -75,6 +75,9 @@ object PadLanguageCatalog {
         "readiness.no_sku_selected" to "No SKU selected",
         "readiness.offline" to "Offline",
         "readiness.online" to "Online",
+        "readiness.cloud_pipeline_ready" to "Cloud QC pipeline ready",
+        "readiness.cloud_connecting" to "Cloud QC pipeline connecting...",
+        "readiness.cloud_unavailable" to "Cloud QC unavailable — no verdict can be produced",
         // Jetson readiness (WS4) — copied verbatim from
         // src/qc_model/jetson/constants.py's READINESS_LABELS so Pad and
         // Server terminology stay identical.
@@ -291,6 +294,9 @@ object PadLanguageCatalog {
         "readiness.no_sku_selected" to "未选择 SKU",
         "readiness.offline" to "离线",
         "readiness.online" to "在线",
+        "readiness.cloud_pipeline_ready" to "云端质检链路就绪",
+        "readiness.cloud_connecting" to "云端质检链路连接中...",
+        "readiness.cloud_unavailable" to "云端质检不可用 — 无法生成判定",
         "readiness.jetson_connecting" to "Jetson 连接中...",
         "readiness.jetson_unreachable" to "Jetson 不可达 — 离线模式",
 
@@ -480,6 +486,9 @@ object PadLanguageCatalog {
         "readiness.no_sku_selected" to "SKU 未選択",
         "readiness.offline" to "オフライン",
         "readiness.online" to "オンライン",
+        "readiness.cloud_pipeline_ready" to "クラウドQCパイプライン準備完了",
+        "readiness.cloud_connecting" to "クラウドQCパイプライン接続中...",
+        "readiness.cloud_unavailable" to "クラウドQC利用不可 — 判定を生成できません",
         "readiness.jetson_connecting" to "Jetson 接続中...",
         "readiness.jetson_unreachable" to "Jetson に到達できません — オフラインモード",
 

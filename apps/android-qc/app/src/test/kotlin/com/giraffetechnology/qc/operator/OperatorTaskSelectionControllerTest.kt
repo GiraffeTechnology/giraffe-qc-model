@@ -1,6 +1,7 @@
 package com.giraffetechnology.qc.operator
 
 import com.giraffetechnology.qc.contracts.DetectionPoint
+import com.giraffetechnology.qc.contracts.DetectionPointRegion
 import com.giraffetechnology.qc.contracts.DetectionSeverity
 import com.giraffetechnology.qc.contracts.IncidentalFindingPolicy
 import com.giraffetechnology.qc.contracts.InstalledSku
@@ -12,6 +13,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.json.JSONArray
 
 /** Offline operator task-selection logic — exact messages, offline search, confirm. */
 class OperatorTaskSelectionControllerTest {
@@ -27,6 +29,7 @@ class OperatorTaskSelectionControllerTest {
         requiredView = RequiredView.FRONT,
         evidenceRequired = true,
         incidentalFindingPolicy = IncidentalFindingPolicy.FLAG_FOR_REVIEW,
+        regions = listOf(DetectionPointRegion("front-photo", 0.1, 0.2, 0.3, 0.4)),
     )
 
     private suspend fun seed(store: InMemoryStandardStore) {
@@ -93,6 +96,14 @@ class OperatorTaskSelectionControllerTest {
         assertTrue(task.standardPhotos.isNotEmpty())
         assertTrue(task.qcPoints.isNotEmpty())
         assertEquals("center_alignment", task.qcPoints.first().qcPointCode)
+        val regions = JSONArray(task.qcPoints.first().roiJson)
+        assertEquals(1, regions.length())
+        val region = regions.getJSONObject(0)
+        assertEquals("front-photo", region.getString("image_id"))
+        assertEquals(0.1, region.getDouble("x"), 0.0)
+        assertEquals(0.2, region.getDouble("y"), 0.0)
+        assertEquals(0.3, region.getDouble("w"), 0.0)
+        assertEquals(0.4, region.getDouble("h"), 0.0)
     }
 
     @Test fun `confirm unknown SKU yields SkuNotFound`() = runTest {

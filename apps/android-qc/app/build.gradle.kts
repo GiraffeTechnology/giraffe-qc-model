@@ -43,15 +43,9 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 2
-        versionName = "0.2.0-pad-local"
+        versionName = "0.3.0-operator-cloud"
 
-        buildConfigField("String",  "QWEN_MODEL_NAME",                 "\"Qwen3-VL-2B-Instruct-MNN\"")
-        buildConfigField("String",  "QWEN_PROVISIONING_MODE",          "\"sideload_or_factory_preload\"")
-        buildConfigField("int",     "QWEN_TIMEOUT_SECONDS",            "60")
-        buildConfigField("boolean", "QWEN_CLOUD_ENABLED",              "false")
-        buildConfigField("boolean", "PAD_LOCAL_ONLY",                  "true")
-        buildConfigField("boolean", "ALLOW_SEND_IMAGES_TO_CLOUD_QWEN", "false")
-        buildConfigField("boolean", "ALLOW_STUB_PASS",                 "false")
+        buildConfigField("int",     "LEGACY_MNN_TIMEOUT_SECONDS",      "60")
         buildConfigField("String",  "SKU_API_BASE_URL",                "\"http://192.168.1.10:8080\"")
         // WS4: Jetson LAN inference is the default path. This must stay
         // false in defaultConfig -- flipping it true is the ONLY way the
@@ -59,6 +53,16 @@ android {
         // it via PadRuntimeConfig.legacyMnnRuntimeEnabled), and it must never
         // be true in a production-marked build by default.
         buildConfigField("boolean", "LEGACY_MNN_RUNTIME_ENABLED",      "false")
+        // Architecture v2 Operator path. These are first-party, provider-neutral
+        // service settings. Qwen is only the replaceable deployment default.
+        buildConfigField("String",  "CLOUD_INFERENCE_BASE_URL",        "\"https://inference.invalid\"")
+        buildConfigField("String",  "CLOUD_INFERENCE_DEVICE_TOKEN",    "\"\"")
+        buildConfigField("String",  "CLOUD_INFERENCE_KEY_ID",          "\"\"")
+        buildConfigField("String",  "CLOUD_DEFAULT_MODEL",             "\"qwen3-vl-30b-A3B\"")
+        buildConfigField("int",     "CLOUD_MAX_CROP_BYTES",            "204800")
+        buildConfigField("int",     "CLOUD_MAX_LONGEST_SIDE_PX",       "704")
+        buildConfigField("int",     "CLOUD_JPEG_QUALITY",              "82")
+        buildConfigField("int",     "CLOUD_JOB_DEADLINE_MS",           "10000")
 
         // Build provenance — ties any installed APK back to an exact commit.
         buildConfigField("String", "GIT_COMMIT_SHA",  "\"$gitCommitSha\"")
@@ -88,13 +92,8 @@ android {
         create("padLocal") {
             dimension = "target"
             versionNameSuffix = "-padLocal"
-            // Factory LAN SKU API is allowed for SKU data.
-            // Pad-side QC inference must remain local-only — no cloud inference.
-            buildConfigField("String",  "QWEN_MODEL_NAME",                 "\"Qwen3-VL-2B-Instruct-MNN\"")
-            buildConfigField("boolean", "PAD_LOCAL_ONLY",                  "true")
-            buildConfigField("boolean", "QWEN_CLOUD_ENABLED",              "false")
-            buildConfigField("boolean", "ALLOW_SEND_IMAGES_TO_CLOUD_QWEN", "false")
-            buildConfigField("boolean", "ALLOW_STUB_PASS",                 "false")
+            // Historical flavor name retained for APK/update compatibility.
+            // Operator inference is the provider-neutral first-party cloud API.
         }
     }
 
@@ -158,10 +157,9 @@ tasks.register("verifyMnnNativeDeps") {
     }
 }
 
-tasks.register("auditNoCloudInference") {
+tasks.register("auditNoDirectProviderSdk") {
     group = "verification"
-    description = "Fails if any cloud VLM/LLM endpoint or SDK is referenced from src/main " +
-        "(padLocal inference must stay on-device)."
+    description = "Fails if the Pad directly embeds a third-party model-provider endpoint or SDK."
     doLast {
         val mainSrc = file("src/main")
         // Cloud inference providers and their hostnames/SDK ids. SKU-data LAN
@@ -187,9 +185,17 @@ tasks.register("auditNoCloudInference") {
         if (violations.isNotEmpty()) {
             error("Cloud inference reference in padLocal src/main:\n  ${violations.joinToString("\n  ")}")
         } else {
-            println("auditNoCloudInference: no cloud inference endpoints/SDKs referenced in src/main.")
+            println("auditNoDirectProviderSdk: only the first-party provider-neutral cloud contract is allowed.")
         }
     }
+}
+
+// Compatibility alias for the existing CI job name. Its v2 meaning is the
+// direct-provider audit above; first-party cloud inference is intentional.
+tasks.register("auditNoCloudInference") {
+    group = "verification"
+    description = "Compatibility alias for auditNoDirectProviderSdk."
+    dependsOn("auditNoDirectProviderSdk")
 }
 
 tasks.register("auditNoMocksInMainSrc") {

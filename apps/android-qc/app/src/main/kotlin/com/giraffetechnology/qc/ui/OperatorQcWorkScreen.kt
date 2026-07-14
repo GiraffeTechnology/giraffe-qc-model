@@ -46,9 +46,10 @@ import com.giraffetechnology.qc.camera.CameraXCaptureController
 import com.giraffetechnology.qc.capture.AutoCaptureController
 import com.giraffetechnology.qc.capture.AutoCaptureState
 import com.giraffetechnology.qc.i18n.LanguageController
-import com.giraffetechnology.qc.jetson.JetsonRuntimeMonitor
+import com.giraffetechnology.qc.operator.cloud.CloudRuntimeMonitor
 import com.giraffetechnology.qc.qwen.MnnRuntimeLoader
 import com.giraffetechnology.qc.readiness.JetsonPadReadiness
+import com.giraffetechnology.qc.readiness.CloudPadReadiness
 import com.giraffetechnology.qc.readiness.PadReadiness
 import com.giraffetechnology.qc.sku.MnnRuntime
 import com.giraffetechnology.qc.sku.PadInspectionCoordinator
@@ -97,7 +98,9 @@ fun OperatorQcWorkScreen(
     // PadRuntimeGraph wired in -- the coordinator/gating logic itself is
     // identical either way (both satisfy MnnRuntime).
     val standardInstalled = task.standardPhotos.isNotEmpty() && task.qcPoints.isNotEmpty()
-    val readiness = if (runtimeLoader is MnnRuntimeLoader) {
+    val readiness = if (runtimeLoader is CloudRuntimeMonitor) {
+        CloudPadReadiness.fromRuntimeState(runtimeState, standardInstalled, true)
+    } else if (runtimeLoader is MnnRuntimeLoader) {
         PadReadiness.fromRuntimeState(
             state = runtimeState,
             inferenceVerified = runtimeLoader.inferenceVerified,
@@ -114,7 +117,7 @@ fun OperatorQcWorkScreen(
             online = online,
         )
     }
-    val jetsonHealth = (runtimeLoader as? JetsonRuntimeMonitor)?.jetsonState?.collectAsState()?.value?.lastHealth
+    val cloudRuntime = runtimeLoader as? CloudRuntimeMonitor
 
     // Seed the log once when the page opens.
     LaunchedEffect(task.sku.id) {
@@ -139,11 +142,11 @@ fun OperatorQcWorkScreen(
                 inspectionCoordinator.inspect(task, photo)
             } else {
                 PadInspectionResult(
-                    overallResult = "MNN_PENDING",
-                    reason = "Inspection unavailable",
+                    overallResult = "CLOUD_UNAVAILABLE",
+                    reason = "Cloud inspection unavailable — no verdict available",
                     modelName = runtimeLoader.javaClass.simpleName,
-                    localOnly = true,
-                    cloudInferenceUsed = false,
+                    localOnly = false,
+                    cloudInferenceUsed = true,
                     capturedImagePath = photo?.rawImagePath,
                 )
             }
@@ -158,11 +161,11 @@ fun OperatorQcWorkScreen(
             val photo = (captureState as AutoCaptureState.Captured).capture
             val result = inspectionCoordinator?.inspect(task, photo)
                 ?: PadInspectionResult(
-                    overallResult = "MNN_PENDING",
-                    reason = "Inspection coordinator not available",
+                    overallResult = "CLOUD_UNAVAILABLE",
+                    reason = "Cloud inspection coordinator unavailable — no verdict available",
                     modelName = runtimeLoader.javaClass.simpleName,
-                    localOnly = true,
-                    cloudInferenceUsed = false,
+                    localOnly = false,
+                    cloudInferenceUsed = true,
                     capturedImagePath = photo.rawImagePath,
                 )
             conversation.add(ConversationBuilder.resultSummary(result, skill))
@@ -209,23 +212,15 @@ fun OperatorQcWorkScreen(
                 LanguageSwitch(languageController)
             }
 
-            // Jetson health line (WS4 §3): model loaded / temperature / last
-            // latency, and an unmissable mock-inference warning when
-            // JETSON_MOCK_MODE=true on the paired runner -- this must never
-            // be mistaken for real output.
-            jetsonHealth?.let { health ->
+            // Architecture v2: Operator readiness is cloud/link state. Xavier
+            // MNN is Administrator-only and never appears as this runtime.
+            cloudRuntime?.let { monitor ->
                 Text(
-                    buildString {
-                        append(if (health.modelLoaded) "● " else "○ ")
-                        health.temperatureC?.let { append(skill.t("pad.jetson.health.temperature", mapOf("temp" to it.toInt().toString()))); append("  ") }
-                        health.lastInferenceLatencyMs?.let { append(skill.t("pad.jetson.health.latency", mapOf("ms" to it.toString()))) }
-                    },
+                    "${if (monitor.cloudReachable) "●" else "○"} Cloud · ${monitor.lastDecision.selected.wire}" +
+                        if (monitor.lastDecision.breaches.isEmpty()) "" else " · ${monitor.lastDecision.breaches.joinToString()}",
                     fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (health.isMock) {
-                    Text(skill.t("pad.jetson.health.mock_warning"), fontSize = 11.sp, color = Color(0xFFB71C1C), fontWeight = FontWeight.Bold)
-                }
             }
 
             // Right-top: 4:3 reference image.

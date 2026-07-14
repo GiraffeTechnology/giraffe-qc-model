@@ -42,6 +42,9 @@ data class ResultSubmission(
     val modelName: String,
     val capturedImagePath: String?,
     val createdAtEpochMs: Long,
+    val cloudJobId: String? = null,
+    val pointResultsJson: String? = null,
+    val timingJson: String? = null,
 ) {
     companion object {
         /**
@@ -68,6 +71,9 @@ data class ResultSubmission(
             modelName = result.modelName,
             capturedImagePath = result.capturedImagePath,
             createdAtEpochMs = createdAtEpochMs,
+            cloudJobId = result.cloudJobId,
+            pointResultsJson = result.pointResultsJson,
+            timingJson = org.json.JSONObject(result.timing).toString(),
         )
     }
 }

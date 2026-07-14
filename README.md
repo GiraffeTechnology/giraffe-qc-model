@@ -162,7 +162,10 @@ provider failure fails closed
 malformed model output persists zero proposals
 ```
 
-The tablet MNN edge profile executes confirmed rules. It is not used for learning.
+Confirmed rules are executed through the configured runtime adapter. In
+Architecture v2, Operator recognition uses the cloud adapter, while MNN is
+limited to the Administrator Xavier node. Neither Qwen nor MNN is a required
+product dependency; both are replaceable deployment defaults.
 
 ---
 
@@ -242,69 +245,36 @@ AI may record, route, or assist review, but physical measurement checkpoints mus
 
 ---
 
-## Edge CV (optional hot-pluggable co-processor)
+## Operator Edge CV
 
-An **optional** subsystem lets a low-cost edge device (e.g. an NVIDIA Jetson
-Nano 2GB) offload lightweight CV work — preprocessing, candidate detection,
-crop/annotation generation. It is **off-switchable** and **failure-safe**:
+The Operator workstation uses Pad + Jetson Nano for deterministic QC-point
+detection, marking, cropping, and optional classical-CV evidence. The Nano runs
+no LLM/VLM. Only bounded per-point crops are sent to the configured cloud VLM
+service in one batch; full frames are prohibited.
 
-```text
-Jetson is optional        — the service runs with no edge device present
-Jetson is hot-pluggable   — connect / disconnect / reboot / replace, no service restart
-Service is source of truth — the device never writes to the DB; only validated APIs persist
-CPU fallback is mandatory  — no workflow freezes when Jetson is offline
-CV result is evidence      — pass_fail_hint is a hint, never the final QC decision
-CI needs no real hardware  — everything runs in mock mode
-```
+CV evidence never becomes the verdict by itself. A CV failure is recorded and
+the configured cloud VLM may continue without CV context when valid crops still
+exist. If valid crops cannot be produced, or the cloud returns no response, the
+job has no verdict and fails closed or remains visibly `pending_upload`.
 
-Enable/disable and tune via env (see `.env.example`):
-
-```env
-EDGE_CV_ENABLED=true          # set false to disable the whole subsystem
-EDGE_CV_HOTPLUG_ENABLED=true
-EDGE_CV_MOCK_ENABLED=true
-EDGE_CV_CPU_FALLBACK=true
-```
-
-The edge agent is pull-based (`register → heartbeat → pull job → run CV →
-upload result`) and ships with a mock runner. Docs:
-
-- `docs/edge-cv-architecture.md` — design, device + job state machines
-- `docs/jetson-nano-2gb-hotplug.md` — run the agent, unplug/replug safely
-- `docs/cv-job-lifecycle.md` — lease expiry, retry, manual review, CPU fallback
-- `docs/cv-result-schema.md` — result fields, `pass_fail_hint` limitation, validation
-- `docs/edge-cv-troubleshooting.md` — common issues
-- `edge_cv_agent/README.md` — the mock edge agent
+CI uses labeled test doubles and fixtures only. Those tests demonstrate contract
+and workflow behavior, not hardware readiness, visual accuracy, or cellular SLO
+compliance.
 
 ---
 
-## Jetson Xavier NX — qc-model inference runner (optional)
+## Administrator Xavier NX
 
-The QC production line has two device-side stages, both optional and headless:
+The Xavier NX is an Administrator-side authoring and qualification node. It
+runs CV plus a configurable local VLM through MNN; `qwen3-vl-4b` is the default
+configuration, not a required model or ecosystem dependency. It is not in the
+Operator production inference path and is never paired to the Pad as the
+Operator verdict engine.
 
-```
-CV front-end                         inference                verdict
-Jetson Nano 2GB (auto-lock capture)  ─┐
-   or                                 ├─▶ frame + spec ─▶ Jetson Xavier NX ─▶ Pad ─▶ Server (S4)
-Pad (local CV framing)              ─┘                    qc-model VLM        shows   recomputes
-```
-
-- The **CV** role (candidate detection / capture / framing) is played by the
-  Jetson **Nano** (`edge_cv_agent/`, see the Edge CV section) **or** the **Pad** —
-  interchangeable front-ends.
-- The Jetson **Xavier NX** runs qc-model **inference** only: stateless per
-  request, every request carries the full detection-point spec inline (no bundle
-  caching → no Pad↔Jetson version skew). Its output is **evidence, not a
-  verdict** — the Server still recomputes pass/fail (S4).
-
-**Headless (P0):** production Jetsons have no display/keyboard/mouse. Pairing is
-USB (physical proof) or Wi-Fi (pairing-window + chassis-fingerprint) — never a
-QR/screen — and is 1:1, fail-closed (re-pair drops the old Pad with no grace),
-and Server-independent (floor first, sync later). If the Jetson is unreachable
-the operator **cannot submit** an inspection (no fabricated verdict, no fallback).
-
-Docs: `docs/jetson-xavier-nx-inference.md`, `docs/jetson-headless-pairing.md`,
-`docs/jetson-runtime-readiness.md`; mock runner: `jetson_runner/README.md`.
+Any mock runner is explicitly labeled
+`MOCK INFERENCE — NOT REAL QC JUDGMENT`, gated by configuration, and impossible
+to enable in production mode. Physical Xavier validation remains a manual
+hardware step until linked device evidence exists.
 
 ---
 

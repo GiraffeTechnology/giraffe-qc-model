@@ -107,31 +107,31 @@ false until on-device verification (Items 3–4) passes.
 
 ## Item 6 — No cloud provider on padLocal inference path ✅ PASS
 
-Source scan over `src/main` (kt/cpp/java):
+Architecture v2 replaces this historical local-only audit with a
+direct-provider audit. The Pad may call only the first-party, provider-neutral
+cloud contract; it must not embed a vendor endpoint or SDK.
 
 ```
 $ PATTERN='dashscope|aliyuncs|generativelanguage|api\.openai\.com|openai|anthropic|bedrock|vertexai|generateContent|qwen-vl-plus|qwen-vl-max|multimodal-generation'
 $ grep -rniE "$PATTERN" app/src/main --include=*.kt --include=*.cpp --include=*.java
-RESULT: NO cloud inference endpoint/SDK references found in src/main.
+RESULT: NO direct model-provider endpoint/SDK references found in src/main.
 
 $ grep -rniE "https?://[a-z0-9.:/_-]+" app/src/main --include=*.kt --include=*.cpp --include=*.java
 (none)
 ```
 
-Enforced continuously by the new Gradle task (fails the build on any cloud
-inference reference):
+Enforced continuously by the Gradle task:
 
 ```
-> Task :app:auditNoCloudInference
-auditNoCloudInference: no cloud inference endpoints/SDKs referenced in src/main.
+> Task :app:auditNoDirectProviderSdk
+auditNoDirectProviderSdk: only the first-party provider-neutral cloud contract is allowed.
 ```
 
-Build-config guards remain: `QWEN_CLOUD_ENABLED=false`,
-`ALLOW_SEND_IMAGES_TO_CLOUD_QWEN=false`, `ALLOW_STUB_PASS=false`,
-`PAD_LOCAL_ONLY=true` (unchanged; covered by `NetworkSecurityPolicyTest`). The only
-network URL in the app is the factory-LAN SKU **data** API (`http://192.168.1.10`),
-which carries no frames or prompts. `MnnQwenInspector.buildRequestJson` passes only
-local file paths to the native engine — no URLs.
+`CLOUD_INFERENCE_BASE_URL` points to the deployment-owned API, while bearer and
+device-signing credentials are provisioned separately. `CLOUD_DEFAULT_MODEL`
+is a replaceable default; Operator code depends on the contract, not Qwen APIs.
+The legacy MNN path remains off by default behind
+`LEGACY_MNN_RUNTIME_ENABLED=false`.
 
 ## Item 5 — Fault injection (partial coverage here)
 

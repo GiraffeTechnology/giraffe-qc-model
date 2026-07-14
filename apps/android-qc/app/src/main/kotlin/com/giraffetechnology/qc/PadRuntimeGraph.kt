@@ -9,11 +9,6 @@ import com.giraffetechnology.qc.camera.UvcCameraFrameSource
 import com.giraffetechnology.qc.capture.AutoCaptureController
 import com.giraffetechnology.qc.capture.FullFramePassthroughDetector
 import com.giraffetechnology.qc.capture.TargetDetector
-import com.giraffetechnology.qc.jetson.JetsonLanClient
-import com.giraffetechnology.qc.jetson.JetsonPairingStore
-import com.giraffetechnology.qc.jetson.JetsonQwenInspector
-import com.giraffetechnology.qc.jetson.JetsonRuntimeMonitor
-import com.giraffetechnology.qc.jetson.JetsonServerRelay
 import com.giraffetechnology.qc.qwen.MnnQwenInspector
 import com.giraffetechnology.qc.qwen.MnnRuntimeConfig
 import com.giraffetechnology.qc.qwen.MnnRuntimeLoader
@@ -21,6 +16,16 @@ import com.giraffetechnology.qc.qwen.QwenInspector
 import com.giraffetechnology.qc.contracts.SqliteStandardStore
 import com.giraffetechnology.qc.i18n.LanguageController
 import com.giraffetechnology.qc.operator.OperatorTaskSelectionController
+import com.giraffetechnology.qc.operator.cloud.AndroidKeystoreEd25519Signer
+import com.giraffetechnology.qc.operator.cloud.CloudCropEncoder
+import com.giraffetechnology.qc.operator.cloud.CloudInferenceClient
+import com.giraffetechnology.qc.operator.cloud.CloudPendingJobReconciler
+import com.giraffetechnology.qc.operator.cloud.CloudPendingJobStore
+import com.giraffetechnology.qc.operator.cloud.CloudRuntimeMonitor
+import com.giraffetechnology.qc.operator.cloud.CloudVlmInspector
+import com.giraffetechnology.qc.operator.cloud.CompressionProfile
+import com.giraffetechnology.qc.operator.cloud.NetworkPolicy
+import com.giraffetechnology.qc.operator.cloud.OperatorPadHealthStateSource
 import com.giraffetechnology.qc.store.AndroidSqliteStandardStore
 import com.giraffetechnology.qc.store.BundleImporter
 import com.giraffetechnology.qc.submit.AndroidSqliteOutboxStore
@@ -59,10 +64,10 @@ import kotlinx.coroutines.launch
  * @property loadModelOnInit If true and [legacyMnnRuntimeEnabled], kicks off
  *   the legacy MNN model load in the background at init.
  * @property legacyMnnRuntimeEnabled Gate for the retired on-device MNN
- *   inference path (WS4). **Default false** -- Jetson LAN inference
- *   ([com.giraffetechnology.qc.jetson.JetsonQwenInspector]) is the default
- *   inference path for a fresh install. MNN code is retained (not deleted)
- *   as a possible offline fallback, but must never be what a fresh install
+ *   inference path (WS4). **Default false** -- the signed, provider-neutral
+ *   cloud contract is the default inference path for a fresh install. MNN
+ *   code is retained for Administrator Xavier/explicit legacy diagnostics,
+ *   but must never be what a fresh Operator install
  *   or a production-marked build runs by default -- this flag is the single
  *   place that decides which one is active, and it defaults from
  *   [BuildConfig.LEGACY_MNN_RUNTIME_ENABLED] (itself `false` in
@@ -82,16 +87,16 @@ data class PadRuntimeConfig(
  * Singleton entry point for all production runtime objects.
  *
  * Rules:
- * - The active inference runtime (Jetson by default, or legacy MNN behind
+ * - The active inference runtime (cloud by default, or legacy MNN behind
  *   [PadRuntimeConfig.legacyMnnRuntimeEnabled]) is instantiated exactly once.
  * - MainActivity must not instantiate any of these directly.
  * - No test-only fake/mock may be used under src/main.
  *
- * Production pipeline assembled here (default, Jetson):
+ * Production pipeline assembled here (default, Architecture v2):
  *   real frame source (UVC / CameraX) → target detector (full-frame pass-through)
- *   → JetsonQwenInspector (LAN call to the paired Xavier NX) → PadInspectionCoordinator.
+ *   → bounded QC-point crops → one signed cloud batch → PadInspectionCoordinator.
  * The coordinator's existing fail-closed behavior (empty standard / not-ready
- * runtime → review_required / MNN_PENDING) is preserved unchanged -- it only
+ * runtime → an explicit non-submittable no-verdict state) is preserved -- it only
  * depends on the [MnnRuntime] / [QwenInspector] interfaces, not on which
  * concrete implementation is wired in here.
  */
@@ -103,9 +108,6 @@ object PadRuntimeGraph {
     @Volatile private var _initialized = false
     @Volatile private var _config: PadRuntimeConfig = PadRuntimeConfig()
     @Volatile private var _loader: MnnRuntime? = null
-    @Volatile private var _jetsonPairingStore: JetsonPairingStore? = null
-    @Volatile private var _jetsonClient: JetsonLanClient? = null
-    @Volatile private var _jetsonRuntimeMonitor: JetsonRuntimeMonitor? = null
     @Volatile private var _skuRepo: SkuRepository? = null
     @Volatile private var _skuMatcher: SkuMatcher? = null
     @Volatile private var _taskSelectionController: TaskSelectionController? = null
@@ -130,6 +132,8 @@ object PadRuntimeGraph {
     @Volatile private var _adminResultsController: AdminResultsController? = null
     @Volatile private var _adminProbationController: AdminProbationController? = null
     @Volatile private var _adminHealthController: AdminHealthController? = null
+    @Volatile private var _cloudRuntimeMonitor: CloudRuntimeMonitor? = null
+    @Volatile private var _cloudPendingStore: CloudPendingJobStore? = null
 
     fun init(context: Context) = init(context, PadRuntimeConfig())
 
@@ -140,26 +144,10 @@ object PadRuntimeGraph {
             _config = config
             val appContext = context.applicationContext
 
-            // Jetson objects are always constructed (cheap: SharedPreferences
-            // + an idle HTTP client) so pairing is available on the Pad
-            // regardless of which runtime is active -- only .start() (health
-            // polling) and being wired as *the* active runtime/inspector are
-            // gated by legacyMnnRuntimeEnabled.
-            val jetsonPairingStore = JetsonPairingStore(appContext)
-            _jetsonPairingStore = jetsonPairingStore
-            val jetsonClient = JetsonLanClient()
-            _jetsonClient = jetsonClient
-            val jetsonRuntimeMonitor = JetsonRuntimeMonitor(
-                jetsonPairingStore,
-                jetsonClient,
-                serverRelay = JetsonServerRelay(BuildConfig.SKU_API_BASE_URL),
-            )
-            _jetsonRuntimeMonitor = jetsonRuntimeMonitor
-
             val runtime: MnnRuntime
             val inspector: QwenInspector
             if (config.legacyMnnRuntimeEnabled) {
-                Log.w(TAG, "legacyMnnRuntimeEnabled=true — MNN is the active inference path, not Jetson")
+                Log.w(TAG, "legacyMnnRuntimeEnabled=true — explicit legacy Operator MNN path active")
                 val loader = MnnRuntimeLoader(appContext, MnnRuntimeConfig(modelRoot = config.modelRoot))
                 runtime = loader
                 inspector = MnnQwenInspector(appContext, loader)
@@ -172,9 +160,40 @@ object PadRuntimeGraph {
                     }
                 }
             } else {
-                jetsonRuntimeMonitor.start()
-                runtime = jetsonRuntimeMonitor
-                inspector = JetsonQwenInspector(jetsonPairingStore, jetsonClient)
+                val pendingStore = CloudPendingJobStore(appContext)
+                val networkPolicy = NetworkPolicy()
+                val cloudClient = CloudInferenceClient(
+                    baseUrl = BuildConfig.CLOUD_INFERENCE_BASE_URL,
+                    bearerToken = BuildConfig.CLOUD_INFERENCE_DEVICE_TOKEN,
+                    keyId = BuildConfig.CLOUD_INFERENCE_KEY_ID,
+                    signer = AndroidKeystoreEd25519Signer(),
+                    timeoutMs = BuildConfig.CLOUD_JOB_DEADLINE_MS - 1_000,
+                )
+                val cloudMonitor = CloudRuntimeMonitor(
+                    appContext,
+                    cloudClient,
+                    networkPolicy,
+                    CloudPendingJobReconciler(pendingStore, cloudClient),
+                )
+                val cloudInspector = CloudVlmInspector(
+                    client = cloudClient,
+                    encoder = CloudCropEncoder(
+                        CompressionProfile(
+                            maxCropBytes = BuildConfig.CLOUD_MAX_CROP_BYTES,
+                            maxLongestSidePx = BuildConfig.CLOUD_MAX_LONGEST_SIDE_PX,
+                            jpegQuality = BuildConfig.CLOUD_JPEG_QUALITY,
+                        )
+                    ),
+                    pendingStore = pendingStore,
+                    networkPolicy = networkPolicy,
+                    modelName = BuildConfig.CLOUD_DEFAULT_MODEL,
+                    deadlineMs = BuildConfig.CLOUD_JOB_DEADLINE_MS.toLong(),
+                )
+                _cloudRuntimeMonitor = cloudMonitor
+                _cloudPendingStore = pendingStore
+                cloudMonitor.start()
+                runtime = cloudMonitor
+                inspector = cloudInspector
             }
             _loader = runtime
             _qwenInspector = inspector
@@ -199,7 +218,10 @@ object PadRuntimeGraph {
 
             _autoCaptureController = AutoCaptureController(detector = detector)
 
-            _inspectionCoordinator = PadInspectionCoordinator(inspector, runtime)
+            _inspectionCoordinator = PadInspectionCoordinator(
+                inspector, runtime,
+                padDeviceId = _cloudRuntimeMonitor?.padDeviceId ?: "legacy-pad",
+            )
 
             _cameraXCaptureController = CameraXCaptureController(appContext)
 
@@ -234,11 +256,10 @@ object PadRuntimeGraph {
             _adminWorkstationController = AdminWorkstationController(adminClient)
             _adminResultsController = AdminResultsController(adminClient)
             _adminProbationController = AdminProbationController(adminClient)
-            // WS3 reads one Architecture v2 health state. WS4 replaces this
-            // explicit backend-pending producer with the Nano/cloud aggregator;
-            // the signed Xavier adapter is provisioned against the same seam.
             _adminHealthController = AdminHealthController(
-                BackendPendingPadHealthStateSource()
+                if (_cloudRuntimeMonitor != null && _cloudPendingStore != null) {
+                    OperatorPadHealthStateSource(_cloudRuntimeMonitor!!, _cloudPendingStore!!)
+                } else BackendPendingPadHealthStateSource()
             )
 
             _initialized = true
@@ -252,19 +273,9 @@ object PadRuntimeGraph {
     fun createCameraXFrameSource(context: Context, owner: LifecycleOwner): CameraXFrameSource =
         CameraXFrameSource(context.applicationContext, owner)
 
-    /** The active inference runtime -- [JetsonRuntimeMonitor] by default, or the legacy [MnnRuntimeLoader] behind [PadRuntimeConfig.legacyMnnRuntimeEnabled]. */
+    /** Historical seam; cloud runtime by default, legacy MNN only behind the explicit flag. */
     val runtimeLoader: MnnRuntime
         get() = checkNotNull(_loader) { notInitMsg() }
-
-    /** Always available regardless of [PadRuntimeConfig.legacyMnnRuntimeEnabled] -- pairing works even if MNN is the active runtime. */
-    val jetsonPairingStore: JetsonPairingStore
-        get() = checkNotNull(_jetsonPairingStore) { notInitMsg() }
-
-    val jetsonClient: JetsonLanClient
-        get() = checkNotNull(_jetsonClient) { notInitMsg() }
-
-    val jetsonRuntimeMonitor: JetsonRuntimeMonitor
-        get() = checkNotNull(_jetsonRuntimeMonitor) { notInitMsg() }
 
     val skuRepository: SkuRepository
         get() = checkNotNull(_skuRepo) { notInitMsg() }

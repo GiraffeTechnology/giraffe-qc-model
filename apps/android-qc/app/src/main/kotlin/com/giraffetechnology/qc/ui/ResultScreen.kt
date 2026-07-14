@@ -47,6 +47,8 @@ fun ResultScreen(
             "ACCEPTED"       -> "ACCEPTED" to Color(0xFF1B5E20)
             "NOT_ACCEPTED"   -> "NOT ACCEPTED" to Color(0xFFB71C1C)
             "MNN_PENDING"    -> "MNN pending" to Color(0xFFF57F17)
+            "PENDING_UPLOAD" -> "Pending upload — no verdict" to Color(0xFFF57F17)
+            "CLOUD_UNAVAILABLE", "CLOUD_ERROR" -> "Cloud unavailable — no verdict" to Color(0xFFB71C1C)
             else             -> "review_required" to Color(0xFFF57F17)
         }
         Surface(
@@ -65,20 +67,10 @@ fun ResultScreen(
         // Reason
         ResultRow("Reason", result.reason)
 
-        // Safety guards
-        if (result.cloudInferenceUsed) {
-            Text(
-                "WARNING: cloud inference was used — this should never happen on Pad",
-                color = MaterialTheme.colorScheme.error,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-        if (!result.localOnly) {
-            Text(
-                "WARNING: result is not local-only",
-                color = MaterialTheme.colorScheme.error,
-            )
-        }
+        Text(
+            if (result.cloudInferenceUsed) "Provider-neutral cloud recognition" else "Explicit legacy local mode",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         Spacer(Modifier.weight(1f))
 

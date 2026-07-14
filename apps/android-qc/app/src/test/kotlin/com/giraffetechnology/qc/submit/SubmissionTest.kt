@@ -108,4 +108,17 @@ class SubmissionTest {
             HttpSubmissionClient.parseAcceptedIds("""{"accepted_job_ids":["job-1"]}""", batch),
         )
     }
+
+    @Test fun `S4 body carries cloud point results unchanged for server recomputation`() {
+        val s4Submission = submission("job-1").copy(
+            cloudJobId = "cloud-1",
+            pointResultsJson = """[{"point_code":"p1","result":"pass","confidence":0.9}]""",
+            timingJson = """{"capture_confirmed_at":"t0","verdict_rendered_at":"t1"}""",
+        )
+        val json = org.json.JSONObject(HttpSubmissionClient.encodeS4Body(s4Submission))
+        assertEquals("cloud-1", json.getString("job_ref"))
+        assertEquals("p1", json.getJSONArray("checkpoints").getJSONObject(0).getString("checkpoint_id"))
+        assertEquals("pass", json.getJSONArray("checkpoints").getJSONObject(0).getString("result"))
+        assertEquals(0.9, json.getJSONArray("cloud_recognition").getJSONObject(0).getDouble("confidence"), 0.0)
+    }
 }

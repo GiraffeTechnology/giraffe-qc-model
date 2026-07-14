@@ -1,6 +1,7 @@
 package com.giraffetechnology.qc.store
 
 import com.giraffetechnology.qc.contracts.DetectionPoint
+import com.giraffetechnology.qc.contracts.DetectionPointRegion
 import com.giraffetechnology.qc.contracts.DetectionSeverity
 import com.giraffetechnology.qc.contracts.IncidentalFindingPolicy
 import com.giraffetechnology.qc.contracts.RequiredView
@@ -34,6 +35,7 @@ class BundleImporterTest {
                 requiredView = RequiredView.FRONT,
                 evidenceRequired = true,
                 incidentalFindingPolicy = IncidentalFindingPolicy.RECORD_ONLY,
+                regions = listOf(DetectionPointRegion("front-photo", 0.1, 0.2, 0.3, 0.4)),
             ),
         ),
     )
@@ -57,6 +59,7 @@ class BundleImporterTest {
         assertEquals("b1", rev.bundleId)
         assertEquals(1, rev.detectionPoints.size)
         assertEquals("p1", rev.detectionPoints.first().pointCode)
+        assertEquals("front-photo", rev.detectionPoints.first().regions.single().imageId)
     }
 
     @Test fun `empty bundle is rejected`() = runTest {

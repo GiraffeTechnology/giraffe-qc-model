@@ -6,7 +6,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import androidx.compose.material3.MaterialTheme
 import com.giraffetechnology.qc.admin.AdminLoginState
-import com.giraffetechnology.qc.ui.JetsonPairingScreen
 import com.giraffetechnology.qc.ui.OperatorQcWorkScreen
 import com.giraffetechnology.qc.ui.admin.AdminBundleScreen
 import com.giraffetechnology.qc.ui.admin.AdminHealthScreen
@@ -66,16 +65,6 @@ private fun PadApp() {
             onBack             = { screen = PadScreen.Welcome },
         )
 
-        // Jetson pairing (WS4) — entered from the AdminHome grid per the
-        // WS3/WS4 merge decision (info screen is gone; AdminHome replaces it).
-        is PadScreen.JetsonPairing -> JetsonPairingScreen(
-            languageController = PadRuntimeGraph.languageController,
-            pairingStore       = PadRuntimeGraph.jetsonPairingStore,
-            client             = PadRuntimeGraph.jetsonClient,
-            onPaired           = { screen = PadScreen.AdminHome },
-            onBack             = { screen = PadScreen.AdminHome },
-        )
-
         is PadScreen.AdminHome -> AdminHomeScreen(
             loginController    = PadRuntimeGraph.adminLoginController,
             languageController = PadRuntimeGraph.languageController,
@@ -85,7 +74,6 @@ private fun PadApp() {
             onOpenHealth       = { screen = PadScreen.AdminHealth },
             onOpenProbation    = { screen = PadScreen.AdminProbation },
             onOpenResults      = { screen = PadScreen.AdminResults },
-            onOpenJetsonPairing = { screen = PadScreen.JetsonPairing },
             onLogout           = {
                 PadRuntimeGraph.adminLoginController.logout()
                 screen = PadScreen.Welcome

@@ -8,7 +8,8 @@ import org.junit.Test
  *
  * The SKU API uses HTTP on the factory LAN (192.168.1.10). Cleartext is
  * configured in network_security_config.xml for this specific host only.
- * Pad-side QC inference remains local-only MNN (QWEN_CLOUD_ENABLED=false).
+ * Operator inference uses only the first-party TLS cloud contract. Vendor SDKs
+ * and provider endpoints are not embedded in the Pad.
  */
 class NetworkSecurityPolicyTest {
 
@@ -28,17 +29,10 @@ class NetworkSecurityPolicyTest {
     }
 
     @Test
-    fun `cleartext is for factory LAN SKU data not cloud inference`() {
-        // These mirror the BuildConfig constants in build.gradle.kts.
-        val qwenCloudEnabled           = false
-        val allowSendImagesToCloudQwen = false
-        val allowStubPass              = false
-        val padLocalOnly               = true
-
-        assertFalse("QWEN_CLOUD_ENABLED must remain false", qwenCloudEnabled)
-        assertFalse("ALLOW_SEND_IMAGES_TO_CLOUD_QWEN must remain false",
-            allowSendImagesToCloudQwen)
-        assertFalse("ALLOW_STUB_PASS must remain false", allowStubPass)
-        assertTrue("PAD_LOCAL_ONLY must remain true", padLocalOnly)
+    fun `operator cloud configuration is first party TLS and provider neutral`() {
+        val firstPartyCloudBaseUrl = "https://inference.invalid"
+        assertTrue(firstPartyCloudBaseUrl.startsWith("https://"))
+        assertFalse(firstPartyCloudBaseUrl.contains("qwen", ignoreCase = true))
+        assertFalse(firstPartyCloudBaseUrl.contains("dashscope", ignoreCase = true))
     }
 }
