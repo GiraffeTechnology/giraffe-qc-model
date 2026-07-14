@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -98,7 +98,7 @@ async def pad_workspace(
 @router.get("/pad/inspections/{job_id}", response_class=HTMLResponse)
 async def pad_inspection(
     request: Request,
-    job_id: int,
+    job_id: str,
     db: Session = Depends(get_db_dep),
 ):
     operator_id = _require_operator(request)
@@ -110,7 +110,7 @@ async def pad_inspection(
 @router.get("/pad/inspections/{job_id}/report", response_class=HTMLResponse)
 async def pad_report(
     request: Request,
-    job_id: int,
+    job_id: str,
     db: Session = Depends(get_db_dep),
 ):
     operator_id = _require_operator(request)
@@ -322,3 +322,230 @@ async def pad_create_inspection_job(
         "sku_id": job.sku_id,
         "operator_id": operator_id,
     })
+
+
+@router.get("/api/v1/pad/skus")
+async def pad_search_skus(
+    request: Request,
+    q: str = Query(default=""),
+    db: Session = Depends(get_db_dep),
+):
+    """Tenant-scoped SKU search for the authenticated Operator Web simulator."""
+    operator_id = _require_operator(request)
+    if operator_id is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    tenant_id = request.session.get("tenant_id", "demo")
+    from src.db.sku_models import QCSkuItem, QCSkuStandardRevision, QCStandardPhoto
+
+    query = (
+        db.query(QCSkuItem)
+        .join(
+            QCSkuStandardRevision,
+            (QCSkuStandardRevision.sku_id == QCSkuItem.id)
+            & (QCSkuStandardRevision.tenant_id == tenant_id)
+            & (QCSkuStandardRevision.status == "active"),
+        )
+        .filter(
+            QCSkuItem.tenant_id == tenant_id,
+            QCSkuItem.status.in_(("active", "confirmed", "published", "installed")),
+        )
+    )
+    term = q.strip()
+    if term:
+        escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        query = query.filter(
+            QCSkuItem.item_number.ilike(pattern, escape="\\")
+            | QCSkuItem.name.ilike(pattern, escape="\\")
+        )
+    rows = query.distinct().order_by(QCSkuItem.item_number).limit(50).all()
+    items = []
+    for sku in rows:
+        photo = (
+            db.query(QCStandardPhoto)
+            .filter_by(sku_id=sku.id, tenant_id=tenant_id)
+            .order_by(QCStandardPhoto.is_primary.desc(), QCStandardPhoto.created_at)
+            .first()
+        )
+        items.append(
+            {
+                "id": sku.id,
+                "item_number": sku.item_number,
+                "name": sku.name,
+                "reference_image_url": photo.image_url if photo else None,
+                "standard_photo_path": photo.local_path if photo else None,
+            }
+        )
+    return JSONResponse({"items": items})
+
+
+def _pad_job(db: Session, job_id: str, tenant_id: str):
+    from src.db.execution_models import QCInspectionJob
+
+    return db.query(QCInspectionJob).filter_by(id=job_id, tenant_id=tenant_id).first()
+
+
+@router.get("/api/v1/pad/inspection-jobs/{job_id}")
+async def pad_inspection_job_state(
+    request: Request,
+    job_id: str,
+    db: Session = Depends(get_db_dep),
+):
+    operator_id = _require_operator(request)
+    if operator_id is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    tenant_id = request.session.get("tenant_id", "demo")
+    job = _pad_job(db, job_id, tenant_id)
+    if job is None:
+        return JSONResponse({"error": "inspection job not found"}, status_code=404)
+
+    from src.db.execution_models import QCCheckpointResult
+    from src.inspection.service import get_active_detection_points_for_job
+
+    points = get_active_detection_points_for_job(db, job_id, tenant_id=tenant_id)
+    existing = {
+        row.detection_point_id: row
+        for row in db.query(QCCheckpointResult).filter_by(job_id=job_id, tenant_id=tenant_id).all()
+    }
+    return JSONResponse(
+        {
+            "id": job.id,
+            "sku_id": job.sku_id,
+            "status": job.status,
+            "active_standard_revision_id": job.active_standard_revision_id,
+            "checkpoints": [
+                {
+                    "id": point.id,
+                    "point_code": point.point_code,
+                    "label": point.label,
+                    "description": point.description,
+                    "severity": point.severity,
+                    "submitted_result": existing[point.id].result if point.id in existing else None,
+                }
+                for point in points
+            ],
+            "media_count": len(job.media),
+            "final_report": (
+                {
+                    "overall_result": job.final_report.overall_result,
+                    "summary_text": job.final_report.summary_text,
+                }
+                if job.final_report
+                else None
+            ),
+        }
+    )
+
+
+@router.post("/api/v1/pad/inspection-jobs/{job_id}/media")
+async def pad_attach_inspection_media(
+    request: Request,
+    job_id: str,
+    image: UploadFile = File(...),
+    capture_source: str = Form(default="fixture_upload"),
+    db: Session = Depends(get_db_dep),
+):
+    """Validate and persist a Stage 2 Mac capture against a real inspection job."""
+    operator_id = _require_operator(request)
+    if operator_id is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    tenant_id = request.session.get("tenant_id", "demo")
+    job = _pad_job(db, job_id, tenant_id)
+    if job is None:
+        return JSONResponse({"error": "inspection job not found"}, status_code=404)
+    if capture_source not in {"fixture_upload", "mac_usb_camera"}:
+        return JSONResponse({"error": "unsupported capture_source"}, status_code=400)
+
+    from uuid import uuid4
+
+    from src.inspection.api_service import attach_inspection_media
+    from src.storage.local_storage import get_inspection_dir
+    from src.storage.upload_validation import UploadValidationError, read_and_validate_upload
+
+    try:
+        validated = await read_and_validate_upload(image)
+    except UploadValidationError as exc:
+        return JSONResponse({"error": exc.message}, status_code=exc.status_code)
+    capture_dir = get_inspection_dir(tenant_id, job.sku_id, job.id) / "captures"
+    capture_dir.mkdir(parents=True, exist_ok=True)
+    destination = capture_dir / f"{capture_source}-{uuid4().hex}{validated.extension}"
+    destination.write_bytes(validated.content)
+    media = attach_inspection_media(
+        db,
+        job_id=job.id,
+        local_path=str(destination),
+        sha256=validated.sha256,
+        mime_type=validated.mime_type,
+        view_type=capture_source,
+        tenant_id=tenant_id,
+    )
+    return JSONResponse(
+        {
+            "status": "attached",
+            "media_id": media.id,
+            "sha256": validated.sha256,
+            "size_bytes": validated.size_bytes,
+            "source": capture_source,
+        },
+        status_code=201,
+    )
+
+
+@router.post("/api/v1/pad/inspection-jobs/{job_id}/checkpoint-results")
+async def pad_submit_checkpoint_batch(
+    request: Request,
+    job_id: str,
+    db: Session = Depends(get_db_dep),
+):
+    operator_id = _require_operator(request)
+    if operator_id is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    tenant_id = request.session.get("tenant_id", "demo")
+    if _pad_job(db, job_id, tenant_id) is None:
+        return JSONResponse({"error": "inspection job not found"}, status_code=404)
+    body = await request.json()
+    results = body.get("results")
+    if not isinstance(results, list):
+        return JSONResponse({"error": "results must be an array"}, status_code=400)
+    from src.inspection.service import submit_checkpoint_results_batch
+
+    try:
+        rows = submit_checkpoint_results_batch(db, job_id, results, tenant_id=tenant_id)
+    except (ValueError, TypeError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    return JSONResponse(
+        {
+            "status": "checkpoint_results_recorded",
+            "count": len(rows),
+            "operator_id": operator_id,
+        }
+    )
+
+
+@router.post("/api/v1/pad/inspection-jobs/{job_id}/finalize")
+async def pad_finalize_inspection_job(
+    request: Request,
+    job_id: str,
+    db: Session = Depends(get_db_dep),
+):
+    operator_id = _require_operator(request)
+    if operator_id is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    tenant_id = request.session.get("tenant_id", "demo")
+    if _pad_job(db, job_id, tenant_id) is None:
+        return JSONResponse({"error": "inspection job not found"}, status_code=404)
+    from src.inspection.api_service import finalize_inspection_job
+
+    try:
+        report = finalize_inspection_job(db, job_id, tenant_id=tenant_id)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    return JSONResponse(
+        {
+            "status": "finalized",
+            "overall_result": report.overall_result,
+            "checkpoint_results_count": report.checkpoint_results_count,
+            "findings_count": report.findings_count,
+            "summary_text": report.summary_text,
+        }
+    )

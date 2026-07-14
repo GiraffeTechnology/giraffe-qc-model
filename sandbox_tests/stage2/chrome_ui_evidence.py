@@ -100,6 +100,7 @@ def build_manifest(root: Path, build_sha: str) -> dict[str, object]:
         "surface": "test-only loopback browser validation surface",
         "cv_payload_source": "recorded QEMU aarch64 probe",
         "interaction_evidence": "Chrome DOM snapshots, screenshots, and console log inspection",
+        "supported_languages": ["en", "zh-CN"],
         "console_error_or_warning_count": 0,
         "cases": [validate_case(root, case_id) for case_id in STATE_CONTRACTS],
     }

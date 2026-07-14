@@ -4,7 +4,24 @@ All visual evidence is non-production simulation evidence. Local image fixtures
 and simulated capture/CV states must display a visible `NON-PRODUCTION MOCK`
 label wherever a user could otherwise mistake them for live hardware output.
 
-Validate these UI cases after Q1 is resolved:
+The 2026-07-15 user amendment adds a Mac-attached USB camera as a Stage 2
+simulated-capture source. This amendment supersedes the source PRD's Stage 2
+camera exclusion only for the Mac host; real Jetson camera integration remains
+strictly Stage 3.
+
+Validate these product UI cases after Q1 is resolved:
+
+| Case | User-visible expectation | Required evidence |
+|---|---|---|
+| Role entry | Welcome page exposes working Administrator and Operator branches | Chrome navigation evidence for both branches |
+| Bilingual flow | Welcome, logins, Operator workspace, inspection and report switch between English and Chinese at any time | DOM/screenshot evidence in both languages |
+| Real job control | Operator searches an executable SKU and creates a persisted qc-model inspection job | UI evidence plus tenant-scoped API/DB assertion |
+| Mac USB camera | Chrome enumerates the connected camera, renders live preview, captures a frame and binds it to the current job as `mac_usb_camera` | camera label, screenshot and persisted media record |
+| Evidence gate | Submitting checkpoints without attached evidence is blocked | fail-closed UI/API evidence |
+| Finalizer/report | Exact checkpoint set is persisted atomically; deterministic finalizer runs; report page reloads persisted verdict | UI evidence plus final report payload |
+
+The following test-only surface remains supplemental for simulator state
+presentation and does not satisfy real qc-model control by itself:
 
 | Case | User-visible expectation | Required evidence |
 |---|---|---|
@@ -26,5 +43,6 @@ manifest must record the browser validation build, state payload, screenshot
 path, and pass/fail. Chrome console errors and warnings must be empty.
 
 UI checks complement the standalone CV module tests. They do not move inference or
-UI responsibilities across the Pad/Jetson boundary and do not validate real camera,
-Jetson GPU, power, thermal, or production-network behavior.
+UI responsibilities across the Pad/Jetson boundary and do not validate Jetson GPU,
+power, thermal, or production-network behavior. A Mac USB capture proves only
+browser capture and qc-model evidence persistence; it is not Stage 3 hardware proof.

@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "environment": "SANDBOX",
+  "status": "software_passed_usb_capture_pending",
+  "model_call_count": 0,
+  "database_backend": "configured_ctyun_mysql",
+  "verified": {
+    "administrator_operator_entry": true,
+    "english_chinese_switching": true,
+    "real_qc_model_job_created_from_chrome": true,
+    "validated_camera_media_api": true,
+    "missing_evidence_fail_closed": true,
+    "atomic_checkpoint_submission": true,
+    "persisted_final_report": true,
+    "targeted_test_count": 112
+  },
+  "pending": {
+    "mac_usb_camera_connected": false,
+    "chrome_live_preview": false,
+    "actual_camera_frame_persisted": false,
+    "camera_to_report_ui_flow": false
+  },
+  "stage3_allowed": false
+}

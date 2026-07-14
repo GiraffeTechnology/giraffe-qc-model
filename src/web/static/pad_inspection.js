@@ -1,0 +1,241 @@
+(function () {
+  'use strict';
+
+  var config = window.GIRAFFE_PAD_INSPECTION || {};
+  var jobId = config.jobId;
+  var s = config.strings || {};
+  var list = document.getElementById('checkpoints-list');
+  var status = document.getElementById('inspection-status');
+  var mediaStatus = document.getElementById('media-status');
+  var submitButton = document.getElementById('submit-results-btn');
+  var fixtureUpload = document.getElementById('fixture-upload');
+  var video = document.getElementById('camera-preview');
+  var canvas = document.getElementById('camera-canvas');
+  var deviceSelect = document.getElementById('camera-device-select');
+  var startButton = document.getElementById('camera-start-btn');
+  var captureButton = document.getElementById('camera-capture-btn');
+  var stopButton = document.getElementById('camera-stop-btn');
+  var cameraStream = null;
+  var currentJob = null;
+
+  function setStatus(text, kind) {
+    status.textContent = text || '';
+    status.className = 'inspection-status' + (kind ? ' is-' + kind : '');
+  }
+
+  function fetchJson(url, options) {
+    return fetch(url, options).then(function (response) {
+      return response.json().then(function (data) {
+        if (!response.ok) throw new Error(data.error || data.detail || ('HTTP ' + response.status));
+        return data;
+      });
+    });
+  }
+
+  function resultOption(value, label, selected) {
+    var option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    option.selected = selected;
+    return option;
+  }
+
+  function renderJob(job) {
+    currentJob = job;
+    list.innerHTML = '';
+    if (!job.checkpoints.length) {
+      var empty = document.createElement('p');
+      empty.className = 'error-banner';
+      empty.textContent = s.error + ' no active detection points';
+      list.appendChild(empty);
+      submitButton.disabled = true;
+      return;
+    }
+    job.checkpoints.forEach(function (point) {
+      var card = document.createElement('article');
+      card.className = 'checkpoint-card';
+      card.dataset.pointId = point.id;
+      var header = document.createElement('header');
+      var title = document.createElement('strong');
+      title.textContent = point.point_code + ' · ' + point.label;
+      var severity = document.createElement('span');
+      severity.textContent = point.severity;
+      header.appendChild(title);
+      header.appendChild(severity);
+      card.appendChild(header);
+      if (point.description) {
+        var description = document.createElement('p');
+        description.textContent = point.description;
+        card.appendChild(description);
+      }
+      var select = document.createElement('select');
+      select.className = 'checkpoint-result';
+      select.setAttribute('aria-label', point.label);
+      select.appendChild(resultOption('', s.chooseResult || 'Choose result', !point.submitted_result));
+      select.appendChild(resultOption('pass', s.pass || 'Pass', point.submitted_result === 'pass'));
+      select.appendChild(resultOption('fail', s.fail || 'Fail', point.submitted_result === 'fail'));
+      select.appendChild(resultOption('not_visible', s.notVisible || 'Not visible', point.submitted_result === 'not_visible'));
+      select.appendChild(resultOption('low_confidence', s.lowConfidence || 'Low confidence', point.submitted_result === 'low_confidence'));
+      select.disabled = Boolean(point.submitted_result || job.final_report);
+      card.appendChild(select);
+      list.appendChild(card);
+    });
+    mediaStatus.textContent = job.media_count > 0 ? (s.mediaAttached + ' (' + job.media_count + ')') : s.noMedia;
+    if (job.final_report) {
+      submitButton.disabled = true;
+      setStatus((s.finalized || 'Final verdict:') + ' ' + job.final_report.overall_result + '\n' + (job.final_report.summary_text || ''), 'success');
+    }
+  }
+
+  function loadJob() {
+    return fetchJson('/api/v1/pad/inspection-jobs/' + encodeURIComponent(jobId), {cache: 'no-store'})
+      .then(renderJob)
+      .catch(function (error) { setStatus((s.error || 'Inspection error:') + ' ' + error.message, 'error'); });
+  }
+
+  function attachImage(file, source) {
+    var form = new FormData();
+    form.append('image', file, file.name || 'capture.jpg');
+    form.append('capture_source', source);
+    mediaStatus.textContent = s.loading || 'Loading…';
+    return fetchJson('/api/v1/pad/inspection-jobs/' + encodeURIComponent(jobId) + '/media', {
+      method: 'POST', body: form,
+    }).then(function (data) {
+      mediaStatus.textContent = (s.mediaAttached || 'Evidence attached') + ' · ' + data.source + ' · ' + data.sha256.slice(0, 12);
+      return loadJob();
+    }).catch(function (error) {
+      setStatus((s.error || 'Inspection error:') + ' ' + error.message, 'error');
+      throw error;
+    });
+  }
+
+  function stopCamera() {
+    if (cameraStream) cameraStream.getTracks().forEach(function (track) { track.stop(); });
+    cameraStream = null;
+    video.srcObject = null;
+    captureButton.disabled = true;
+    stopButton.disabled = true;
+    startButton.disabled = false;
+  }
+
+  function populateDevices() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return Promise.resolve();
+    return navigator.mediaDevices.enumerateDevices().then(function (devices) {
+      var activeTrack = cameraStream && cameraStream.getVideoTracks()[0];
+      var activeDeviceId = activeTrack && activeTrack.getSettings ? activeTrack.getSettings().deviceId : '';
+      var prior = deviceSelect.value || activeDeviceId;
+      deviceSelect.innerHTML = '';
+      deviceSelect.appendChild(resultOption('', s.cameraDefault || 'System default camera', !prior));
+      devices.filter(function (device) { return device.kind === 'videoinput'; }).forEach(function (device, index) {
+        var label = device.label || ('Camera ' + (index + 1));
+        deviceSelect.appendChild(resultOption(device.deviceId, label, device.deviceId === prior));
+      });
+    });
+  }
+
+  function getCameraStream(constraints) {
+    return new Promise(function (resolve, reject) {
+      var finished = false;
+      var timer = setTimeout(function () {
+        finished = true;
+        reject(new Error(s.cameraTimeout || 'Camera permission timed out. Allow camera access in Chrome and retry.'));
+      }, 12000);
+      navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
+        if (finished) {
+          stream.getTracks().forEach(function (track) { track.stop(); });
+          return;
+        }
+        finished = true;
+        clearTimeout(timer);
+        resolve(stream);
+      }).catch(function (error) {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        reject(error);
+      });
+    });
+  }
+
+  function startCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus((s.cameraDenied || 'Camera unavailable or permission denied:') + ' getUserMedia unavailable', 'error');
+      return;
+    }
+    stopCamera();
+    startButton.disabled = true;
+    var deviceId = deviceSelect.value;
+    var videoConstraint = deviceId ? {deviceId: {exact: deviceId}} : {width: {ideal: 1280}, height: {ideal: 720}};
+    getCameraStream({video: videoConstraint, audio: false})
+      .then(function (stream) {
+        cameraStream = stream;
+        video.srcObject = stream;
+        captureButton.disabled = false;
+        stopButton.disabled = false;
+        var track = stream.getVideoTracks()[0];
+        var label = track && track.label ? track.label : (s.cameraDefault || 'System default camera');
+        mediaStatus.textContent = (s.cameraReady || 'USB camera ready') + ': ' + label;
+        return populateDevices();
+      })
+      .catch(function (error) {
+        startButton.disabled = false;
+        setStatus((s.cameraDenied || 'Camera unavailable or permission denied:') + ' ' + error.message, 'error');
+      });
+  }
+
+  function captureCamera() {
+    if (!cameraStream || !video.videoWidth || !video.videoHeight) {
+      setStatus(s.cameraRequired || 'Connect and start a USB camera first.', 'error');
+      return;
+    }
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(function (blob) {
+      if (!blob) {
+        setStatus((s.error || 'Inspection error:') + ' capture encoding failed', 'error');
+        return;
+      }
+      attachImage(new File([blob], 'mac-usb-camera.jpg', {type: 'image/jpeg'}), 'mac_usb_camera');
+    }, 'image/jpeg', 0.9);
+  }
+
+  function submitAndFinalize() {
+    var cards = Array.from(document.querySelectorAll('.checkpoint-card'));
+    var results = cards.map(function (card) {
+      var select = card.querySelector('.checkpoint-result');
+      return {detection_point_id: card.dataset.pointId, result: select.value, confidence: 1.0};
+    });
+    if (!results.length || results.some(function (item) { return !item.result; })) {
+      setStatus(s.incomplete || 'Select a result for every checkpoint.', 'error');
+      return;
+    }
+    submitButton.disabled = true;
+    setStatus(s.finalizing || 'Saving results and finalizing…');
+    fetchJson('/api/v1/pad/inspection-jobs/' + encodeURIComponent(jobId) + '/checkpoint-results', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({results: results}),
+    })
+      .then(function () {
+        return fetchJson('/api/v1/pad/inspection-jobs/' + encodeURIComponent(jobId) + '/finalize', {method: 'POST'});
+      })
+      .then(function (report) {
+        setStatus((s.finalized || 'Final verdict:') + ' ' + report.overall_result + '\n' + (report.summary_text || ''), 'success');
+        return loadJob();
+      })
+      .catch(function (error) {
+        submitButton.disabled = false;
+        setStatus((s.error || 'Inspection error:') + ' ' + error.message, 'error');
+      });
+  }
+
+  fixtureUpload.addEventListener('change', function () {
+    if (fixtureUpload.files[0]) attachImage(fixtureUpload.files[0], 'fixture_upload');
+  });
+  startButton.addEventListener('click', startCamera);
+  captureButton.addEventListener('click', captureCamera);
+  stopButton.addEventListener('click', stopCamera);
+  deviceSelect.addEventListener('change', function () { if (cameraStream) startCamera(); });
+  submitButton.addEventListener('click', submitAndFinalize);
+  window.addEventListener('beforeunload', stopCamera);
+  loadJob();
+})();

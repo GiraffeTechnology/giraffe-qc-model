@@ -11,7 +11,10 @@
     header { min-height: 76px; padding: 16px 28px; display: flex; align-items: center; gap: 18px; color: white; background: #172a4d; }
     header h1 { margin: 0; font-size: 24px; letter-spacing: -.02em; }
     header p { margin: 4px 0 0; color: #cbd8ee; font-size: 13px; }
-    .mock { margin-left: auto; padding: 10px 14px; border-radius: 8px; background: #b42318; font-weight: 850; letter-spacing: .06em; }
+    .header-actions { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+    .language-control { display: flex; align-items: center; gap: 7px; font-weight: 750; }
+    .language-control select { padding: 8px 30px 8px 10px; border: 1px solid #9db0cf; border-radius: 8px; color: #172a4d; background: white; font: inherit; cursor: pointer; }
+    .mock { padding: 10px 14px; border-radius: 8px; background: #b42318; font-weight: 850; letter-spacing: .04em; }
     main { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 20px; padding: 20px; min-height: calc(100vh - 76px); }
     nav, .panel { border: 1px solid #d5dce8; border-radius: 14px; background: white; box-shadow: 0 8px 24px rgba(30, 48, 80, .06); }
     nav { padding: 14px; }
@@ -59,49 +62,59 @@
 <body>
   <header>
     <div>
-      <h1>Giraffe QC · Stage 2</h1>
-      <p>Chrome validation surface · simulation evidence only</p>
+      <h1 data-i18n="title">Giraffe QC · Stage 2</h1>
+      <p data-i18n="subtitle">Chrome validation surface · simulation evidence only</p>
     </div>
-    <div class="mock" data-testid="mock-label">NON-PRODUCTION MOCK</div>
+    <div class="header-actions">
+      <label class="language-control" for="language-select">
+        <span aria-hidden="true">🌐</span>
+        <span data-i18n="language">Language</span>
+        <select id="language-select" data-testid="language-select" aria-label="Language">
+          <option value="en">English</option>
+          <option value="zh-CN">中文</option>
+        </select>
+      </label>
+      <div class="mock" data-testid="mock-label" data-i18n="mockLabel">NON-PRODUCTION MOCK</div>
+    </div>
   </header>
   <main>
-    <nav aria-label="Stage 2 validation states">
-      <h2>Acceptance states</h2>
-      <button data-state="simulator-ready">1 · Simulator ready</button>
-      <button data-state="simulated-capture">2 · Simulated capture</button>
-      <button data-state="cv-success">3 · CV success</button>
-      <button data-state="cv-anomaly">4 · CV anomaly</button>
-      <button data-state="simulator-unavailable">5 · Simulator unavailable</button>
-      <button data-state="refresh-retry">6 · Refresh / retry</button>
+    <nav aria-label="Stage 2 validation states" data-i18n-aria="navLabel">
+      <h2 data-i18n="acceptanceStates">Acceptance states</h2>
+      <button data-state="simulator-ready" data-i18n="navReady">1 · Simulator ready</button>
+      <button data-state="simulated-capture" data-i18n="navCapture">2 · Simulated capture</button>
+      <button data-state="cv-success" data-i18n="navSuccess">3 · CV success</button>
+      <button data-state="cv-anomaly" data-i18n="navAnomaly">4 · CV anomaly</button>
+      <button data-state="simulator-unavailable" data-i18n="navUnavailable">5 · Simulator unavailable</button>
+      <button data-state="refresh-retry" data-i18n="navRetry">6 · Refresh / retry</button>
     </nav>
     <section class="content">
-      <div class="session" aria-label="Simulation session">
-        <div><span class="label">Method</span><span class="value" data-testid="method">—</span></div>
-        <div><span class="label">Guest</span><span class="value" data-testid="machine">—</span></div>
-        <div><span class="label">External volume</span><span class="value" data-testid="volume">—</span></div>
-        <div><span class="label">Drive check</span><span class="value" data-testid="drive-ready">—</span></div>
+      <div class="session" aria-label="Simulation session" data-i18n-aria="sessionLabel">
+        <div><span class="label" data-i18n="method">Method</span><span class="value" data-testid="method">—</span></div>
+        <div><span class="label" data-i18n="guest">Guest</span><span class="value" data-testid="machine">—</span></div>
+        <div><span class="label" data-i18n="externalVolume">External volume</span><span class="value" data-testid="volume">—</span></div>
+        <div><span class="label" data-i18n="driveCheck">Drive check</span><span class="value" data-testid="drive-ready">—</span></div>
       </div>
       <article class="panel">
         <div class="visual" data-testid="visual-panel"></div>
         <section class="details">
-          <h2 data-testid="heading">Loading…</h2>
-          <div class="status" data-testid="status">LOADING</div>
+          <h2 data-testid="heading" data-i18n="loading">Loading…</h2>
+          <div class="status" data-testid="status" data-i18n="loadingStatus">LOADING</div>
           <p class="detail-copy" data-testid="detail"></p>
           <dl>
-            <dt>State ID</dt><dd data-testid="state-id">—</dd>
-            <dt>Fixture</dt><dd data-testid="fixture-ref">—</dd>
-            <dt>Normalized</dt><dd data-testid="normalized-size">—</dd>
-            <dt>Verdict effect</dt><dd data-testid="verdict-effect">—</dd>
-            <dt>Camera connected</dt><dd data-testid="camera-connected">—</dd>
-            <dt>Inference calls</dt><dd data-testid="inference-calls">—</dd>
-            <dt>Result count</dt><dd data-testid="result-count">—</dd>
-            <dt>Fail closed</dt><dd data-testid="fail-closed">—</dd>
+            <dt data-i18n="stateId">State ID</dt><dd data-testid="state-id">—</dd>
+            <dt data-i18n="fixture">Fixture</dt><dd data-testid="fixture-ref">—</dd>
+            <dt data-i18n="normalized">Normalized</dt><dd data-testid="normalized-size">—</dd>
+            <dt data-i18n="verdictEffect">Verdict effect</dt><dd data-testid="verdict-effect">—</dd>
+            <dt data-i18n="cameraConnected">Camera connected</dt><dd data-testid="camera-connected">—</dd>
+            <dt data-i18n="inferenceCalls">Inference calls</dt><dd data-testid="inference-calls">—</dd>
+            <dt data-i18n="resultCount">Result count</dt><dd data-testid="result-count">—</dd>
+            <dt data-i18n="failClosed">Fail closed</dt><dd data-testid="fail-closed">—</dd>
           </dl>
           <div class="actions">
-            <button id="retry" hidden>Restore dependency and retry</button>
-            <button id="reset" class="secondary">Reset scenario</button>
+            <button id="retry" hidden data-i18n="retryAction">Restore dependency and retry</button>
+            <button id="reset" class="secondary" data-i18n="resetAction">Reset scenario</button>
           </div>
-          <div class="event-log" data-testid="event-log">No transition events.</div>
+          <div class="event-log" data-testid="event-log" data-i18n="noEvents">No transition events.</div>
         </section>
       </article>
     </section>
@@ -109,15 +122,103 @@
   <script>
     const events = [];
     let resultCount = 0;
+    let activeState = null;
+    let activeLanguage = localStorage.getItem('giraffe_stage2_language') === 'zh-CN' ? 'zh-CN' : 'en';
+
+    const copy = {
+      en: {
+        documentTitle: 'Giraffe QC · Stage 2 Chrome validation',
+        title: 'Giraffe QC · Stage 2', subtitle: 'Chrome validation surface · simulation evidence only',
+        language: 'Language', mockLabel: 'NON-PRODUCTION MOCK', navLabel: 'Stage 2 validation states',
+        acceptanceStates: 'Acceptance states', navReady: '1 · Simulator ready', navCapture: '2 · Simulated capture',
+        navSuccess: '3 · CV success', navAnomaly: '4 · CV anomaly', navUnavailable: '5 · Simulator unavailable',
+        navRetry: '6 · Refresh / retry', sessionLabel: 'Simulation session', method: 'Method', guest: 'Guest',
+        externalVolume: 'External volume', driveCheck: 'Drive check', loading: 'Loading…', loadingStatus: 'LOADING',
+        stateId: 'State ID', fixture: 'Fixture', normalized: 'Normalized', verdictEffect: 'Verdict effect',
+        cameraConnected: 'Camera connected', inferenceCalls: 'Inference calls', resultCount: 'Result count',
+        failClosed: 'Fail closed', retryAction: 'Restore dependency and retry', resetAction: 'Reset scenario',
+        noEvents: 'No transition events.', driveReady: 'READ / WRITE VERIFIED', blocked: 'BLOCKED',
+        notUsed: 'not used', notApplicable: 'not applicable', yes: 'YES', no: 'NO', notTriggered: 'not triggered',
+        fixtureAlt: 'Simulated red-square capture fixture', fixtureCaption: 'SIMULATED FIXTURE · NO CAMERA',
+        noCamera: 'No live camera feed'
+      },
+      'zh-CN': {
+        documentTitle: '长颈鹿质检 · Stage 2 Chrome 验收',
+        title: '长颈鹿质检 · Stage 2', subtitle: 'Chrome 验收界面 · 仅使用模拟证据',
+        language: '语言', mockLabel: '非生产模拟', navLabel: 'Stage 2 验收状态',
+        acceptanceStates: '验收状态', navReady: '1 · 模拟器就绪', navCapture: '2 · 模拟采集',
+        navSuccess: '3 · CV 成功', navAnomaly: '4 · CV 异常', navUnavailable: '5 · 模拟器不可用',
+        navRetry: '6 · 刷新 / 重试', sessionLabel: '模拟会话', method: '模拟方式', guest: '客体架构',
+        externalVolume: '外置卷', driveCheck: '硬盘检查', loading: '正在加载…', loadingStatus: '正在加载',
+        stateId: '状态 ID', fixture: '测试图片', normalized: '标准化尺寸', verdictEffect: '判定作用',
+        cameraConnected: '摄像头已连接', inferenceCalls: '模型调用次数', resultCount: '结果数量',
+        failClosed: '失败关闭', retryAction: '恢复依赖并重试', resetAction: '重置场景',
+        noEvents: '暂无状态转换事件。', driveReady: '读写已验证', blocked: '已阻断',
+        notUsed: '未使用', notApplicable: '不适用', yes: '是', no: '否', notTriggered: '未触发',
+        fixtureAlt: '模拟红色方块采集图片', fixtureCaption: '模拟测试图片 · 未连接摄像头',
+        noCamera: '无实时摄像头画面'
+      }
+    };
+
+    function text(key) { return copy[activeLanguage][key] || copy.en[key] || key; }
 
     function setText(testId, value) {
       document.querySelector(`[data-testid="${testId}"]`).textContent = String(value);
     }
 
+    function applyLanguage() {
+      document.documentElement.lang = activeLanguage;
+      document.title = text('documentTitle');
+      document.querySelectorAll('[data-i18n]').forEach(element => {
+        element.textContent = text(element.dataset.i18n);
+      });
+      document.querySelectorAll('[data-i18n-aria]').forEach(element => {
+        element.setAttribute('aria-label', text(element.dataset.i18nAria));
+      });
+      const selector = document.getElementById('language-select');
+      selector.value = activeLanguage;
+      selector.setAttribute('aria-label', text('language'));
+      if (activeState) renderState(activeState);
+      renderEvents();
+    }
+
+    function renderEvents() {
+      document.querySelector('[data-testid="event-log"]').textContent = events.length ? events.join('\n') : text('noEvents');
+    }
+
     function recordEvent(state) {
       const entry = `state=${state.case_id} inference_calls=${state.inference_call_count} result_count=${state.result_count} fail_closed=${state.fail_closed}`;
       if (!events.includes(entry)) events.push(entry);
-      document.querySelector('[data-testid="event-log"]').textContent = events.length ? events.join('\n') : 'No transition events.';
+      renderEvents();
+    }
+
+    function renderState(state) {
+      activeState = state;
+      const localized = state.translations[activeLanguage] || state.translations.en;
+      setText('method', state.method);
+      setText('machine', state.machine);
+      setText('volume', state.external_volume);
+      setText('drive-ready', state.external_drive_ready ? text('driveReady') : text('blocked'));
+      setText('heading', localized.heading);
+      setText('status', localized.status);
+      setText('detail', localized.detail);
+      setText('state-id', state.case_id);
+      setText('fixture-ref', state.show_fixture ? state.fixture_ref : text('notUsed'));
+      setText('normalized-size', state.show_fixture ? state.normalized_size : text('notApplicable'));
+      setText('verdict-effect', state.verdict_effect);
+      setText('camera-connected', state.camera_connected ? text('yes') : text('no'));
+      setText('inference-calls', state.inference_call_count);
+      setText('result-count', resultCount);
+      const failClosed = document.querySelector('[data-testid="fail-closed"]');
+      failClosed.textContent = state.fail_closed ? text('yes') : text('notTriggered');
+      failClosed.className = state.fail_closed ? 'yes' : '';
+      const status = document.querySelector('[data-testid="status"]');
+      status.className = `status ${state.tone}`;
+      const visual = document.querySelector('[data-testid="visual-panel"]');
+      visual.innerHTML = state.show_fixture
+        ? `<figure><img src="${state.fixture_url}" alt="${text('fixtureAlt')}"><figcaption>${text('fixtureCaption')}</figcaption></figure>`
+        : `<div class="empty">${text('noCamera')}</div>`;
+      document.getElementById('retry').hidden = state.case_id !== 'simulator-unavailable';
     }
 
     async function showState(caseId, fromRetry = false) {
@@ -127,31 +228,8 @@
       document.querySelectorAll('[data-state]').forEach(button => {
         button.setAttribute('aria-current', String(button.dataset.state === caseId));
       });
-      setText('method', state.method);
-      setText('machine', state.machine);
-      setText('volume', state.external_volume);
-      setText('drive-ready', state.external_drive_ready ? 'READ / WRITE VERIFIED' : 'BLOCKED');
-      setText('heading', state.heading);
-      setText('status', state.status);
-      setText('detail', state.detail);
-      setText('state-id', state.case_id);
-      setText('fixture-ref', state.show_fixture ? state.fixture_ref : 'not used');
-      setText('normalized-size', state.show_fixture ? state.normalized_size : 'not applicable');
-      setText('verdict-effect', state.verdict_effect);
-      setText('camera-connected', state.camera_connected ? 'YES' : 'NO');
-      setText('inference-calls', state.inference_call_count);
       resultCount = fromRetry ? Math.max(resultCount, 1) : state.result_count;
-      setText('result-count', resultCount);
-      const failClosed = document.querySelector('[data-testid="fail-closed"]');
-      failClosed.textContent = state.fail_closed ? 'YES' : 'not triggered';
-      failClosed.className = state.fail_closed ? 'yes' : '';
-      const status = document.querySelector('[data-testid="status"]');
-      status.className = `status ${state.tone}`;
-      const visual = document.querySelector('[data-testid="visual-panel"]');
-      visual.innerHTML = state.show_fixture
-        ? `<figure><img src="${state.fixture_url}" alt="Simulated red-square capture fixture"><figcaption>SIMULATED FIXTURE · NO CAMERA</figcaption></figure>`
-        : `<div class="empty">No live camera feed</div>`;
-      document.getElementById('retry').hidden = caseId !== 'simulator-unavailable';
+      renderState(state);
       if (caseId === 'simulator-unavailable' || caseId === 'refresh-retry') recordEvent({...state, result_count: resultCount});
     }
 
@@ -159,12 +237,18 @@
       button.addEventListener('click', () => showState(button.dataset.state));
     });
     document.getElementById('retry').addEventListener('click', () => showState('refresh-retry', true));
+    document.getElementById('language-select').addEventListener('change', event => {
+      activeLanguage = event.target.value === 'zh-CN' ? 'zh-CN' : 'en';
+      localStorage.setItem('giraffe_stage2_language', activeLanguage);
+      applyLanguage();
+    });
     document.getElementById('reset').addEventListener('click', () => {
       events.length = 0;
       resultCount = 0;
-      document.querySelector('[data-testid="event-log"]').textContent = 'No transition events.';
+      renderEvents();
       showState('simulator-ready');
     });
+    applyLanguage();
     showState('simulator-ready');
   </script>
 </body>

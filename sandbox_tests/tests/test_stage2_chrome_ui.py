@@ -33,6 +33,14 @@ def test_chrome_ui_fails_closed_for_anomaly_and_unavailable() -> None:
     assert unavailable["fail_closed"] is True
 
 
+def test_chrome_ui_states_have_english_and_chinese_copy() -> None:
+    for case_id in STATE_CONTRACTS:
+        translations = build_state(case_id)["translations"]
+        assert set(translations) == {"en", "zh-CN"}
+        for language in ("en", "zh-CN"):
+            assert all(translations[language][key] for key in ("heading", "status", "detail"))
+
+
 def test_chrome_ui_manifest_accepts_captured_evidence() -> None:
     root = Path("sandbox_tests/reports/evidence/stage2/ui")
     manifest = build_manifest(root, "test-sha")

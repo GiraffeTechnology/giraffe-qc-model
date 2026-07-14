@@ -1043,3 +1043,76 @@ def test_portrait_overlay_blocks_standard_confirmation_button():
     assert "qc-action-btn" in chat_js, (
         "pad_chat.js must assign qc-action-btn class to confirm button"
     )
+
+
+def test_stage2_web_control_runs_real_job_to_final_report(
+    auth_client, db_session, seeded_sku, tmp_path, monkeypatch
+):
+    """The browser-facing flow persists evidence, checkpoint rows and verdict."""
+    monkeypatch.setenv("QC_STORAGE_ROOT", str(tmp_path))
+
+    search = auth_client.get("/api/v1/pad/skus", params={"q": seeded_sku.item_number})
+    assert search.status_code == 200
+    assert any(item["id"] == seeded_sku.id for item in search.json()["items"])
+
+    created = auth_client.post(
+        "/api/v1/pad/create_inspection_job", json={"sku_id": seeded_sku.id}
+    )
+    assert created.status_code == 200
+    job_id = created.json()["job_id"]
+
+    no_evidence = auth_client.post(
+        f"/api/v1/pad/inspection-jobs/{job_id}/checkpoint-results",
+        json={"results": []},
+    )
+    assert no_evidence.status_code == 400
+    assert "no attached evidence" in no_evidence.json()["error"]
+
+    fixture = Path(__file__).parent / "fixtures" / "qc" / "capture_red_square_pass.png"
+    attached = auth_client.post(
+        f"/api/v1/pad/inspection-jobs/{job_id}/media",
+        data={"capture_source": "mac_usb_camera"},
+        files={"image": ("mac-usb-camera.png", fixture.read_bytes(), "image/png")},
+    )
+    assert attached.status_code == 201
+    assert attached.json()["source"] == "mac_usb_camera"
+    assert Path(
+        db_session.query(src.db.execution_models.QCInspectionMedia)
+        .filter_by(job_id=job_id)
+        .one()
+        .local_path
+    ).exists()
+
+    state = auth_client.get(f"/api/v1/pad/inspection-jobs/{job_id}").json()
+    assert state["media_count"] == 1
+    results = [
+        {"detection_point_id": point["id"], "result": "pass", "confidence": 1.0}
+        for point in state["checkpoints"]
+    ]
+    submitted = auth_client.post(
+        f"/api/v1/pad/inspection-jobs/{job_id}/checkpoint-results",
+        json={"results": results},
+    )
+    assert submitted.status_code == 200
+    assert submitted.json()["count"] == len(results)
+
+    finalized = auth_client.post(f"/api/v1/pad/inspection-jobs/{job_id}/finalize")
+    assert finalized.status_code == 200
+    assert finalized.json()["overall_result"] == "pass"
+
+    final_state = auth_client.get(f"/api/v1/pad/inspection-jobs/{job_id}").json()
+    assert final_state["status"] == "pass"
+    assert final_state["final_report"]["overall_result"] == "pass"
+    assert all(point["submitted_result"] == "pass" for point in final_state["checkpoints"])
+
+
+def test_stage2_control_assets_include_camera_and_real_report():
+    static_dir = Path(__file__).resolve().parent.parent / "src" / "web" / "static"
+    inspection_js = (static_dir / "pad_inspection.js").read_text()
+    report_js = (static_dir / "pad_report.js").read_text()
+
+    assert "navigator.mediaDevices.getUserMedia" in inspection_js
+    assert "mac_usb_camera" in inspection_js
+    assert "/checkpoint-results" in inspection_js
+    assert "/finalize" in inspection_js
+    assert "/api/v1/pad/inspection-jobs/" in report_js

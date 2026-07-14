@@ -49,7 +49,7 @@ body.shell-body {
   color: var(--text);
   text-decoration: none;
 }
-.shell-brand__icon { font-size: 22px; line-height: 1; }
+.shell-brand__icon { width: 28px; height: 28px; object-fit: contain; }
 .shell-header__actions { display: flex; align-items: center; gap: 12px; }
 
 .shell-main {

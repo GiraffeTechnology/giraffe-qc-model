@@ -37,3 +37,14 @@ production performance evidence. These items remain Stage 3 checks.
 
 UI validation is required for all three choices and follows
 `UI_VALIDATION_PLAN.md`.
+
+## Stage 2 capture amendment
+
+- Confirmed by/date: **user, 2026-07-15 (Asia/Hong_Kong)**
+- Amendment: Stage 2 must accept a USB camera connected to the MacBook.
+- Classification: Mac-host simulated capture feeding the Web UI and real
+  qc-model job APIs; not a real Jetson input path.
+- Stage boundary: Stage 3 remains blocked until Stage 2—including one actual
+  Mac USB frame capture and persisted inspection flow—is accepted.
+- Database: configured CTYUN MySQL `giraffe` database via the approved bridge;
+  credentials and network endpoints remain untracked.

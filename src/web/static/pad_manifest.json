@@ -10,8 +10,8 @@
   "theme_color": "#1d4ed8",
   "icons": [
     {
-      "src": "/static/icon-192.png",
-      "sizes": "192x192",
+      "src": "/static/giraffe-qc-model-icon.png",
+      "sizes": "722x722",
       "type": "image/png"
     }
   ]

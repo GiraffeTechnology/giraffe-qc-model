@@ -92,6 +92,61 @@ body {
   overflow-y: auto;
 }
 
+.stage2-mock-banner {
+  margin-bottom: 0.9rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  color: #991b1b;
+  background: #fef2f2;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.inspection-launcher { margin-bottom: 1.25rem; }
+.inspection-launcher h2 { margin-bottom: 0.35rem; font-size: 1.05rem; }
+.inspection-launcher > p { margin-bottom: 0.75rem; color: #64748b; font-size: 0.85rem; line-height: 1.4; }
+.sku-search-row { display: flex; gap: 0.5rem; }
+.sku-search-row input { min-width: 0; flex: 1; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 6px; }
+.sku-search-results { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.65rem; }
+.sku-result-card { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.65rem; border: 1px solid #cbd5e1; border-radius: 7px; background: #fff; }
+.sku-result-card div { display: flex; min-width: 0; flex-direction: column; }
+.sku-result-card span { overflow: hidden; color: #64748b; font-size: 0.8rem; text-overflow: ellipsis; white-space: nowrap; }
+.qc-control-status { margin-top: 0.5rem; color: #475569; font-size: 0.82rem; }
+.qc-control-status.is-error { color: #b91c1c; font-weight: 700; }
+
+.stage2-camera-panel { margin: 1rem 0; padding: 1rem; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; }
+.stage2-camera-panel h3 { margin-bottom: 0.65rem; }
+.stage2-camera-grid { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(220px, 0.65fr); gap: 1rem; }
+.stage2-camera-preview { width: 100%; min-height: 240px; max-height: 420px; border-radius: 8px; background: #0f172a; object-fit: contain; }
+.stage2-camera-actions { display: flex; flex-direction: column; align-items: stretch; gap: 0.6rem; }
+.stage2-camera-actions .btn-secondary { text-align: center; }
+.stage2-camera-actions select { width: 100%; padding: 0.5rem; border: 1px solid #94a3b8; border-radius: 6px; background: #fff; }
+.checkpoint-card { margin: 0.7rem 0; padding: 0.8rem; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; }
+.checkpoint-card header { display: flex; justify-content: space-between; gap: 0.75rem; padding: 0; color: inherit; background: transparent; }
+.checkpoint-card p { margin: 0.4rem 0; color: #64748b; }
+.checkpoint-card select { width: 100%; padding: 0.5rem; border: 1px solid #94a3b8; border-radius: 6px; }
+.inspection-status { margin: 0.8rem 0; padding: 0.7rem; border-radius: 7px; background: #f1f5f9; white-space: pre-wrap; }
+.inspection-status.is-error { color: #b91c1c; background: #fef2f2; }
+.inspection-status.is-success { color: #166534; background: #f0fdf4; }
+.report-summary { padding: 1rem; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; }
+.report-summary h3 { margin-bottom: 0.75rem; }
+.report-verdict { margin-bottom: 0.9rem; padding: 0.8rem; border-radius: 8px; font-size: 1.2rem; }
+.report-verdict.verdict-pass { background: #f0fdf4; }
+.report-verdict.verdict-fail { background: #fef2f2; }
+.report-verdict.verdict-review_required { background: #fffbeb; }
+.report-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; margin-bottom: 1rem; }
+.report-fact { padding: 0.6rem; border-radius: 7px; background: #f8fafc; }
+.report-fact strong { display: block; margin-bottom: 0.2rem; color: #475569; font-size: 0.78rem; text-transform: uppercase; }
+.report-checkpoints { width: 100%; border-collapse: collapse; }
+.report-checkpoints caption { margin-bottom: 0.5rem; text-align: left; font-weight: 700; }
+.report-checkpoints th, .report-checkpoints td { padding: 0.55rem; border-bottom: 1px solid #e2e8f0; text-align: left; }
+.report-verdicts { display: flex; gap: 1rem; margin-top: 0.8rem; font-size: 0.82rem; }
+
+@media (max-width: 800px) {
+  .stage2-camera-grid { grid-template-columns: 1fr; }
+}
+
 .language-selector {
   margin-bottom: 1rem;
   display: flex;

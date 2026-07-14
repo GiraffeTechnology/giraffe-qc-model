@@ -76,6 +76,51 @@ STATE_CONTRACTS = {
     },
 }
 
+STATE_TRANSLATIONS = {
+    "simulator-ready": {
+        "zh-CN": {
+            "heading": "ARM64 模拟器已就绪",
+            "status": "已就绪",
+            "detail": "QEMU aarch64 客体已验证 · 会话数据由外置硬盘承载",
+        },
+    },
+    "simulated-capture": {
+        "zh-CN": {
+            "heading": "模拟采集",
+            "status": "测试图片已载入",
+            "detail": "已载入仓库测试图片 · 未连接摄像头",
+        },
+    },
+    "cv-success": {
+        "zh-CN": {
+            "heading": "独立 CV 证据",
+            "status": "CV 已完成",
+            "detail": "标准化图片及信息性 CV 证据已生成；不会自动形成最终判定",
+        },
+    },
+    "cv-anomaly": {
+        "zh-CN": {
+            "heading": "CV 证据不足",
+            "status": "需要复核",
+            "detail": "无效或不完整证据会被阻断；禁止静默放行",
+        },
+    },
+    "simulator-unavailable": {
+        "zh-CN": {
+            "heading": "模拟器不可用",
+            "status": "已阻断",
+            "detail": "SIMULATOR_UNAVAILABLE · 挂载或依赖就绪检查失败",
+        },
+    },
+    "refresh-retry": {
+        "zh-CN": {
+            "heading": "模拟器已恢复",
+            "status": "重试完成",
+            "detail": "依赖已恢复 · 仅保留一条结果 · 未产生重复结果",
+        },
+    },
+}
+
 
 def _read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
@@ -92,9 +137,18 @@ def build_state(case_id: str) -> dict:
         bool(drive.get(key))
         for key in ("write_fsync_completed", "read_back_completed", "sha256_matches")
     )
+    contract = STATE_CONTRACTS[case_id]
     return {
         "case_id": case_id,
-        **STATE_CONTRACTS[case_id],
+        **contract,
+        "translations": {
+            "en": {
+                "heading": contract["heading"],
+                "status": contract["status"],
+                "detail": contract["detail"],
+            },
+            **STATE_TRANSLATIONS[case_id],
+        },
         "mock_label": "NON-PRODUCTION MOCK",
         "method": "QEMU aarch64",
         "machine": arm64["runtime"]["machine"],
