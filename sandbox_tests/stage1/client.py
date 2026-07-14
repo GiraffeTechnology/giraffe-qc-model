@@ -32,6 +32,9 @@ class SandboxVLMClient:
             timeout=config.timeout_seconds,
             headers=headers,
             transport=transport,
+            # llama.cpp may close a non-streaming response connection without
+            # advertising it. Avoid reusing a stale socket between Stage 1 cases.
+            limits=httpx.Limits(max_keepalive_connections=0),
         )
 
     def close(self) -> None:
