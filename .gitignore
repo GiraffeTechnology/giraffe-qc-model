@@ -24,6 +24,7 @@ apps/android-qc/app/src/main/cpp/include/
 .env
 .env.local
 .env.*.local
+sandbox.env
 *.key
 secrets/
 .claude/

@@ -12,6 +12,7 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "sqlalchemy>=2.0",
+    "pymysql>=1.1",
     "alembic>=1.13",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
@@ -39,7 +40,7 @@ dev = [
 packages = ["src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "sandbox_tests/tests"]
 asyncio_mode = "auto"
 
 [tool.hatch.envs.default]
