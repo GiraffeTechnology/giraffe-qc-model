@@ -8,6 +8,8 @@ Maps to acceptance criteria in S1_WEB_SHELL_NAV_I18N.md:
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -200,6 +202,23 @@ def test_admin_studio_uses_persisted_language_for_static_and_js_copy(client):
     assert "\\u6b22\\u8fce\\u8fdb\\u5165\\u7ba1\\u7406\\u5de5\\u4f5c\\u5ba4" in body
     assert "Admin Studio" not in body
     assert "Create a SKU or describe QC requirements" not in body
+
+
+@pytest.mark.parametrize("lang", ["en", "zh-CN", "ja"])
+def test_admin_studio_ws6_ws7_controls_have_complete_locale_payload(client, lang):
+    client.cookies.set(LANGUAGE_COOKIE, lang)
+    body = client.get("/admin/studio").text
+    required = [
+        "studio.region.photo", "studio.region.save", "studio.js.add_regions",
+        "studio.js.add_cv_config", "studio.js.probation_active",
+        "studio.js.disagreement_report", "studio.js.regions_saved",
+        "studio.standard_status.standard_active",
+    ]
+    for key in required:
+        expected = translate(key, lang)
+        assert expected != key
+        # Static labels render directly; JS strings are JSON escaped.
+        assert expected in body or json.dumps(expected, ensure_ascii=True)[1:-1] in body
 
 
 def test_admin_studio_status_filter_uses_prd_lifecycle_states(client):
