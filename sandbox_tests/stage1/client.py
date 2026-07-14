@@ -61,6 +61,11 @@ class SandboxVLMClient:
                 "temperature": 0,
                 "max_tokens": self.config.max_tokens,
             }
+            if case.get("require_think_wrapper"):
+                # The parser probe needs the requested tag to remain in the real
+                # model text instead of being consumed by the server chat
+                # template's built-in reasoning channel.
+                payload["chat_template_kwargs"] = {"enable_thinking": False}
         else:
             payload = {
                 "model": self.config.model,
