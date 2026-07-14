@@ -94,5 +94,7 @@ class SandboxConfig:
         return (
             f"Sandbox server runs {self.model}; production v2 specifies cloud "
             f"{self.production_cloud_model} and admin-side {self.production_admin_model} "
-            "(MNN). Results are chain-validity evidence, not model-quality evidence."
+            "(MNN). These are replaceable configured defaults, not Giraffe product "
+            "identity or an ecosystem dependency. Results are chain-validity evidence, "
+            "not model-quality evidence."
         )
