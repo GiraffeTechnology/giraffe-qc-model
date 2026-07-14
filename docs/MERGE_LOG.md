@@ -32,6 +32,7 @@ lives in `P0_REMEDIATION_MERGE_SUMMARY.md`.
 | 2026-07-14 | #71 | merged — final Android i18n sweep + brand icon | suite 1110✓, Android 277✓, lints✓ |
 | 2026-07-14 | #72 | merged — WS8 OpenCV pre-analysis (Nano+Xavier shared) | suite 1116✓ + runner 45✓, Android✓, lints✓ |
 | 2026-07-14 | main | post-train verification: clean-env 1116✓, runner 45✓, alembic → 025 linear✓, lints✓ | — |
+| 2026-07-14 | #73 | sandbox Stage 1 (`sandbox_tests/`) — **merged before CI-owner review completed** (process deviation recorded on PR). Retroactive checklist review: merge-ready; findings on PR (pymysql in prod deps, leak check not wired into CI, think-probe caveat). Live-server claims verified report-based only (sandbox unreachable from CI env). Stage 2 stays gated on user acceptance + decision Q1 | post-merge clean-env 1137✓ (incl. 21 sandbox), runner 45✓, lints✓ |
 
 ## Architecture v2 queue (CLAUDE_CODE_A_CI_BRIEF §3 — strict order)
 
