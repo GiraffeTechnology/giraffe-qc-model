@@ -240,6 +240,11 @@ class JetsonRunnerService:
         return {
             "service_up": report["service_up"],
             "model_loaded": report["runtime"]["model_loaded"],
+            # Legacy server sync still expects this top-level key until WS4
+            # removes the Pad-to-Xavier compatibility path. The value remains
+            # truthful: it is projected from measured v2 device telemetry and
+            # stays null when the Xavier temperature cannot be observed.
+            "temperature_c": report["device"]["temperature_c"],
             "readiness_state": "jetson_ready" if legacy_ready else "jetson_connecting",
             "mock": report["mock"],
             "jetson_device_id": report["runner_id"],
