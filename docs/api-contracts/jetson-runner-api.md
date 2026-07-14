@@ -1,5 +1,12 @@
 # Jetson Xavier NX Runner — API Contract
 
+> **Superseded by Architecture v2.** This document records the legacy
+> Operator Pad-to-Xavier/llama.cpp contract and is not valid for new work.
+> Operator inference now uses batched crops through
+> [`cloud-inference-api.md`](cloud-inference-api.md). Administrator-side Xavier
+> MNN uses [`xavier-admin-runner-api.md`](xavier-admin-runner-api.md). Keep this
+> file only for migration and existing-code archaeology.
+
 **Owner:** WS5 (`claude/ws5-xavier-runner-real-adapter`). **Consumed by:** WS4
 (Pad LAN client) and Account A's WS3 (admin Jetson fleet/health screen).
 
