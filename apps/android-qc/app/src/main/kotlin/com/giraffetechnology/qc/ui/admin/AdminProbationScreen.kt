@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import com.giraffetechnology.qc.admin.AdminProbationController
 import com.giraffetechnology.qc.admin.AdminProbationMutationState
 import com.giraffetechnology.qc.admin.AdminProbationState
+import com.giraffetechnology.qc.admin.probationActionPolicy
 import com.giraffetechnology.qc.i18n.LanguageController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -89,6 +90,7 @@ fun AdminProbationScreen(
                         Spacer(Modifier.height(6.dp))
                         current.notice?.let { Text(it, fontSize = 13.sp) }
                         current.probation?.let { probation ->
+                            val actions = probationActionPolicy(probation.status)
                             KeyValueRow("Status", probation.status)
                             KeyValueRow("SKU", probation.skuId)
                             KeyValueRow("Revision", probation.standardRevisionId)
@@ -107,22 +109,27 @@ fun AdminProbationScreen(
                             KeyValueRow("Next cadence", "every ${probation.gate.recheckInterval} jobs")
                             KeyValueRow("Check due", probation.gate.checkDue.toString())
                             KeyValueRow("Qualified", probation.gate.qualified.toString())
+                            KeyValueRow(
+                                "Human final verdict required",
+                                actions.humanFinalVerdictRequired.toString(),
+                            )
                             Spacer(Modifier.height(8.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                if (probation.status == "active") {
+                                if (actions.canPause) {
                                     OutlinedButton(
                                         enabled = mutation !is AdminProbationMutationState.Working,
                                         onClick = { scope.launch(Dispatchers.IO) { controller.pause() } },
                                     ) { Text("Pause") }
                                 }
-                                if (probation.status == "paused") {
+                                if (actions.canResume) {
                                     OutlinedButton(
                                         enabled = mutation !is AdminProbationMutationState.Working,
                                         onClick = { scope.launch(Dispatchers.IO) { controller.resume() } },
                                     ) { Text("Resume") }
                                 }
                                 OutlinedButton(
-                                    enabled = mutation !is AdminProbationMutationState.Working,
+                                    enabled = actions.canViewReport &&
+                                        mutation !is AdminProbationMutationState.Working,
                                     onClick = {
                                         scope.launch(Dispatchers.IO) { controller.loadDisagreementReport() }
                                     },

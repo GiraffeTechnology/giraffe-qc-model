@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_db_dep
+from src.api.authz import effective_actor
 from src.qc_model.verdict import service
 from src.qc_model.verdict.service import SubmissionNotFound
 from src.web.i18n import install_i18n
@@ -78,9 +79,21 @@ def _verdict_view(v) -> dict:
 
 
 @router.post("/api/qc/results/submissions", status_code=201)
-def submit_verdict(body: SubmitVerdictBody, db: Session = Depends(get_db_dep)):
+def submit_verdict(
+    body: SubmitVerdictBody,
+    request: Request,
+    db: Session = Depends(get_db_dep),
+):
     if bool(body.human_final_decision) != bool(body.human_decided_by):
         raise HTTPException(status_code=400, detail="human decision and identity are both required")
+    human_actor = (
+        effective_actor(request, body.human_decided_by)
+        if body.human_final_decision
+        else None
+    )
+    raw_body = body.model_dump()
+    if human_actor:
+        raw_body["human_decided_by"] = human_actor
     try:
         _, verdict_model, _ = service.ingest_submission(
             db,
@@ -92,7 +105,7 @@ def submit_verdict(body: SubmitVerdictBody, db: Session = Depends(get_db_dep)):
             checkpoints=[(c.checkpoint_id, c.result) for c in body.checkpoints],
             workstation_id=body.workstation_id,
             expected_bundle_version=body.expected_bundle_version,
-            raw=body.model_dump(),
+            raw=raw_body,
         )
     except ValueError as exc:
         if str(exc) == "idempotency_conflict":
@@ -105,12 +118,12 @@ def submit_verdict(body: SubmitVerdictBody, db: Session = Depends(get_db_dep)):
                 tenant_id=body.tenant_id,
                 submission_id=verdict_model.submission_id,
                 decision=body.human_final_decision,
-                decided_by=body.human_decided_by or "",
+                decided_by=human_actor or "",
                 comment=body.human_decision_comment,
             )
         elif (
             verdict_model.human_final_decision != body.human_final_decision
-            or verdict_model.human_decided_by != body.human_decided_by
+            or verdict_model.human_decided_by != human_actor
         ):
             raise HTTPException(status_code=409, detail="idempotency_conflict")
     return _verdict_view(verdict_model)
@@ -130,14 +143,20 @@ def api_get_result(submission_id: str, tenant_id: str = "default", db: Session =
 
 
 @router.post("/api/qc/results/{submission_id}/final-decision", status_code=201)
-def api_final_decision(submission_id: str, body: HumanDecisionBody, db: Session = Depends(get_db_dep)):
+def api_final_decision(
+    submission_id: str,
+    body: HumanDecisionBody,
+    request: Request,
+    db: Session = Depends(get_db_dep),
+):
+    actor = effective_actor(request, body.decided_by)
     try:
         verdict = service.record_human_decision(
             db,
             tenant_id=body.tenant_id,
             submission_id=submission_id,
             decision=body.decision,
-            decided_by=body.decided_by,
+            decided_by=actor,
             comment=body.comment,
         )
     except SubmissionNotFound:
@@ -158,19 +177,20 @@ def admin_results(request: Request, tenant_id: str = "default", db: Session = De
 @router.post("/admin/results/{submission_id}/final-decision")
 def ui_final_decision(
     submission_id: str,
+    request: Request,
     decision: str = Form(...),
-    decided_by: str = Form(...),
     comment: str = Form(""),
     tenant_id: str = Form("default"),
     db: Session = Depends(get_db_dep),
 ):
+    actor = effective_actor(request)
     try:
         service.record_human_decision(
             db,
             tenant_id=tenant_id,
             submission_id=submission_id,
             decision=decision,
-            decided_by=decided_by,
+            decided_by=actor,
             comment=comment,
         )
     except SubmissionNotFound:

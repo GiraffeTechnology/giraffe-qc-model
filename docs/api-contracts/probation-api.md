@@ -8,10 +8,11 @@
 
 **Status on `main`:** the service, read/report/pause/resume router, automatic
 start on Studio Bundle publish, and human-final-decision recording hook exist.
-WS3 now binds the live read/report/pause/resume surface on the Pad, including
-in-flight mutation disabling and server-owned refresh. WS7b's remaining hookup
-is separate from `qc_qualification_router.py` and the L3 accuracy-gate/shadow-
-mode flow.
+WS3 binds the live read/report/pause/resume surface on the Pad, including
+in-flight mutation disabling and server-owned refresh. WS7b closes the actor
+gaps with append-only pause/resume transition audits and authenticated-principal
+binding for human final decisions. This remains separate from
+`qc_qualification_router.py` and the L3 accuracy-gate/shadow-mode flow.
 
 All `/api/qc/*` routes use the repository's authenticated admin/tenant gate.
 Tenant identity comes from the authenticated principal; callers cannot widen
@@ -58,19 +59,20 @@ leaked as 500s).
 | `GET /api/qc/probation/by-revision/{standard_revision_id}` | `[EXISTS]` | Primary WS3 read. `404` before a revision has a probation record. |
 | `GET /api/qc/probation/{probation_id}` | `[EXISTS]` | Direct lookup; tenant-scoped `404` when absent. |
 | `GET /api/qc/probation/{probation_id}/disagreement-report` | `[EXISTS]` | Agreement summary plus auditable jobs and point disagreements. |
-| `POST /api/qc/probation/{probation_id}/pause` | `[EXISTS, AUDIT GAP]` | Idempotent while paused; `409` after qualification. WS7b must persist the authenticated actor. |
-| `POST /api/qc/probation/{probation_id}/resume` | `[EXISTS, AUDIT GAP]` | Returns to active; `409` after qualification. WS7b must persist the authenticated actor. |
-| `POST /api/qc/results/{submission_id}/final-decision` | `[EXISTS, ACTOR GAP]` upstream event | Records the human verdict and advances active probation exactly once. It currently accepts caller-supplied `decided_by`; v2 must bind it to the authenticated principal. |
+| `POST /api/qc/probation/{probation_id}/pause` | `[EXISTS, AUDITED]` | Idempotent while paused; `409` after qualification. A real state change appends the authenticated actor and before/after state. |
+| `POST /api/qc/probation/{probation_id}/resume` | `[EXISTS, AUDITED]` | Returns to active; `409` after qualification. A real state change appends the authenticated actor and before/after state. |
+| `POST /api/qc/results/{submission_id}/final-decision` | `[EXISTS, ACTOR-BOUND]` upstream event | Records the human verdict and advances active probation exactly once. `decided_by` must match the authenticated principal. |
 
 `start_probation` and `record_probation_job` are intentionally not public
 endpoints. They run from trusted server transitions in §4. A client cannot
 force-start probation or inject agreement rows.
 
-Pause/resume currently require no body. The authenticated administrator is the
-required actor; WS7b must add an append-only audit record for that identity. A
-later optional reason may be added additively. The final-decision route must
-derive `decided_by` from the authenticated principal (or reject a mismatched
-legacy body field) before the actor gap can be considered closed.
+Pause/resume require no body. The authenticated administrator is persisted in
+`qc_probation_transition_audits` with action, previous/new status, exact
+revision, tenant, and timestamp. Idempotent requests that do not change state
+do not fabricate another transition. A later optional reason may be added
+additively. Final-decision and inline Pad submission routes reject a legacy
+`decided_by` value that differs from the authenticated principal.
 
 ## 3. Probation view
 

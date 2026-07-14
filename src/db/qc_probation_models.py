@@ -116,3 +116,27 @@ class QCProbationJob(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
     probation: Mapped["QCProbation"] = relationship("QCProbation", back_populates="jobs")
+
+
+class QCProbationTransitionAudit(Base):
+    """Append-only authenticated pause/resume transition evidence."""
+
+    __tablename__ = "qc_probation_transition_audits"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(64), nullable=False, index=True, default="default"
+    )
+    probation_id: Mapped[str] = mapped_column(
+        ForeignKey("qc_probations.id"), nullable=False, index=True
+    )
+    standard_revision_id: Mapped[str] = mapped_column(
+        String(64), nullable=False, index=True
+    )
+    action: Mapped[str] = mapped_column(String(16), nullable=False)
+    actor: Mapped[str] = mapped_column(String(128), nullable=False)
+    previous_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    new_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )

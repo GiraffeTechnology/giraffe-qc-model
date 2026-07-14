@@ -20,6 +20,7 @@ import src.db.qc_verdict_models  # noqa: F401
 from src.db.qc_verdict_models import QCPadSubmission
 from src.db.sku_models import QCDetectionPoint, QCSkuItem, QCSkuStandardRevision
 from src.api.deps import get_db_dep
+from src.api import auth
 from src.api.main import app
 from src.qc_model.qualification import probation as probation_service
 
@@ -149,6 +150,39 @@ def test_human_final_decision_recorded(client, db_session):
     assert resp.json()["server_overall_result"] == "review_required"
 
 
+def test_final_decision_actor_is_bound_to_authenticated_principal(client, db_session):
+    rev = _seed_revision(db_session)
+    sid = _submit(client, rev, [("cp1", "pass")], pad="pass").json()["submission_id"]
+    headers = {
+        "Authorization": "Bearer " + auth.mint_token(
+            T1, subject="authenticated-supervisor", is_admin=True
+        )
+    }
+
+    impersonation = client.post(
+        f"/api/qc/results/{sid}/final-decision",
+        headers=headers,
+        json={
+            "tenant_id": T2,
+            "decision": "reject",
+            "decided_by": "somebody-else",
+        },
+    )
+    assert impersonation.status_code == 403
+
+    accepted = client.post(
+        f"/api/qc/results/{sid}/final-decision",
+        headers=headers,
+        json={
+            "tenant_id": T2,
+            "decision": "reject",
+            "decided_by": "authenticated-supervisor",
+        },
+    )
+    assert accepted.status_code == 201, accepted.text
+    assert accepted.json()["human_decided_by"] == "authenticated-supervisor"
+
+
 def test_invalid_human_decision_rejected(client, db_session):
     rev = _seed_revision(db_session)
     sid = _submit(client, rev, [("cp1", "pass"), ("cp2", "pass")]).json()["submission_id"]
@@ -248,6 +282,31 @@ def test_inline_human_decision_requires_identity(client, db_session):
         "pad_overall_result": "pass", "human_final_decision": "pass",
     })
     assert response.status_code == 400
+
+
+def test_inline_human_actor_cannot_impersonate_authenticated_subject(client, db_session):
+    rev = _seed_revision(db_session)
+    headers = {
+        "Authorization": "Bearer " + auth.mint_token(
+            T1, subject="operator-17", is_admin=True
+        )
+    }
+    body = {
+        "tenant_id": T2,
+        "job_ref": "actor-binding-job",
+        "standard_revision_id": rev,
+        "pad_overall_result": "pass",
+        "human_final_decision": "pass",
+        "human_decided_by": "operator-18",
+    }
+    assert client.post(
+        "/api/qc/results/submissions", headers=headers, json=body
+    ).status_code == 403
+
+    body["human_decided_by"] = "operator-17"
+    accepted = client.post("/api/qc/results/submissions", headers=headers, json=body)
+    assert accepted.status_code == 201, accepted.text
+    assert accepted.json()["human_decided_by"] == "operator-17"
 
 
 def test_cloud_evidence_and_client_timing_are_persisted_unchanged(client, db_session):

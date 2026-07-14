@@ -26,6 +26,8 @@ import src.db.studio_models       # noqa: F401
 import src.db.qc_bundle_models    # noqa: F401
 import src.db.qc_verdict_models   # noqa: F401
 import src.db.pad_models          # noqa: F401
+import src.db.qc_probation_models # noqa: F401
+from src.db.qc_probation_models import QCProbation, QCProbationTransitionAudit
 
 from src.api.main import app
 from src.api.deps import get_db_dep
@@ -64,6 +66,12 @@ def _admin_token(tenant: str) -> dict:
     return {"Authorization": f"Bearer {auth.mint_token(tenant, subject='a', is_admin=True)}"}
 
 
+def _admin_actor_token(tenant: str, subject: str) -> dict:
+    return {
+        "Authorization": f"Bearer {auth.mint_token(tenant, subject=subject, is_admin=True)}"
+    }
+
+
 # ── Rejection (production) ────────────────────────────────────────────────────
 
 
@@ -100,6 +108,46 @@ def test_non_admin_token_is_forbidden(client, monkeypatch):
     token = auth.mint_token("t1", subject="u", is_admin=False)
     r = client.get("/api/qc/bundles", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 403
+
+
+def test_probation_pause_persists_authenticated_actor(client, db_factory):
+    db = db_factory()
+    db.add(QCProbation(
+        id="prob-audit-1",
+        tenant_id="tenant_a",
+        sku_id="sku-a",
+        standard_revision_id="rev-a",
+        status="active",
+    ))
+    db.commit()
+    db.close()
+
+    response = client.post(
+        "/api/qc/probation/prob-audit-1/pause?tenant_id=tenant_b",
+        headers=_admin_actor_token("tenant_a", "pad-admin-7"),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "paused"
+    response = client.post(
+        "/api/qc/probation/prob-audit-1/resume",
+        headers=_admin_actor_token("tenant_a", "pad-admin-7"),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "active"
+
+    db = db_factory()
+    audits = db.query(QCProbationTransitionAudit).all()
+    assert {audit.action for audit in audits} == {"pause", "resume"}
+    assert all(audit.tenant_id == "tenant_a" for audit in audits)
+    assert all(audit.actor == "pad-admin-7" for audit in audits)
+    by_action = {audit.action: audit for audit in audits}
+    assert (by_action["pause"].previous_status, by_action["pause"].new_status) == (
+        "active", "paused"
+    )
+    assert (by_action["resume"].previous_status, by_action["resume"].new_status) == (
+        "paused", "active"
+    )
+    db.close()
 
 
 # ── Isolation (real token, enforcement active) ────────────────────────────────
