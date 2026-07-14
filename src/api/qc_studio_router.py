@@ -395,6 +395,15 @@ def studio_update_detection_point(
     )
     if point is None:
         raise HTTPException(status_code=404, detail="Detection point not found")
+    already_published = db.query(QCPublishBundle.id).filter_by(
+        tenant_id=body.tenant_id,
+        standard_revision_id=point.standard_revision_id,
+    ).first()
+    if already_published:
+        raise HTTPException(
+            status_code=409,
+            detail="judgment-field edits after publish require a new qualified revision",
+        )
     if not body.point_code.strip() or not body.label.strip():
         raise HTTPException(status_code=400, detail="point code and label are required")
     if body.method_hint == "counting" and not (body.expected_value or "").strip():
