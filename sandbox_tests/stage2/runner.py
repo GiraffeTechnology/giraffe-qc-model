@@ -111,7 +111,11 @@ def _ui_report_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
         results.append(
             {
                 "case_id": f"stage2-ui-{case_id}",
-                "case_type": "android_ui_validation",
+                "case_type": (
+                    "chrome_ui_validation"
+                    if manifest.get("platform") == "chrome"
+                    else "android_ui_validation"
+                ),
                 "category": "subjective_judgment",
                 "input_ref": str(item.get("screenshot", "")),
                 "raw_model_output": "",

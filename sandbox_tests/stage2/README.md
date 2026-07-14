@@ -35,8 +35,9 @@ The code-level Q1 gate is in `gate.py`. It intentionally has no default method.
 2. Run `drive_probe.py` for a bounded, non-benchmark write/fsync/read-back check.
 3. Run `cv_probe.py` once on the native host and once inside the QEMU aarch64
    guest. The guest runtime must identify as `aarch64` or `arm64`.
-4. Exercise the six UI states in `UI_VALIDATION_PLAN.md` on an Android emulator
-   using explicitly simulated fixtures and retain screenshots plus state payloads.
+4. Start `chrome_ui_server.py`, exercise the six UI states in
+   `UI_VALIDATION_PLAN.md` in desktop Chrome, and validate the screenshot/state
+   manifest with `chrome_ui_evidence.py`. Android captures are supplemental only.
 5. Run `runner.py` to compare the native and ARM64 CV outputs and generate
    `stage2_report.{json,md}` using the shared report schema.
 
