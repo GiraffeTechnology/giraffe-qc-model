@@ -11,6 +11,12 @@ from urllib.parse import urlparse
 
 from sandbox_tests.common import SANDBOX_DECLARATION, SandboxConfig, load_env_file
 from sandbox_tests.reporting import REPORT_SCHEMA_VERSION, write_reports
+from sandbox_tests.stage1.architecture import (
+    ArchitectureVerificationError,
+    architecture_ready,
+    load_runtime_env_file,
+    verify_architecture,
+)
 from sandbox_tests.stage1.client import SandboxInferenceError, SandboxVLMClient
 from sandbox_tests.stage1.cv_stage import run_cv_stage
 from sandbox_tests.stage1.parser import (
@@ -151,7 +157,12 @@ def execute_case(
     }
 
 
-def build_report(config: SandboxConfig, cases: list[dict[str, Any]], results: list[dict[str, Any]]) -> dict[str, Any]:
+def build_report(
+    config: SandboxConfig,
+    cases: list[dict[str, Any]],
+    results: list[dict[str, Any]],
+    architecture: dict[str, object] | None = None,
+) -> dict[str, Any]:
     categories = {
         category: {
             "positive": sum(r["case_id"].startswith(f"{category}-positive") for r in results),
@@ -167,6 +178,7 @@ def build_report(config: SandboxConfig, cases: list[dict[str, Any]], results: li
     forced = [r for r in results if r["case_type"] != "real_inference"]
     real = [r for r in results if r["case_type"] == "real_inference"]
     acceptance = {
+        "sandbox_architecture_checkout_data_and_mysql_ready": architecture_ready(architecture),
         "end_to_end_no_blocking_errors": bool(real) and all(r["passed"] for r in real),
         "four_categories_positive_and_anomalous_executed": all(
             counts["positive"] >= 1 and counts["anomalous"] >= 1
@@ -194,6 +206,7 @@ def build_report(config: SandboxConfig, cases: list[dict[str, Any]], results: li
             "server": "SANDBOX_QC_SERVER",
             "server_value_redacted": True,
         },
+        "architecture": architecture or {"ready": False, "error": "not_verified"},
         "summary": {
             "case_count": len(results),
             "passed_case_count": sum(r["passed"] for r in results),
@@ -221,6 +234,7 @@ def _elapsed(started: float) -> float:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env-file", default="sandbox.env")
+    parser.add_argument("--runtime-env", default=".env.stage1.local")
     parser.add_argument("--cases", default="sandbox_tests/stage1/cases.json")
     parser.add_argument("--report", default="sandbox_tests/reports/stage1_report.json")
     parser.add_argument("--validate-only", action="store_true")
@@ -231,13 +245,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"validated {len(cases)} Stage 1 cases; no inference executed")
         return 0
     load_env_file(args.env_file)
+    load_runtime_env_file(args.runtime_env)
     config = SandboxConfig.from_environment()
+    try:
+        architecture = verify_architecture(ROOT)
+    except ArchitectureVerificationError as exc:
+        architecture = {"ready": False, "error": str(exc)}
     client = SandboxVLMClient(config)
     try:
         results = [execute_case(case, client=client) for case in cases]
     finally:
         client.close()
-    report = build_report(config, cases, results)
+    report = build_report(config, cases, results, architecture)
     assert_report_has_no_server_address(report, config)
     json_path, markdown_path = write_reports(report, args.report)
     print(f"wrote {json_path} and {markdown_path}; status={report['status']}")

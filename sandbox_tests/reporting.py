@@ -83,6 +83,19 @@ def render_markdown(report: dict[str, Any]) -> str:
     ]
     for key, value in report["acceptance"].items():
         lines.append(f"- [{'x' if value else ' '}] `{key}`")
+    if "architecture" in report:
+        lines.extend(
+            [
+                "",
+                "## Architecture evidence",
+                "",
+                "Endpoint and credential values are intentionally excluded.",
+                "",
+                "```json",
+                json.dumps(report["architecture"], ensure_ascii=False, indent=2, sort_keys=True),
+                "```",
+            ]
+        )
     lines.extend(["", "## Cases", ""])
     for case in report["cases"]:
         lines.extend(

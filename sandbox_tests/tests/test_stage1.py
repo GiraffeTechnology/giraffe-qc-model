@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import httpx
@@ -8,6 +9,12 @@ import pytest
 
 from sandbox_tests.common import SANDBOX_DECLARATION, SandboxConfig, SandboxConfigurationError
 from sandbox_tests.reporting import REPORT_SCHEMA_VERSION, render_markdown, write_reports
+from sandbox_tests.stage1.architecture import (
+    ArchitectureVerificationError,
+    architecture_ready,
+    load_runtime_env_file,
+    verify_architecture,
+)
 from sandbox_tests.stage1.client import SandboxVLMClient
 from sandbox_tests.stage1.cv_stage import run_cv_stage
 from sandbox_tests.stage1.parser import StrictOutputError, parse_strict_sandbox_output
@@ -269,3 +276,56 @@ def test_report_address_leak_is_refused():
     }
     with pytest.raises(ValueError, match="address leak"):
         assert_report_has_no_server_address(report, _config())
+
+
+def test_runtime_env_requires_restricted_permissions_and_allowed_keys(tmp_path, monkeypatch):
+    runtime = tmp_path / ".env.stage1.local"
+    runtime.write_text(
+        "QC_DB_URL=mysql+pymysql://configured.invalid/db\n"
+        f"SAMPLE_STORE_DIR={tmp_path}/data/samples\n"
+        f"CAPTURE_DIR={tmp_path}/data/captures\n"
+        f"STAGE1_DATA_ROOT={tmp_path}/data\n",
+        encoding="utf-8",
+    )
+    runtime.chmod(0o644)
+    with pytest.raises(ArchitectureVerificationError, match="permissions"):
+        load_runtime_env_file(runtime)
+    runtime.chmod(0o600)
+    for key in ("QC_DB_URL", "SAMPLE_STORE_DIR", "CAPTURE_DIR", "STAGE1_DATA_ROOT"):
+        monkeypatch.delenv(key, raising=False)
+    load_runtime_env_file(runtime)
+    assert os.environ["QC_DB_URL"].startswith("mysql+pymysql://")
+
+
+def test_architecture_gate_requires_all_endpoint_free_evidence():
+    evidence = {
+        "ready": True,
+        "source_checkout_present": True,
+        "data_root_within_checkout": True,
+        "data_root_writable": True,
+        "sample_and_capture_paths_within_data_root": True,
+        "database_reachable": True,
+        "database_schema_initialized": True,
+        "database_endpoint_redacted": True,
+    }
+    assert architecture_ready(evidence)
+    evidence["database_reachable"] = False
+    assert not architecture_ready(evidence)
+
+
+def test_architecture_write_probe_never_deletes_preexisting_file(tmp_path, monkeypatch):
+    root = tmp_path / "checkout"
+    data = root / "data"
+    samples = data / "samples"
+    captures = data / "captures"
+    data.mkdir(parents=True)
+    (root / ".git").mkdir()
+    probe = data / ".stage1-write-probe"
+    probe.write_text("keep", encoding="utf-8")
+    monkeypatch.setenv("QC_DB_URL", "mysql+pymysql://configured.invalid/db")
+    monkeypatch.setenv("STAGE1_DATA_ROOT", str(data))
+    monkeypatch.setenv("SAMPLE_STORE_DIR", str(samples))
+    monkeypatch.setenv("CAPTURE_DIR", str(captures))
+    with pytest.raises(ArchitectureVerificationError, match="write_check_failed"):
+        verify_architecture(root)
+    assert probe.read_text(encoding="utf-8") == "keep"
