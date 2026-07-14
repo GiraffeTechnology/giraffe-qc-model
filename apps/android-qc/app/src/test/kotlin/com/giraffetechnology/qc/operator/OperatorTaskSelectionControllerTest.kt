@@ -13,6 +13,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.json.JSONArray
 
 /** Offline operator task-selection logic — exact messages, offline search, confirm. */
 class OperatorTaskSelectionControllerTest {
@@ -95,10 +96,14 @@ class OperatorTaskSelectionControllerTest {
         assertTrue(task.standardPhotos.isNotEmpty())
         assertTrue(task.qcPoints.isNotEmpty())
         assertEquals("center_alignment", task.qcPoints.first().qcPointCode)
-        assertEquals(
-            """[{"image_id":"front-photo","x":0.1,"y":0.2,"w":0.3,"h":0.4}]""",
-            task.qcPoints.first().roiJson,
-        )
+        val regions = JSONArray(task.qcPoints.first().roiJson)
+        assertEquals(1, regions.length())
+        val region = regions.getJSONObject(0)
+        assertEquals("front-photo", region.getString("image_id"))
+        assertEquals(0.1, region.getDouble("x"), 0.0)
+        assertEquals(0.2, region.getDouble("y"), 0.0)
+        assertEquals(0.3, region.getDouble("w"), 0.0)
+        assertEquals(0.4, region.getDouble("h"), 0.0)
     }
 
     @Test fun `confirm unknown SKU yields SkuNotFound`() = runTest {
