@@ -379,72 +379,6 @@ class UpdateStudioDetectionPointRequest(BaseModel):
     expected_value: Optional[str] = None
     method_hint: Optional[str] = None
     severity: str = "major"
-
-
-@router.patch("/admin/studio/detection-points/{detection_point_id}")
-def studio_update_detection_point(
-    detection_point_id: str,
-    body: UpdateStudioDetectionPointRequest,
-    db: Session = Depends(get_db_dep),
-):
-    """Edit checkpoint judgment fields behind the Administrator auth gate."""
-    point = (
-        db.query(QCDetectionPoint)
-        .filter_by(id=detection_point_id, tenant_id=body.tenant_id, is_active=True)
-        .first()
-    )
-    if point is None:
-        raise HTTPException(status_code=404, detail="Detection point not found")
-    already_published = db.query(QCPublishBundle.id).filter_by(
-        tenant_id=body.tenant_id,
-        standard_revision_id=point.standard_revision_id,
-    ).first()
-    if already_published:
-        raise HTTPException(
-            status_code=409,
-            detail="judgment-field edits after publish require a new qualified revision",
-        )
-    if not body.point_code.strip() or not body.label.strip():
-        raise HTTPException(status_code=400, detail="point code and label are required")
-    if body.method_hint == "counting" and not (body.expected_value or "").strip():
-        raise HTTPException(status_code=400, detail="counting checkpoint needs an expected count")
-    if body.severity not in {"minor", "major", "critical"}:
-        raise HTTPException(status_code=400, detail="unsupported severity")
-
-    point.point_code = body.point_code.strip()
-    point.label = body.label.strip()
-    point.description = body.description
-    point.method_hint = body.method_hint
-    point.expected_value = body.expected_value
-    point.severity = body.severity
-    point.updated_at = _now()
-    db.commit()
-    db.refresh(point)
-    return {
-        "id": point.id,
-        "point_code": point.point_code,
-        "label": point.label,
-        "description": point.description,
-        "method_hint": point.method_hint,
-        "expected_value": point.expected_value,
-        "severity": point.severity,
-        "regions": point.regions_json or [],
-    }
-
-class SetAnalysisConfigRequest(BaseModel):
-    tenant_id: str = "default"
-    expected_features: Dict[str, Any] = {}
-    cv_config: Dict[str, Any] = {}
-
-
-class UpdateStudioDetectionPointRequest(BaseModel):
-    tenant_id: str = "default"
-    point_code: str
-    label: str
-    description: Optional[str] = None
-    expected_value: Optional[str] = None
-    method_hint: Optional[str] = None
-    severity: str = "major"
     pass_criteria: Optional[str] = None
 
 
@@ -546,6 +480,12 @@ def studio_set_regions(
         "regions": dp.regions_json or [],
         "sku": studio.sku_summary(db, sku) if sku else None,
     }
+
+
+class SetAnalysisConfigRequest(BaseModel):
+    tenant_id: str = "default"
+    expected_features: Dict[str, Any] = {}
+    cv_config: Dict[str, Any] = {}
 
 
 @router.post("/admin/studio/detection-points/{detection_point_id}/analysis-config")
