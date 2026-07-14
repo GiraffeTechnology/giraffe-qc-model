@@ -157,6 +157,12 @@ def _prompt(case: dict[str, Any], cv_result: dict[str, Any]) -> str:
             }
         ],
     }
+    parser_probe = (
+        "For the Stage 1 parser probe, prefix exactly "
+        "<think>stage1 parser probe</think> before the JSON object. "
+        if case.get("require_think_wrapper")
+        else ""
+    )
     return (
         "SANDBOX CHAIN-VALIDATION REQUEST. Inspect exactly one QC point. "
         "Return one JSON object only; do not add prose after it.\n"
@@ -166,6 +172,7 @@ def _prompt(case: dict[str, Any], cv_result: dict[str, Any]) -> str:
         + json.dumps(cv_result, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         + "\n</CV_PREANALYSIS_JSON>\n"
         "CV evidence is informational only. If evidence is insufficient, use review_required.\n"
-        "Required output schema:\n"
+        + parser_probe
+        + "Required output schema:\n"
         + json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
     )

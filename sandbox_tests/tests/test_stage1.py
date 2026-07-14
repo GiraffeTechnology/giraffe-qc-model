@@ -115,6 +115,7 @@ def test_case_manifest_has_four_categories_positive_anomalous_and_faults():
     cases = load_cases(CASES)
     real = [case for case in cases if case["case_type"] == "real_inference"]
     assert len(real) == 8
+    assert sum(bool(case.get("require_think_wrapper")) for case in real) == 1
     for category in {
         "visual_defect",
         "physical_measurement",

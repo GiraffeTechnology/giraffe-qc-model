@@ -9,6 +9,7 @@
     "criterion": "The red surface is uniform and has no visible dark defect mark.",
     "expected_behavior": "pass when the surface is uniform",
     "expected_verdict": "pass",
+    "require_think_wrapper": true,
     "cv_config": {"analyzers": ["rhinestone_count"], "parameters": {"highlight_threshold": 245, "min_area_px": 2}}
   },
   {
