@@ -273,6 +273,30 @@ def test_admin_idempotency_key_rejects_changed_content():
     assert exc.value.http_status == 409
 
 
+def test_admin_recognition_cache_evicts_least_recently_used_response():
+    _, credentials = _credentials()
+    cfg = RunnerConfig(
+        mock_mode=True,
+        admin_credentials=credentials,
+        recognition_cache_max_entries=2,
+    )
+    service = JetsonRunnerService(cfg, identity=generate_identity("xavier-test"))
+
+    for request_id in ("adminrec-1", "adminrec-2", "adminrec-3"):
+        manifest = _manifest()
+        manifest["request_id"] = request_id
+        service.handle_admin_recognition(
+            manifest=manifest,
+            content_digest=multipart_content_sha256(manifest),
+            image_paths={"front": "/tmp/front.jpg"},
+            request_received_at="2026-07-14T00:00:00.000Z",
+        )
+
+    assert service.get_admin_recognition("adminrec-1") is None
+    assert service.get_admin_recognition("adminrec-2") is not None
+    assert service.get_admin_recognition("adminrec-3") is not None
+
+
 def test_admin_health_requires_authentication():
     _, client = _mock_client()
     response = client.get("/api/v2/admin-runner/health")

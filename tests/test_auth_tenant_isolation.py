@@ -80,6 +80,15 @@ def test_unauthenticated_admin_get_redirects_to_login(client, monkeypatch):
     assert r.headers["location"].startswith("/admin/login")
 
 
+def test_unauthenticated_detection_point_edit_is_rejected(client, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    r = client.patch(
+        "/admin/studio/detection-points/not-known",
+        json={"point_code": "DP-1", "label": "Changed"},
+    )
+    assert r.status_code == 401
+
+
 def test_login_page_itself_is_public(client, monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
     assert client.get("/admin/login").status_code == 200

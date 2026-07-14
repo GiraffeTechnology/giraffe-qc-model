@@ -384,7 +384,7 @@ class AdminApiClient internal constructor(
             .putOpt("expected_value", expectedValue)
             .put("severity", severity)
         return requestJson(
-            "PATCH", "$baseUrl/api/v1/sku/detection-points/${enc(detectionPointId)}", body,
+            "PATCH", "$baseUrl/admin/studio/detection-points/${enc(detectionPointId)}", body,
         ) { it.getString("id") }
     }
 

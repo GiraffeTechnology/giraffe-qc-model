@@ -153,16 +153,6 @@ class AddDetectionPointRequest(BaseModel):
     sort_order: int = 0
 
 
-class UpdateDetectionPointRequest(BaseModel):
-    tenant_id: str = "default"
-    point_code: str
-    label: str
-    description: Optional[str] = None
-    expected_value: Optional[str] = None
-    method_hint: Optional[str] = None
-    severity: str = "major"
-
-
 # ─── Helpers ───────────────────────────────────────────────────────────────────────────────
 
 
@@ -315,48 +305,6 @@ def search_sku(
         .all()
     )
     return SkuSearchResponse(items=[_sku_to_search_item(s) for s in skus])
-
-
-@router.patch("/detection-points/{detection_point_id}")
-def update_detection_point(
-    detection_point_id: str,
-    body: UpdateDetectionPointRequest,
-    db: Session = Depends(get_db_dep),
-):
-    """Edit an existing checkpoint without changing its identity or regions."""
-    point = (
-        db.query(QCDetectionPoint)
-        .filter_by(id=detection_point_id, tenant_id=body.tenant_id, is_active=True)
-        .first()
-    )
-    if point is None:
-        raise HTTPException(status_code=404, detail="Detection point not found")
-    if not body.point_code.strip() or not body.label.strip():
-        raise HTTPException(status_code=400, detail="point code and label are required")
-    if body.method_hint == "counting" and not (body.expected_value or "").strip():
-        raise HTTPException(status_code=400, detail="counting checkpoint needs an expected count")
-    if body.severity not in {"minor", "major", "critical"}:
-        raise HTTPException(status_code=400, detail="unsupported severity")
-
-    point.point_code = body.point_code.strip()
-    point.label = body.label.strip()
-    point.description = body.description
-    point.method_hint = body.method_hint
-    point.expected_value = body.expected_value
-    point.severity = body.severity
-    point.updated_at = _utcnow()
-    db.commit()
-    db.refresh(point)
-    return {
-        "id": point.id,
-        "point_code": point.point_code,
-        "label": point.label,
-        "description": point.description,
-        "method_hint": point.method_hint,
-        "expected_value": point.expected_value,
-        "severity": point.severity,
-        "regions": point.regions_json or [],
-    }
 
 
 @router.get("/{sku_id}", response_model=SkuDetailResponse)

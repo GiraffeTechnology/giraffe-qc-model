@@ -85,6 +85,9 @@ class RunnerConfig:
     max_request_bytes: int = field(default_factory=lambda: int(os.getenv(
         "XAVIER_MAX_REQUEST_BYTES", str(20 * 1024 * 1024)
     )))
+    recognition_cache_max_entries: int = field(default_factory=lambda: int(os.getenv(
+        "XAVIER_RECOGNITION_CACHE_MAX_ENTRIES", "256"
+    )))
     hardware_validation_status: str = field(default_factory=lambda: os.getenv(
         "XAVIER_HARDWARE_VALIDATION_STATUS", "not_run"
     ))
@@ -102,6 +105,8 @@ class RunnerConfig:
             raise ValueError("XAVIER_HARDWARE_VALIDATION_STATUS is invalid")
         if self.hardware_validation_status == "passed" and not self.hardware_validation_evidence_ref:
             raise ValueError("passed hardware validation requires an evidence reference")
+        if self.recognition_cache_max_entries < 1:
+            raise ValueError("XAVIER_RECOGNITION_CACHE_MAX_ENTRIES must be at least 1")
         self.mock_mode = self.inference_mode == "mock"
         if self.mock_mode and app_env() == "production":
             raise MockModeNotAllowedInProduction(

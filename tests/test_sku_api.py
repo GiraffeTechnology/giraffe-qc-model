@@ -323,7 +323,7 @@ class TestDetectionPointCreation:
             "point_code": "DP-EDIT-001",
             "label": "Before",
         }).json()
-        resp = client.patch(f"/api/v1/sku/detection-points/{created['id']}", json={
+        resp = client.patch(f"/admin/studio/detection-points/{created['id']}", json={
             "tenant_id": TENANT,
             "point_code": "DP-EDIT-001",
             "label": "After",
@@ -342,7 +342,7 @@ class TestDetectionPointCreation:
             "point_code": "DP-EDIT-002",
             "label": "Before",
         }).json()
-        resp = client.patch(f"/api/v1/sku/detection-points/{created['id']}", json={
+        resp = client.patch(f"/admin/studio/detection-points/{created['id']}", json={
             "tenant_id": TENANT,
             "point_code": "DP-EDIT-002",
             "label": "After",

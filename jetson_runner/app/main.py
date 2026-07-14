@@ -12,6 +12,7 @@ import logging
 import tempfile
 import threading
 import time
+from collections import OrderedDict
 from pathlib import Path
 from typing import Optional
 
@@ -87,7 +88,8 @@ class JetsonRunnerService:
         self._legacy_last_latency_ms: Optional[int] = None
         self._loaded_at = health.utc_now() if self.adapter.is_ready() else None
         self._last_recognition: dict | None = None
-        self._recognitions: dict[str, tuple[str, dict]] = {}
+        self._recognitions: OrderedDict[str, tuple[str, dict]] = OrderedDict()
+        self._recognition_cache_lock = threading.Lock()
         self._admin_inference_lock = threading.Lock()
         self.set_status_led("ready" if self.adapter.is_ready() else "error")
 
@@ -118,7 +120,7 @@ class JetsonRunnerService:
         except Exception as exc:
             raise AdminRequestRejected("invalid_request", 422) from exc
 
-        prior = self._recognitions.get(request.request_id)
+        prior = self._get_cached_recognition(request.request_id)
         if prior:
             if prior[0] != content_digest:
                 raise AdminRequestRejected("idempotency_conflict", 409)
@@ -128,7 +130,7 @@ class JetsonRunnerService:
         try:
             # Recheck after acquiring the single-runtime lock so two concurrent
             # copies of one idempotency key cannot both run the model.
-            prior = self._recognitions.get(request.request_id)
+            prior = self._get_cached_recognition(request.request_id)
             if prior:
                 if prior[0] != content_digest:
                     raise AdminRequestRejected("idempotency_conflict", 409)
@@ -185,7 +187,7 @@ class JetsonRunnerService:
             # Make the mock nature unmissable at the response envelope as well
             # as in every per-point evidence string and log record.
             response["warning"] = MOCK_BANNER
-        self._recognitions[request.request_id] = (content_digest, response)
+        self._cache_recognition(request.request_id, content_digest, response)
         self._last_recognition = {
             "status": "completed",
             "finished_at": inference_completed_at,
@@ -194,8 +196,28 @@ class JetsonRunnerService:
         return response
 
     def get_admin_recognition(self, request_id: str) -> dict | None:
-        entry = self._recognitions.get(request_id)
+        entry = self._get_cached_recognition(request_id)
         return entry[1] if entry else None
+
+    def _get_cached_recognition(self, request_id: str) -> tuple[str, dict] | None:
+        with self._recognition_cache_lock:
+            entry = self._recognitions.get(request_id)
+            if entry is not None:
+                self._recognitions.move_to_end(request_id)
+            return entry
+
+    def _cache_recognition(self, request_id: str, content_digest: str, response: dict) -> None:
+        """Retain only the most recent reconciliation responses.
+
+        Responses contain per-point evidence and can be large, so the in-memory
+        idempotency window must stay bounded for a long-running Xavier service.
+        Durable reconciliation across restarts remains a deployment follow-up.
+        """
+        with self._recognition_cache_lock:
+            self._recognitions[request_id] = (content_digest, response)
+            self._recognitions.move_to_end(request_id)
+            while len(self._recognitions) > self.cfg.recognition_cache_max_entries:
+                self._recognitions.popitem(last=False)
 
     def admin_health_report(self) -> dict:
         model_loaded = self.adapter.is_ready()

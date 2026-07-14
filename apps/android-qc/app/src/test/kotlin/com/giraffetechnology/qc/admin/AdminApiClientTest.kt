@@ -141,7 +141,7 @@ class AdminApiClientTest {
         val transport = FakeAdminTransport()
         val client = loggedInClient(transport)
         transport.stub(
-            "PATCH", "/api/v1/sku/detection-points/dp1",
+            "PATCH", "/admin/studio/detection-points/dp1",
             AdminHttpResponse(200, """{"id":"dp1"}"""),
         )
         val result = client.updateDetectionPoint(
