@@ -1,0 +1,116 @@
+{
+  "build_commit": "b59806ebb111bf272fc8b3ab4aec873ddfb6462e",
+  "build_variant": "padLocalDebug",
+  "cases": [
+    {
+      "anomaly_notes": [],
+      "case_id": "simulator-ready",
+      "passed": true,
+      "screenshot": "sandbox_tests/reports/evidence/stage2/ui/simulator-ready.png",
+      "state_payload": {
+        "fail_closed": false,
+        "inference_call_count": 0,
+        "mock_label_visible": true,
+        "qemu_aarch64_label_visible": true,
+        "result_count": 0,
+        "screenshot_height_px": 1800,
+        "screenshot_width_px": 2560,
+        "status": "READY"
+      },
+      "ui_hierarchy": "sandbox_tests/reports/evidence/stage2/ui/simulator-ready.xml"
+    },
+    {
+      "anomaly_notes": [],
+      "case_id": "simulated-capture",
+      "passed": true,
+      "screenshot": "sandbox_tests/reports/evidence/stage2/ui/simulated-capture.png",
+      "state_payload": {
+        "fail_closed": false,
+        "inference_call_count": 0,
+        "mock_label_visible": true,
+        "qemu_aarch64_label_visible": true,
+        "result_count": 0,
+        "screenshot_height_px": 1800,
+        "screenshot_width_px": 2560,
+        "status": "FIXTURE LOADED"
+      },
+      "ui_hierarchy": "sandbox_tests/reports/evidence/stage2/ui/simulated-capture.xml"
+    },
+    {
+      "anomaly_notes": [],
+      "case_id": "cv-success",
+      "passed": true,
+      "screenshot": "sandbox_tests/reports/evidence/stage2/ui/cv-success.png",
+      "state_payload": {
+        "fail_closed": false,
+        "inference_call_count": 0,
+        "mock_label_visible": true,
+        "qemu_aarch64_label_visible": true,
+        "result_count": 1,
+        "screenshot_height_px": 1800,
+        "screenshot_width_px": 2560,
+        "status": "CV COMPLETE"
+      },
+      "ui_hierarchy": "sandbox_tests/reports/evidence/stage2/ui/cv-success.xml"
+    },
+    {
+      "anomaly_notes": [],
+      "case_id": "cv-anomaly",
+      "passed": true,
+      "screenshot": "sandbox_tests/reports/evidence/stage2/ui/cv-anomaly.png",
+      "state_payload": {
+        "fail_closed": true,
+        "inference_call_count": 0,
+        "mock_label_visible": true,
+        "qemu_aarch64_label_visible": true,
+        "result_count": 0,
+        "screenshot_height_px": 1800,
+        "screenshot_width_px": 2560,
+        "status": "REVIEW REQUIRED"
+      },
+      "ui_hierarchy": "sandbox_tests/reports/evidence/stage2/ui/cv-anomaly.xml"
+    },
+    {
+      "anomaly_notes": [],
+      "case_id": "simulator-unavailable",
+      "passed": true,
+      "screenshot": "sandbox_tests/reports/evidence/stage2/ui/simulator-unavailable.png",
+      "state_payload": {
+        "fail_closed": true,
+        "inference_call_count": 0,
+        "mock_label_visible": true,
+        "qemu_aarch64_label_visible": true,
+        "result_count": 0,
+        "screenshot_height_px": 1800,
+        "screenshot_width_px": 2560,
+        "status": "BLOCKED"
+      },
+      "ui_hierarchy": "sandbox_tests/reports/evidence/stage2/ui/simulator-unavailable.xml"
+    },
+    {
+      "anomaly_notes": [],
+      "case_id": "refresh-retry",
+      "passed": true,
+      "screenshot": "sandbox_tests/reports/evidence/stage2/ui/refresh-retry.png",
+      "state_payload": {
+        "after_screenshot": "sandbox_tests/reports/evidence/stage2/ui/refresh-retry.png",
+        "before_screenshot": "sandbox_tests/reports/evidence/stage2/ui/simulator-unavailable.png",
+        "event_log": "sandbox_tests/reports/evidence/stage2/ui/refresh-retry-events.log",
+        "fail_closed": false,
+        "inference_call_count": 0,
+        "mock_label_visible": true,
+        "qemu_aarch64_label_visible": true,
+        "result_count": 1,
+        "screenshot_height_px": 1800,
+        "screenshot_width_px": 2560,
+        "status": "RETRY COMPLETE"
+      },
+      "ui_hierarchy": "sandbox_tests/reports/evidence/stage2/ui/refresh-retry.xml"
+    }
+  ],
+  "cv_payload_source": "separately verified QEMU aarch64 probe",
+  "generated_at": "2026-07-14T20:17:34.547252Z",
+  "platform": "android_x86_64_emulator",
+  "schema_version": "stage2-ui-evidence-v1",
+  "surface": "debug-only Compose evidence activity; absent from release builds"
+}

@@ -1,0 +1,292 @@
+{
+  "camera_connected": false,
+  "cases": [
+    {
+      "case_id": "visual_defect-positive-01",
+      "category": "visual_defect",
+      "cv_result": {
+        "brightness_mean": 60.0,
+        "input_height_px": 200,
+        "input_width_px": 200,
+        "preanalysis": {
+          "accuracy_note": "accuracy unmeasured — fixture-tuned parameters are starting points",
+          "analyzers": [
+            {
+              "analyzer": "rhinestone_count",
+              "backend": "contour",
+              "boxes": [],
+              "centers": [],
+              "confidence": 0.0,
+              "count": 0
+            }
+          ],
+          "deviations": [],
+          "schema_version": "1.0",
+          "verdict_effect": "informational_only"
+        },
+        "sharpness_laplacian_variance": 0.0,
+        "verdict_effect": "informational_only"
+      },
+      "input_ref": "tests/fixtures/qc/capture_red_square_pass.png",
+      "input_sha256": "c6f40751a149c3a5c9787119d16fd51575e85cc57852289e9f4f23178aa76a73"
+    },
+    {
+      "case_id": "visual_defect-anomalous-01",
+      "category": "visual_defect",
+      "cv_result": {
+        "brightness_mean": 57.6,
+        "input_height_px": 200,
+        "input_width_px": 200,
+        "preanalysis": {
+          "accuracy_note": "accuracy unmeasured — fixture-tuned parameters are starting points",
+          "analyzers": [
+            {
+              "analyzer": "rhinestone_count",
+              "backend": "contour",
+              "boxes": [],
+              "centers": [],
+              "confidence": 0.0,
+              "count": 0
+            }
+          ],
+          "deviations": [],
+          "schema_version": "1.0",
+          "verdict_effect": "informational_only"
+        },
+        "sharpness_laplacian_variance": 29.52,
+        "verdict_effect": "informational_only"
+      },
+      "input_ref": "tests/fixtures/qc/capture_red_square_defect.png",
+      "input_sha256": "dabafd7eb4881be6ee00303c0630ab8a2f307c4baafd6b7762c963a07842f16b"
+    },
+    {
+      "case_id": "physical_measurement-positive-01",
+      "category": "physical_measurement",
+      "cv_result": {
+        "brightness_mean": 99.2448,
+        "input_height_px": 100,
+        "input_width_px": 100,
+        "preanalysis": {
+          "accuracy_note": "accuracy unmeasured — fixture-tuned parameters are starting points",
+          "analyzers": [
+            {
+              "analyzer": "pistil_localization",
+              "box": {
+                "h": 0.2,
+                "w": 0.2,
+                "x": 0.4,
+                "y": 0.4
+              },
+              "center": {
+                "x": 0.495,
+                "y": 0.495
+              },
+              "confidence": 0.7444,
+              "found": true
+            }
+          ],
+          "deviations": [],
+          "schema_version": "1.0",
+          "verdict_effect": "informational_only"
+        },
+        "sharpness_laplacian_variance": 15867.5751,
+        "verdict_effect": "informational_only"
+      },
+      "input_ref": "tests/fixtures/red_square_with_dot.png",
+      "input_sha256": "9307a4f8e12dbdff8d3477558d2fbc739f6288b05c8f2f544a0048786ef222ea"
+    },
+    {
+      "case_id": "physical_measurement-anomalous-01",
+      "category": "physical_measurement",
+      "cv_result": {
+        "brightness_mean": 103.38,
+        "input_height_px": 100,
+        "input_width_px": 100,
+        "preanalysis": {
+          "accuracy_note": "accuracy unmeasured — fixture-tuned parameters are starting points",
+          "analyzers": [
+            {
+              "analyzer": "pistil_localization",
+              "box": null,
+              "center": null,
+              "confidence": 0.0,
+              "found": false
+            }
+          ],
+          "deviations": [],
+          "schema_version": "1.0",
+          "verdict_effect": "informational_only"
+        },
+        "sharpness_laplacian_variance": 15998.4639,
+        "verdict_effect": "informational_only"
+      },
+      "input_ref": "tests/fixtures/red_square.png",
+      "input_sha256": "3b84497769e2380cd7e20520cfa950a0633f55701d3c7af1f92a42abd0f4405c"
+    },
+    {
+      "case_id": "rule_verification-positive-01",
+      "category": "rule_verification",
+      "cv_result": {
+        "brightness_mean": 60.0,
+        "input_height_px": 200,
+        "input_width_px": 200,
+        "preanalysis": {
+          "accuracy_note": "accuracy unmeasured — fixture-tuned parameters are starting points",
+          "analyzers": [
+            {
+              "analyzer": "petal_segmentation",
+              "area_fractions": [
+                0.99
+              ],
+              "confidence": 0.99,
+              "count": 1,
+              "polygons": [
+                [
+                  {
+                    "x": 0.0,
+                    "y": 0.0
+                  },
+                  {
+                    "x": 0.0,
+                    "y": 0.995
+                  },
+                  {
+                    "x": 0.995,
+                    "y": 0.995
+                  },
+                  {
+                    "x": 0.995,
+                    "y": 0.0
+                  }
+                ]
+              ]
+            }
+          ],
+          "deviations": [],
+          "schema_version": "1.0",
+          "verdict_effect": "informational_only"
+        },
+        "sharpness_laplacian_variance": 0.0,
+        "verdict_effect": "informational_only"
+      },
+      "input_ref": "tests/fixtures/qc/standard_red_square.png",
+      "input_sha256": "c6f40751a149c3a5c9787119d16fd51575e85cc57852289e9f4f23178aa76a73"
+    },
+    {
+      "case_id": "rule_verification-anomalous-01",
+      "category": "rule_verification",
+      "cv_result": {
+        "brightness_mean": 52.0,
+        "input_height_px": 100,
+        "input_width_px": 100,
+        "preanalysis": {
+          "accuracy_note": "accuracy unmeasured — fixture-tuned parameters are starting points",
+          "analyzers": [
+            {
+              "analyzer": "petal_segmentation",
+              "area_fractions": [],
+              "confidence": 0.0,
+              "count": 0,
+              "polygons": []
+            }
+          ],
+          "deviations": [],
+          "schema_version": "1.0",
+          "verdict_effect": "informational_only"
+        },
+        "sharpness_laplacian_variance": 0.0,
+        "verdict_effect": "informational_only"
+      },
+      "input_ref": "tests/fixtures/blue_square.png",
+      "input_sha256": "5645654ba08011b4be90fd2fa7adf66c1fc7b97d3e53c068d8382961689a7c46"
+    },
+    {
+      "case_id": "subjective_judgment-positive-01",
+      "category": "subjective_judgment",
+      "cv_result": {
+        "brightness_mean": 60.0,
+        "input_height_px": 200,
+        "input_width_px": 200,
+        "preanalysis": {
+          "accuracy_note": "accuracy unmeasured — fixture-tuned parameters are starting points",
+          "analyzers": [
+            {
+              "analyzer": "petal_segmentation",
+              "area_fractions": [
+                0.99
+              ],
+              "confidence": 0.99,
+              "count": 1,
+              "polygons": [
+                [
+                  {
+                    "x": 0.0,
+                    "y": 0.0
+                  },
+                  {
+                    "x": 0.0,
+                    "y": 0.995
+                  },
+                  {
+                    "x": 0.995,
+                    "y": 0.995
+                  },
+                  {
+                    "x": 0.995,
+                    "y": 0.0
+                  }
+                ]
+              ]
+            }
+          ],
+          "deviations": [],
+          "schema_version": "1.0",
+          "verdict_effect": "informational_only"
+        },
+        "sharpness_laplacian_variance": 0.0,
+        "verdict_effect": "informational_only"
+      },
+      "input_ref": "tests/fixtures/qc/capture_red_square_pass.png",
+      "input_sha256": "c6f40751a149c3a5c9787119d16fd51575e85cc57852289e9f4f23178aa76a73"
+    },
+    {
+      "case_id": "subjective_judgment-anomalous-01",
+      "category": "subjective_judgment",
+      "cv_result": {
+        "brightness_mean": 23.0,
+        "input_height_px": 200,
+        "input_width_px": 200,
+        "preanalysis": {
+          "accuracy_note": "accuracy unmeasured — fixture-tuned parameters are starting points",
+          "analyzers": [
+            {
+              "analyzer": "petal_segmentation",
+              "area_fractions": [],
+              "confidence": 0.0,
+              "count": 0,
+              "polygons": []
+            }
+          ],
+          "deviations": [],
+          "schema_version": "1.0",
+          "verdict_effect": "informational_only"
+        },
+        "sharpness_laplacian_variance": 0.0,
+        "verdict_effect": "informational_only"
+      },
+      "input_ref": "tests/fixtures/qc/capture_wrong_color.png",
+      "input_sha256": "fd72eb96db02e5274c1dd4a03d691e6bf742541fa2c2d632842d898c28c5d78a"
+    }
+  ],
+  "generated_at": "2026-07-14T21:22:48.876540Z",
+  "model_invoked": false,
+  "runtime": {
+    "executable": "python3",
+    "machine": "aarch64",
+    "numpy": "1.26.4",
+    "opencv": "4.6.0",
+    "python": "3.12.3",
+    "system": "Linux"
+  },
+  "schema_version": "stage2-cv-probe-v1"
+}

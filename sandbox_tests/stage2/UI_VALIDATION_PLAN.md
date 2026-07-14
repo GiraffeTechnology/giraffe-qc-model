@@ -15,6 +15,12 @@ Validate these UI cases after Q1 is resolved:
 | Simulator unavailable | Mount, permission, dependency, or simulator failure produces an explicit blocking error | screenshot plus error code |
 | Refresh/retry | Recovery after a deliberately removed simulation dependency is visible and does not duplicate results | before/after screenshots plus event log |
 
+Execution uses an Android x86_64 emulator only to render and interact with the Pad
+UI. The CV payload shown by that UI comes from the separately verified QEMU
+aarch64 probe; the Android emulator is not represented as the Jetson simulator.
+Every screenshot must visibly include `NON-PRODUCTION MOCK`, and the manifest
+must record the app build variant, state payload, screenshot path, and pass/fail.
+
 UI checks complement the standalone CV module tests. They do not move inference or
 UI responsibilities across the Pad/Jetson boundary and do not validate real camera,
 Jetson GPU, power, thermal, or production-network behavior.

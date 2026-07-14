@@ -1,0 +1,39 @@
+{
+  "acceleration": "tcg",
+  "architecture": "aarch64",
+  "external_volume": "N1_WORK",
+  "firmware_sha256": "ee769c4bf42a5350d33345fc1b16d00156fe0c25fb3c68debd003bd844e4e3fa",
+  "guest_package_proxy_configured": true,
+  "image": "ubuntu-24.04-minimal-cloudimg-arm64.img",
+  "image_sha256": "d512e22bea475595ca368d5e539984ecfa5b54de9713addea4855587b159b931",
+  "image_source": "https://cloud-images.ubuntu.com/minimal/releases/noble/release/ubuntu-24.04-minimal-cloudimg-arm64.img",
+  "known_auxiliary_mount_failure_acknowledged": true,
+  "machine": "virt",
+  "memory_mib": 4096,
+  "overlay": "ubuntu-noble-arm64-stage2.qcow2",
+  "overlay_mode": "verified_image_copy",
+  "private_key_recorded": false,
+  "qemu_executable": "qemu-system-aarch64-utm",
+  "qemu_resource_dir_configured": true,
+  "qemu_version": "QEMU emulator version 10.0.2",
+  "recovery_action": "control_d_continue_after_exact_BOOT_label_emergency",
+  "schema_version": "stage2-qemu-vm-v1",
+  "seed_iso": "seed.iso",
+  "ssh_host": "127.0.0.1",
+  "ssh_port": 22222,
+  "support_volumes": {
+    "boot": {
+      "file": "stage2-boot.raw",
+      "filesystem": "ext4",
+      "label": "BOOT",
+      "layout": "gpt"
+    },
+    "uefi": {
+      "file": "stage2-uefi.raw",
+      "filesystem": "fat32",
+      "label": "UEFI",
+      "layout": "gpt"
+    }
+  },
+  "vcpu_count": 2
+}
