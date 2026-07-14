@@ -5,6 +5,8 @@ import com.giraffetechnology.qc.contracts.InstalledStandardRevision
 import com.giraffetechnology.qc.qwen.QcPointInput
 import com.giraffetechnology.qc.qwen.StandardPhotoInput
 import com.giraffetechnology.qc.sku.Sku
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Maps the offline store's installed types onto the existing inspection data
@@ -30,7 +32,19 @@ object InstalledStandardMapper {
                 qcPointCode = p.pointCode,
                 name = p.label,
                 description = p.description,
-                roiJson = null,
+                roiJson = p.regions.takeIf { it.isNotEmpty() }?.let { regions ->
+                    JSONArray().apply {
+                        regions.forEach { region ->
+                            put(JSONObject().apply {
+                                put("image_id", region.imageId)
+                                put("x", region.x)
+                                put("y", region.y)
+                                put("w", region.w)
+                                put("h", region.h)
+                            })
+                        }
+                    }.toString()
+                },
                 ruleType = p.methodHint.ifBlank { null },
                 expectedValue = p.expectedValue,
                 passCriteria = p.passCriteria,

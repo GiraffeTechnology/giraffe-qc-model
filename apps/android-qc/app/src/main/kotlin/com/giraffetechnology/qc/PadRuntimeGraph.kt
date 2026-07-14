@@ -19,6 +19,7 @@ import com.giraffetechnology.qc.operator.OperatorTaskSelectionController
 import com.giraffetechnology.qc.operator.cloud.AndroidKeystoreEd25519Signer
 import com.giraffetechnology.qc.operator.cloud.CloudCropEncoder
 import com.giraffetechnology.qc.operator.cloud.CloudInferenceClient
+import com.giraffetechnology.qc.operator.cloud.CloudPendingJobReconciler
 import com.giraffetechnology.qc.operator.cloud.CloudPendingJobStore
 import com.giraffetechnology.qc.operator.cloud.CloudRuntimeMonitor
 import com.giraffetechnology.qc.operator.cloud.CloudVlmInspector
@@ -168,7 +169,12 @@ object PadRuntimeGraph {
                     signer = AndroidKeystoreEd25519Signer(),
                     timeoutMs = BuildConfig.CLOUD_JOB_DEADLINE_MS - 1_000,
                 )
-                val cloudMonitor = CloudRuntimeMonitor(appContext, cloudClient, networkPolicy)
+                val cloudMonitor = CloudRuntimeMonitor(
+                    appContext,
+                    cloudClient,
+                    networkPolicy,
+                    CloudPendingJobReconciler(pendingStore, cloudClient),
+                )
                 val cloudInspector = CloudVlmInspector(
                     client = cloudClient,
                     encoder = CloudCropEncoder(

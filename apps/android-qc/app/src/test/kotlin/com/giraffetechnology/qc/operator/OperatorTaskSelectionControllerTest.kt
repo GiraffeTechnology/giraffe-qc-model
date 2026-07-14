@@ -1,6 +1,7 @@
 package com.giraffetechnology.qc.operator
 
 import com.giraffetechnology.qc.contracts.DetectionPoint
+import com.giraffetechnology.qc.contracts.DetectionPointRegion
 import com.giraffetechnology.qc.contracts.DetectionSeverity
 import com.giraffetechnology.qc.contracts.IncidentalFindingPolicy
 import com.giraffetechnology.qc.contracts.InstalledSku
@@ -27,6 +28,7 @@ class OperatorTaskSelectionControllerTest {
         requiredView = RequiredView.FRONT,
         evidenceRequired = true,
         incidentalFindingPolicy = IncidentalFindingPolicy.FLAG_FOR_REVIEW,
+        regions = listOf(DetectionPointRegion("front-photo", 0.1, 0.2, 0.3, 0.4)),
     )
 
     private suspend fun seed(store: InMemoryStandardStore) {
@@ -93,6 +95,10 @@ class OperatorTaskSelectionControllerTest {
         assertTrue(task.standardPhotos.isNotEmpty())
         assertTrue(task.qcPoints.isNotEmpty())
         assertEquals("center_alignment", task.qcPoints.first().qcPointCode)
+        assertEquals(
+            """[{"image_id":"front-photo","x":0.1,"y":0.2,"w":0.3,"h":0.4}]""",
+            task.qcPoints.first().roiJson,
+        )
     }
 
     @Test fun `confirm unknown SKU yields SkuNotFound`() = runTest {

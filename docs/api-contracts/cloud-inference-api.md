@@ -219,6 +219,13 @@ payload, or:
 `status` is `processing | completed | failed`. `404 job_not_found` means the
 client may retry the original signed POST within its bounded retry policy.
 
+The Pad persists the original manifest and bounded crop files before reporting
+`pending_upload`. Its background reconciler probes the same `job_id`; a 404 is
+resubmitted with the original idempotency key, while a completed response is
+stored as a durable recovered-result record and removed from the pending queue.
+It is not auto-submitted as a human verdict. Retryable/processing responses are
+rescheduled after a delay.
+
 ### 3.4 Health and link probe
 
 Health returns HTTP `200` even when not ready so transport reachability and

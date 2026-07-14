@@ -72,9 +72,8 @@ data class InstalledStandardRevision(
 )
 
 /**
- * Canonical detection point (PRD §5.4). Exactly these ten fields, carried
- * verbatim through the API, bundle manifest, and this store. Mirrors the
- * `DetectionPoint` component in `contracts/openapi.yaml`.
+ * Canonical detection point (PRD §5.4), plus the optional WS6 region extension,
+ * carried verbatim through the API, bundle manifest, and this store.
  */
 data class DetectionPoint(
     val pointCode: String,
@@ -88,6 +87,16 @@ data class DetectionPoint(
     val requiredView: RequiredView,
     val evidenceRequired: Boolean,
     val incidentalFindingPolicy: IncidentalFindingPolicy,
+    /** Studio-authored normalized crop regions carried by the signed Bundle. */
+    val regions: List<DetectionPointRegion> = emptyList(),
+)
+
+data class DetectionPointRegion(
+    val imageId: String,
+    val x: Double,
+    val y: Double,
+    val w: Double,
+    val h: Double,
 )
 
 enum class DetectionSeverity(val wire: String) {

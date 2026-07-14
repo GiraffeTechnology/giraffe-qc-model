@@ -8,6 +8,7 @@ import java.io.File
 /** Durable queue: only bounded crops and minimal signed manifest metadata are stored. */
 class CloudPendingJobStore(context: Context) {
     private val root = File(context.filesDir, "operator_cloud_pending")
+    private val recoveredRoot = File(context.filesDir, "operator_cloud_recovered")
 
     @Synchronized
     fun enqueue(job: PendingCloudJob, crops: List<EncodedCrop>) {
@@ -43,4 +44,38 @@ class CloudPendingJobStore(context: Context) {
     }
 
     @Synchronized fun remove(jobId: String) { File(root, jobId).deleteRecursively() }
+
+    @Synchronized
+    fun reschedule(jobId: String, errorCode: String, afterSeconds: Long = 30) {
+        val file = File(File(root, jobId), "job.json")
+        if (!file.isFile) return
+        val json = JSONObject(file.readText())
+        json.put("retry_count", json.optInt("retry_count") + 1)
+            .put("last_error_code", errorCode)
+            .put("next_retry_at", java.time.Instant.now().plusSeconds(afterSeconds).toString())
+        file.writeText(json.toString())
+    }
+
+    @Synchronized
+    fun markRecovered(recognition: CloudRecognition) {
+        recoveredRoot.mkdirs()
+        val json = JSONObject()
+            .put("job_id", recognition.jobId)
+            .put("overall_result", recognition.overallResult)
+            .put("provider_adapter", recognition.providerAdapter)
+            .put("model_family", recognition.modelFamily)
+            .put("recovered_at", java.time.Instant.now().toString())
+            .put("point_results", JSONArray(recognition.pointResults.map { point ->
+                JSONObject()
+                    .put("point_code", point.pointCode)
+                    .put("crop_id", point.cropId)
+                    .put("result", point.result)
+                    .put("confidence", point.confidence)
+                    .put("evidence", point.evidence)
+            }))
+        File(recoveredRoot, "${recognition.jobId}.json").writeText(json.toString())
+        remove(recognition.jobId)
+    }
+
+    @Synchronized fun recoveredCount(): Int = recoveredRoot.listFiles()?.count { it.isFile } ?: 0
 }

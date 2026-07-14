@@ -11,18 +11,26 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
 
 /** Cloud-aware readiness adapter; implements the historical seam until it is renamed repo-wide. */
 class CloudRuntimeMonitor(
     context: Context,
     private val client: OperatorCloudClient,
     val networkPolicy: NetworkPolicy,
+    private val pendingReconciler: CloudPendingJobReconciler? = null,
     private val pollMs: Long = 5_000,
 ) : MnnRuntime {
     private val appContext = context.applicationContext
@@ -54,32 +62,70 @@ class CloudRuntimeMonitor(
     }
 
     suspend fun refresh() {
-        val network = connectivity.activeNetwork
-        val caps = network?.let { connectivity.getNetworkCapabilities(it) }
-        val type = when {
-            caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> OperatorNetwork.WIFI
-            caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true -> OperatorNetwork.CELLULAR
-            else -> OperatorNetwork.NONE
+        val samples = coroutineScope {
+            listOf(
+                async { sampleTransport(NetworkCapabilities.TRANSPORT_WIFI, OperatorNetwork.WIFI) },
+                async { sampleTransport(NetworkCapabilities.TRANSPORT_CELLULAR, OperatorNetwork.CELLULAR) },
+            ).awaitAll().filterNotNull()
         }
-        val probe = if (type == OperatorNetwork.NONE) null else runCatching { client.probe() }.getOrNull()
-        if (type != OperatorNetwork.NONE) {
-            lastDecision = networkPolicy.observe(
-                LinkSample(
-                    network = type,
-                    uplinkMbps = probe?.uplinkMbps
-                        ?: caps?.linkUpstreamBandwidthKbps?.takeIf { it > 0 }?.div(1000.0),
-                    rttMs = probe?.rttMs,
-                    packetLossPercent = probe?.packetLossPercent ?: 100.0,
-                    observedAtMs = System.currentTimeMillis(),
-                )
-            )
+        samples.forEach { sample ->
+            lastDecision = networkPolicy.observe(sample)
         }
         applySelection(lastDecision.selected)
         cloudReachable = runCatching { client.health() }.getOrDefault(false)
+        if (cloudReachable && networkPolicy.currentNetwork() != OperatorNetwork.NONE) {
+            runCatching { pendingReconciler?.runDue() }
+        }
         _runtimeState.value = if (
             cloudReachable && networkPolicy.currentNetwork() != OperatorNetwork.NONE
         ) MnnRuntimeState.Ready else MnnRuntimeState.NotReady
     }
+
+    private suspend fun sampleTransport(transport: Int, type: OperatorNetwork): LinkSample? =
+        withTimeoutOrNull(4_000) {
+            suspendCancellableCoroutine { continuation ->
+                val completed = AtomicBoolean(false)
+                lateinit var cb: ConnectivityManager.NetworkCallback
+                fun finish(sample: LinkSample?) {
+                    if (!completed.compareAndSet(false, true)) return
+                    runCatching { connectivity.unregisterNetworkCallback(cb) }
+                    if (continuation.isActive) continuation.resume(sample)
+                }
+                cb = object : ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: android.net.Network) {
+                        scope.launch {
+                            val caps = connectivity.getNetworkCapabilities(network)
+                            val probe = runCatching { client.probe(network) }.getOrNull()
+                            finish(
+                                LinkSample(
+                                    network = type,
+                                    uplinkMbps = probe?.uplinkMbps
+                                        ?: caps?.linkUpstreamBandwidthKbps?.takeIf { it > 0 }?.div(1000.0),
+                                    rttMs = probe?.rttMs,
+                                    packetLossPercent = probe?.packetLossPercent ?: 100.0,
+                                    observedAtMs = System.currentTimeMillis(),
+                                )
+                            )
+                        }
+                    }
+
+                    override fun onUnavailable() = finish(null)
+                }
+                continuation.invokeOnCancellation {
+                    if (completed.compareAndSet(false, true)) {
+                        runCatching { connectivity.unregisterNetworkCallback(cb) }
+                    }
+                }
+                connectivity.requestNetwork(
+                    NetworkRequest.Builder()
+                        .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                        .addTransportType(transport)
+                        .build(),
+                    cb,
+                    3_500,
+                )
+            }
+        }
 
     private fun applySelection(selected: OperatorNetwork) {
         if (networkPolicy.activeJobNetwork() != null || selected == boundNetwork) return

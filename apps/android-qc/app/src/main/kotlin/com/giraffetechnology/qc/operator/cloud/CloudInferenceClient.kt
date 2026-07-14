@@ -1,5 +1,6 @@
 package com.giraffetechnology.qc.operator.cloud
 
+import android.net.Network
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -13,8 +14,9 @@ import java.util.Base64
 
 interface OperatorCloudClient {
     suspend fun submit(jobId: String, manifest: JSONObject, crops: List<EncodedCrop>): CloudSubmitOutcome
+    suspend fun reconcile(jobId: String, manifest: JSONObject, crops: List<EncodedCrop>): CloudSubmitOutcome
     suspend fun health(): Boolean
-    suspend fun probe(): NetworkProbeResult?
+    suspend fun probe(network: Network? = null): NetworkProbeResult?
 }
 
 class CloudInferenceClient(
@@ -69,6 +71,42 @@ class CloudInferenceClient(
             } finally { conn.disconnect() }
         }
 
+    override suspend fun reconcile(
+        jobId: String,
+        manifest: JSONObject,
+        crops: List<EncodedCrop>,
+    ): CloudSubmitOutcome = withContext(Dispatchers.IO) {
+        if (bearerToken.isBlank()) return@withContext CloudSubmitOutcome.Rejected("cloud_device_not_provisioned")
+        val path = "$JOBS_PATH/$jobId"
+        val conn = (URL(baseUrl.trimEnd('/') + path).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 2_000
+            readTimeout = 3_000
+            setRequestProperty("Authorization", "Bearer $bearerToken")
+            setRequestProperty("Accept", "application/json")
+        }
+        try {
+            val code = conn.responseCode
+            val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                ?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code == 404) return@withContext CloudSubmitOutcome.Retryable("job_not_found")
+            if (code !in 200..299) return@withContext parseError(code, text)
+            val json = JSONObject(text)
+            when (json.optString("status")) {
+                "completed" -> parseRecognition(jobId, json, manifest, crops)
+                "processing" -> CloudSubmitOutcome.Retryable("job_processing")
+                "failed" -> CloudSubmitOutcome.Rejected(
+                    json.optJSONObject("error")?.optString("code") ?: "cloud_job_failed"
+                )
+                else -> CloudSubmitOutcome.Retryable("unknown_job_status")
+            }
+        } catch (e: Exception) {
+            CloudSubmitOutcome.Retryable(e.message ?: "cloud_reconcile_error")
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     override suspend fun health(): Boolean = withContext(Dispatchers.IO) {
         if (bearerToken.isBlank()) return@withContext false
         val conn = (URL(baseUrl.trimEnd('/') + HEALTH_PATH).openConnection() as HttpURLConnection).apply {
@@ -82,7 +120,7 @@ class CloudInferenceClient(
         } catch (_: Exception) { false } finally { conn.disconnect() }
     }
 
-    override suspend fun probe(): NetworkProbeResult? = withContext(Dispatchers.IO) {
+    override suspend fun probe(network: Network?): NetworkProbeResult? = withContext(Dispatchers.IO) {
         if (bearerToken.isBlank() || keyId.isBlank()) return@withContext null
         val body = ByteArray(32 * 1024).also { SecureRandom().nextBytes(it) }
         val digest = body.sha256Hex()
@@ -90,7 +128,8 @@ class CloudInferenceClient(
         val nonce = ByteArray(16).also { SecureRandom().nextBytes(it) }
             .let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
         val signatureInput = "QC-CLOUD-INFERENCE-V1\nPOST\n$PROBE_PATH\n$timestamp\n$nonce\n$digest\n\n"
-        val conn = (URL(baseUrl.trimEnd('/') + PROBE_PATH).openConnection() as HttpURLConnection).apply {
+        val url = URL(baseUrl.trimEnd('/') + PROBE_PATH)
+        val conn = ((network?.openConnection(url) ?: url.openConnection()) as HttpURLConnection).apply {
             requestMethod = "POST"; connectTimeout = 2_000; readTimeout = 3_000; doOutput = true
             setRequestProperty("Content-Type", "application/octet-stream")
             setRequestProperty("Authorization", "Bearer $bearerToken")
