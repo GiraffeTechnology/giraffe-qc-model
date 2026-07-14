@@ -64,6 +64,10 @@ class SandboxVLMClient:
                     "enable_thinking": bool(case.get("require_think_wrapper"))
                 },
             }
+            if case.get("require_think_wrapper"):
+                # llama.cpp's raw reasoning format preserves the model's real
+                # special think tokens for this one parser-cleaning probe.
+                payload["reasoning_format"] = "none"
         else:
             payload = {
                 "model": self.config.model,
@@ -173,8 +177,8 @@ def _prompt(case: dict[str, Any], cv_result: dict[str, Any]) -> str:
         ],
     }
     parser_probe = (
-        "For the Stage 1 parser probe, use a brief native reasoning trace "
-        "before the final JSON object. "
+        "For the Stage 1 parser probe, prefix exactly "
+        "<think>stage1 parser probe</think> before the JSON object. "
         if case.get("require_think_wrapper")
         else ""
     )

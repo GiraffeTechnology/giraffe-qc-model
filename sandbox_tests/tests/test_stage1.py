@@ -178,6 +178,7 @@ def test_openai_client_extracts_real_envelope_without_logging_endpoint():
         assert payload["model"] == "sandbox-configured-model"
         assert payload["max_tokens"] == 256
         assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+        assert "reasoning_format" not in payload
         return httpx.Response(200, json={"choices": [{"message": {"content": _valid_raw("p")}}]})
 
     client = SandboxVLMClient(_config(), transport=httpx.MockTransport(handler))
@@ -204,6 +205,7 @@ def test_openai_parser_probe_normalizes_real_split_reasoning_field():
     def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
         assert payload["chat_template_kwargs"] == {"enable_thinking": True}
+        assert payload["reasoning_format"] == "none"
         return httpx.Response(
             200,
             json={
