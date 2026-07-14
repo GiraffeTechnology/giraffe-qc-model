@@ -23,6 +23,10 @@ data class QcPointInput(
     val expectedValue: String? = null,
     val passCriteria: String? = null,
     val cvConfigJson: String? = null,
+    val expectedFeaturesJson: String? = null,
+    /** Results produced by the shared Nano cv_preanalysis package. */
+    val cvStatus: String? = null,
+    val cvAnalysisJson: String? = null,
 )
 
 data class InspectionContext(

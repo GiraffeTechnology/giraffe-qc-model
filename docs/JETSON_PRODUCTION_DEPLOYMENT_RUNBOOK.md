@@ -74,8 +74,10 @@ mock tests cannot satisfy this gate.
 
 ## 5. Current limitations
 
-- WS8 OpenCV analyzer execution is pending; health truthfully reports
-  `cv_pipeline.status=not_configured` until it is wired and tested.
+- WS8 OpenCV analyzer execution is wired through the shared deterministic
+  package; health reports `cv_pipeline.status=ready` when that software package
+  is loaded. This is not an accuracy or Xavier latency claim. Physical-device
+  validation remains required by the hardware checklist.
 - Idempotency and replay state are process-local. Durable encrypted persistence
   is required before cross-restart reconciliation can be claimed.
 - Operator cloud integration, Pad health UI, and full product-loop evidence are

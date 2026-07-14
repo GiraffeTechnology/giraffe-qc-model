@@ -40,6 +40,8 @@ data class CloudPointResult(
     val result: String,
     val confidence: Float,
     val evidence: String,
+    val cvStatus: String = "not_configured",
+    val cvAnalysisJson: String? = null,
 )
 
 data class CloudTiming(

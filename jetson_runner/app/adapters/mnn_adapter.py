@@ -28,6 +28,7 @@ from jetson_runner.app.admin_contract import (
 )
 from src.qc_model.jetson import constants as C
 from src.qc_model.jetson.contract import InferenceResponse, PerPointResult, validate_request
+from src.cv_preanalysis import build_prompt_block
 
 logger = logging.getLogger("jetson_runner")
 _JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
@@ -272,14 +273,7 @@ class MnnVlmAdapter(InferenceAdapter):
                 + json.dumps(point.expected_features, sort_keys=True, separators=(",", ":"))
             )
         if point.cv_status == "completed" and point.cv_analysis is not None:
-            lines.extend(
-                [
-                    "<CV_PREANALYSIS_JSON>",
-                    json.dumps(point.cv_analysis, sort_keys=True, separators=(",", ":")),
-                    "</CV_PREANALYSIS_JSON>",
-                    "CV pre-analysis is supporting evidence only; independently inspect the image.",
-                ]
-            )
+            lines.append(build_prompt_block(point.cv_analysis))
         return "\n".join(lines)
 
     @staticmethod

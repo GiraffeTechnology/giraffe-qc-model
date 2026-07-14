@@ -1,5 +1,5 @@
-# NON-PRODUCTION MOCK — the mock CV runner below simulates Jetson outcomes for CI (§14.3).
-"""Mock CV pipeline + runner (§14.3).
+# NON-PRODUCTION MOCK — run_mock_pipeline is retained only for explicit CI/test mode.
+"""Nano CV pipeline plus an explicitly labeled mock runner for CI (§14.3).
 
 The mock runner deterministically simulates the outcomes the PRD requires so
 CI can exercise every branch without a Jetson: success, timeout, memory
@@ -11,8 +11,11 @@ Selection is driven by the job's ``input_payload["mock_scenario"]`` (or the
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
+
+from src.cv_preanalysis import run_preanalysis, write_evidence, write_overlay
 
 
 class MockCVError(Exception):
@@ -82,3 +85,49 @@ def run_mock_pipeline(job: dict, scenario: Optional[str] = None) -> CVOutput:
         out.pass_fail_hint = "definitely_broken"  # not an allowed hint
         return out
     return _success_output()
+
+
+def run_configured_pipeline(job: dict, *, output_dir: str) -> CVOutput:
+    """Run shared classical CV on a Nano job without creating a QC verdict."""
+    payload = job.get("input_payload") or {}
+    image_uri = payload.get("crop_path") or payload.get("image_path") or payload.get("image_uri")
+    cv_config = payload.get("cv_config")
+    if not image_uri or not cv_config:
+        raise ValueError("real CV jobs require image_path/crop_path and cv_config")
+    image_path = str(image_uri)
+    if image_path.startswith("file://"):
+        image_path = image_path[7:]
+    analysis = run_preanalysis(image_path, cv_config, payload.get("expected_features"))
+    evidence_ref = write_evidence(
+        output_dir,
+        request_id=str(job.get("cv_job_id", "nano-job")),
+        point_code=str(payload.get("point_code", "detection-point")),
+        analysis=analysis,
+    )
+    evidence_assets = [{"asset_type": "cv_json", "asset_uri": evidence_ref}]
+    if cv_config.get("overlay", False):
+        overlay_ref = write_overlay(
+            output_dir,
+            request_id=str(job.get("cv_job_id", "nano-job")),
+            point_code=str(payload.get("point_code", "detection-point")),
+            image=image_path,
+            analysis=analysis,
+        )
+        evidence_assets.append({"asset_type": "annotated_image", "asset_uri": overlay_ref})
+    detections = []
+    measurements = {"deviations": analysis["deviations"]}
+    for result in analysis["analyzers"]:
+        if "count" in result:
+            measurements[f"{result['analyzer']}_count"] = result["count"]
+        for box in result.get("boxes", []):
+            detections.append({"label": result["analyzer"], "bbox_normalized": box})
+    return CVOutput(
+        result_type="preanalysis",
+        confidence=min((r.get("confidence", 0.0) for r in analysis["analyzers"]), default=0.0),
+        pass_fail_hint="needs_human_review",
+        detections=detections,
+        measurements=measurements,
+        features={"cv_analysis": analysis},
+        evidence_assets=evidence_assets,
+        raw_output={"runner": "shared_cv_preanalysis", "cv_status": "completed"},
+    )

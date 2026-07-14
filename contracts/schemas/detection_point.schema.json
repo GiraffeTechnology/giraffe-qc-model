@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://giraffetechnology.com/contracts/detection_point.schema.json",
   "title": "DetectionPoint",
-  "description": "Canonical detection point (PRD §5.4). Every API response that carries detection points, every bundle manifest entry, and every on-device store row uses exactly these ten fields, verbatim. This schema is the single source of truth; the OpenAPI DetectionPoint component and the Kotlin DetectionPoint data class mirror it.",
+  "description": "Canonical detection point (PRD §5.4). Every API response, bundle manifest entry, and on-device row uses this source of truth. Classical CV configuration is optional and never grants verdict authority.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -58,6 +58,18 @@
       "type": "array",
       "description": "Optional spatial grounding (PRD Authoring Extension §2). Zero, one, or many bounding boxes marking where this detection point applies on the SKU's standard photos. Absent or empty is valid — a point may rely on its natural-language description and thresholds alone.",
       "items": { "$ref": "#/$defs/region" }
+    },
+    "expected_features": {
+      "type": ["object", "null"],
+      "description": "Optional authored feature expectations. Differences become informational deviations for the VLM and never automatic verdicts.",
+      "additionalProperties": true
+    },
+    "cv_config": {
+      "anyOf": [
+        { "$ref": "#/$defs/cvConfig" },
+        { "type": "null" }
+      ],
+      "description": "Optional deterministic OpenCV analyzer selection and human-authored parameters. Absence preserves the pre-WS8 pipeline."
     }
   },
   "$defs": {
@@ -75,6 +87,31 @@
         "y": { "type": "number", "minimum": 0, "maximum": 1, "description": "Top edge, 0–1." },
         "w": { "type": "number", "minimum": 0, "maximum": 1, "description": "Width, 0–1." },
         "h": { "type": "number", "minimum": 0, "maximum": 1, "description": "Height, 0–1." }
+      }
+    },
+    "cvConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["analyzers"],
+      "properties": {
+        "analyzers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["rhinestone_count", "petal_segmentation", "pistil_localization"]
+          }
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Human-authored thresholds, size bounds, color bounds, or analyzer-specific nested parameter objects."
+        },
+        "overlay": {
+          "type": "boolean",
+          "default": false
+        }
       }
     },
     "severity": {

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from edge_cv_agent.app import job_client, model_loader, result_uploader
-from edge_cv_agent.app.cv_pipeline import MockCVError, run_mock_pipeline
+from edge_cv_agent.app.cv_pipeline import MockCVError, run_configured_pipeline, run_mock_pipeline
 
 
 def process_job(client, cfg, auth_token: str, device_id: str, session_id: str, job: dict, force_scenario: str | None = None) -> dict:
@@ -23,7 +23,11 @@ def process_job(client, cfg, auth_token: str, device_id: str, session_id: str, j
 
     try:
         model_loader.validate_model(model_block, mock=cfg.mock_mode)
-        output = run_mock_pipeline(job, scenario=force_scenario)
+        output = (
+            run_mock_pipeline(job, scenario=force_scenario)
+            if cfg.mock_mode
+            else run_configured_pipeline(job, output_dir=cfg.output_dir)
+        )
     except model_loader.ModelHashMismatch as exc:
         job_client.report_failure(client, cfg.service_url, auth_token, job_id, device_id, session_id, "model_hash_mismatch", str(exc))
         return {"job_id": job_id, "outcome": "failed", "error_code": "model_hash_mismatch"}
@@ -33,6 +37,12 @@ def process_job(client, cfg, auth_token: str, device_id: str, session_id: str, j
     except MockCVError as exc:
         job_client.report_failure(client, cfg.service_url, auth_token, job_id, device_id, session_id, exc.error_code, str(exc))
         return {"job_id": job_id, "outcome": "failed", "error_code": exc.error_code}
+    except Exception as exc:
+        job_client.report_failure(
+            client, cfg.service_url, auth_token, job_id, device_id, session_id,
+            "cv_preanalysis_failed", str(exc),
+        )
+        return {"job_id": job_id, "outcome": "failed", "error_code": "cv_preanalysis_failed"}
 
     payload = result_uploader.build_result_payload(device_id, session_id, output, model_id=model_id, model_hash=model_hash)
     resp = result_uploader.upload_result(client, cfg.service_url, auth_token, job_id, payload)

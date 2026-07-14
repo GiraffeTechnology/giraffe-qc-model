@@ -158,7 +158,11 @@ optional WS6/WS8 extensions; their absence must preserve pre-WS8 prompt input.
 Before each MNN call, configured WS8 analyzers run deterministically. Their JSON
 is inserted into the VLM prompt inside a delimited `CV_PREANALYSIS_JSON` block.
 If CV fails, the response records `cv_status: failed` and the VLM call proceeds
-without CV context.
+without CV context. Successful canonical JSON is also persisted under
+`XAVIER_CV_EVIDENCE_DIR/<request_id>/<point_code>.cv.json`; the returned
+`evidence_ref` links Administrator Results and audit consumers to that file.
+The packaged thresholds are fixture-tuned starting points: accuracy is
+unmeasured until a representative labeled deployment set exists.
 
 ### 2.3 Recognition response
 

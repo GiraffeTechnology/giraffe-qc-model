@@ -69,7 +69,11 @@ class CloudVlmInspector(
                                 name = qcPoints.first { it.qcPointCode == point.pointCode }.name,
                                 result = if (point.result == "uncertain") "review_required" else point.result,
                                 confidence = point.confidence, reason = point.evidence,
-                                evidence = mapOf("crop_id" to point.cropId),
+                                evidence = buildMap {
+                                    put("crop_id", point.cropId)
+                                    put("cv_status", point.cvStatus)
+                                    point.cvAnalysisJson?.let { put("cv_analysis", JSONObject(it)) }
+                                },
                             )
                         },
                         fallback = FallbackInfo(false), summary = "Cloud recognition completed",
@@ -91,10 +95,28 @@ class CloudVlmInspector(
         } finally { networkPolicy.endJob() }
     }
 
-    private fun manifest(
+    internal fun manifest(
         jobId: String, context: InspectionContext, points: List<QcPointInput>, crops: List<EncodedCrop>,
         captureAt: String, cvStartedAt: String, cvCompletedAt: String,
-    ): JSONObject = JSONObject()
+    ): JSONObject = buildCloudManifest(
+        jobId, context, points, crops, captureAt, cvStartedAt, cvCompletedAt, deadlineMs,
+    )
+
+    private fun queue(jobId: String, manifest: JSONObject, crops: List<EncodedCrop>, network: OperatorNetwork, code: String) {
+        val now = Instant.now()
+        pendingStore.enqueue(
+            PendingCloudJob(jobId, now.toString(), 2, now.plusSeconds(30).toString(), network.wire, code, manifest.toString(), emptyList()),
+            crops,
+        )
+    }
+
+    private fun elapsedMs(startNanos: Long): Long = (System.nanoTime() - startNanos) / 1_000_000
+}
+
+internal fun buildCloudManifest(
+    jobId: String, context: InspectionContext, points: List<QcPointInput>, crops: List<EncodedCrop>,
+    captureAt: String, cvStartedAt: String, cvCompletedAt: String, deadlineMs: Long,
+): JSONObject = JSONObject()
         .put("schema_version", "2.0").put("request_id", UUID.randomUUID().toString()).put("job_id", jobId)
         .put("pad_device_id", context.padDeviceId).put("workstation_id", context.workstationId)
         .put("standard_revision_id", context.standardId).put("bundle_version", context.bundleVersion ?: "unknown")
@@ -109,19 +131,21 @@ class CloudVlmInspector(
                 .put("region_in_capture", JSONObject().put("x", crop.region.x).put("y", crop.region.y).put("w", crop.region.w).put("h", crop.region.h))
                 .put("severity", point.ruleType ?: "major").put("expected_value", point.expectedValue ?: JSONObject.NULL)
                 .put("pass_criteria", point.passCriteria ?: point.description)
-                .put("cv_status", "not_configured").put("cv_analysis", JSONObject.NULL)
+                .apply {
+                    // With no authored config these two fields remain exactly
+                    // the pre-WS8 wire values. A configured analyzer failure is
+                    // evidence, never a reason to suppress the cloud VLM call.
+                    if (point.cvConfigJson == null) {
+                        put("cv_status", "not_configured").put("cv_analysis", JSONObject.NULL)
+                    } else {
+                        put("cv_config", JSONObject(point.cvConfigJson))
+                        point.expectedFeaturesJson?.let { put("expected_features", JSONObject(it)) }
+                        val analysis = point.cvAnalysisJson?.let { JSONObject(it) }
+                        put("cv_status", point.cvStatus ?: if (analysis == null) "failed" else "completed")
+                        put("cv_analysis", analysis ?: JSONObject.NULL)
+                    }
+                }
         }))
         .put("client_timing", JSONObject().put("capture_confirmed_at", captureAt)
             .put("cv_started_at", cvStartedAt).put("cv_completed_at", cvCompletedAt)
             .put("per_crop", JSONArray()))
-
-    private fun queue(jobId: String, manifest: JSONObject, crops: List<EncodedCrop>, network: OperatorNetwork, code: String) {
-        val now = Instant.now()
-        pendingStore.enqueue(
-            PendingCloudJob(jobId, now.toString(), 2, now.plusSeconds(30).toString(), network.wire, code, manifest.toString(), emptyList()),
-            crops,
-        )
-    }
-
-    private fun elapsedMs(startNanos: Long): Long = (System.nanoTime() - startNanos) / 1_000_000
-}

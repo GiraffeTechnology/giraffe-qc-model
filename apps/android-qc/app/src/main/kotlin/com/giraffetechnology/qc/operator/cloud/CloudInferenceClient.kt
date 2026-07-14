@@ -163,6 +163,8 @@ class CloudInferenceClient(
                 pointCode = point.getString("point_code"), cropId = point.getString("crop_id"),
                 result = result, confidence = point.getDouble("confidence").toFloat(),
                 evidence = point.optString("evidence"),
+                cvStatus = point.optString("cv_status", "not_configured"),
+                cvAnalysisJson = point.optJSONObject("cv_analysis")?.toString(),
             )
         }
         val expected = crops.map { it.pointCode }.toSet()

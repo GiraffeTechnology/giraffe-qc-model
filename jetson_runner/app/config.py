@@ -88,6 +88,9 @@ class RunnerConfig:
     recognition_cache_max_entries: int = field(default_factory=lambda: int(os.getenv(
         "XAVIER_RECOGNITION_CACHE_MAX_ENTRIES", "256"
     )))
+    cv_evidence_dir: str = field(default_factory=lambda: os.getenv(
+        "XAVIER_CV_EVIDENCE_DIR", "/var/lib/giraffe/cv-evidence"
+    ))
     hardware_validation_status: str = field(default_factory=lambda: os.getenv(
         "XAVIER_HARDWARE_VALIDATION_STATUS", "not_run"
     ))

@@ -140,6 +140,9 @@ class ApiSkuRepository internal constructor(
                 expectedValue = o.optString("expected_value").takeIf { it.isNotEmpty() },
                 passCriteria = o.optString("pass_criteria").takeIf { it.isNotEmpty() },
                 cvConfigJson = o.optJSONObject("cv_config")?.toString(),
+                expectedFeaturesJson = o.optJSONObject("expected_features")?.toString(),
+                cvStatus = o.optString("cv_status").takeIf { it.isNotEmpty() },
+                cvAnalysisJson = o.optJSONObject("cv_analysis")?.toString(),
             )
         }
     }
