@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import ipaddress
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -17,6 +18,22 @@ SANDBOX_DECLARATION = (
 
 class SandboxConfigurationError(ValueError):
     """The required local-only sandbox configuration is absent or unsafe."""
+
+
+def forbidden_server_values(server: str) -> set[str]:
+    """Return secret endpoint strings while ignoring generic loopback hostnames."""
+    parsed = urlparse(server)
+    hostname = parsed.hostname or ""
+    values = {server.rstrip("/")}
+    if not hostname or hostname.lower() == "localhost":
+        return values
+    try:
+        if ipaddress.ip_address(hostname).is_loopback:
+            return values
+    except ValueError:
+        pass
+    values.add(hostname)
+    return values
 
 
 def load_env_file(path: str | Path) -> None:

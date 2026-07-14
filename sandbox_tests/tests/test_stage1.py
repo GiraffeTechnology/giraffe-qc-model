@@ -7,7 +7,12 @@ from pathlib import Path
 import httpx
 import pytest
 
-from sandbox_tests.common import SANDBOX_DECLARATION, SandboxConfig, SandboxConfigurationError
+from sandbox_tests.common import (
+    SANDBOX_DECLARATION,
+    SandboxConfig,
+    SandboxConfigurationError,
+    forbidden_server_values,
+)
 from sandbox_tests.reporting import REPORT_SCHEMA_VERSION, render_markdown, write_reports
 from sandbox_tests.stage1.architecture import (
     ArchitectureVerificationError,
@@ -96,6 +101,13 @@ def test_environment_config_is_provider_neutral_and_relative_path_only(monkeypat
     monkeypatch.setenv("SANDBOX_QC_INFERENCE_PATH", "https://different.invalid/path")
     with pytest.raises(SandboxConfigurationError, match="relative absolute path"):
         SandboxConfig.from_environment()
+
+
+def test_server_leak_values_ignore_generic_loopback_but_keep_external_hostname():
+    loopback = forbidden_server_values("http://127.0.0.1:8080")
+    assert loopback == {"http://127.0.0.1:8080"}
+    external = forbidden_server_values("https://203.0.113.10:8443")
+    assert external == {"https://203.0.113.10:8443", "203.0.113.10"}
 
 
 def test_case_manifest_has_four_categories_positive_anomalous_and_faults():

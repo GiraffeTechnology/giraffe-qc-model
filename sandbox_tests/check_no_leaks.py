@@ -4,9 +4,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 from pathlib import Path
-from urllib.parse import urlparse
-
-from sandbox_tests.common import SandboxConfig, load_env_file
+from sandbox_tests.common import SandboxConfig, forbidden_server_values, load_env_file
 
 
 def tracked_files(root: Path) -> list[Path]:
@@ -24,7 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     load_env_file(args.env_file)
     config = SandboxConfig.from_environment()
     root = Path(args.root).resolve()
-    forbidden = {config.server.encode(), (urlparse(config.server).hostname or "").encode()}
+    forbidden = {value.encode() for value in forbidden_server_values(config.server)}
     offenders = []
     for path in tracked_files(root):
         if not path.is_file():

@@ -7,9 +7,12 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
-
-from sandbox_tests.common import SANDBOX_DECLARATION, SandboxConfig, load_env_file
+from sandbox_tests.common import (
+    SANDBOX_DECLARATION,
+    SandboxConfig,
+    forbidden_server_values,
+    load_env_file,
+)
 from sandbox_tests.reporting import REPORT_SCHEMA_VERSION, write_reports
 from sandbox_tests.stage1.architecture import (
     ArchitectureVerificationError,
@@ -222,7 +225,7 @@ def build_report(
 
 def assert_report_has_no_server_address(report: dict[str, Any], config: SandboxConfig) -> None:
     serialized = json.dumps(report, ensure_ascii=False)
-    forbidden = {config.server, urlparse(config.server).hostname or ""}
+    forbidden = forbidden_server_values(config.server)
     if any(value and value in serialized for value in forbidden):
         raise ValueError("sandbox server address leak refused; report was not written")
 
