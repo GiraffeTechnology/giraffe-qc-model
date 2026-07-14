@@ -44,7 +44,7 @@ class AdminSkuController(private val client: AdminApiClient) {
                 is AdminApiResult.Ok -> {
                     val states = config.value.filter { it.isNotBlank() }.distinct()
                     if (states.size == 7) AdminSkuConfigState.Loaded(states)
-                    else AdminSkuConfigState.Error("backend returned an invalid SKU lifecycle")
+                    else AdminSkuConfigState.Error("admin.error.invalid_sku_lifecycle")
                 }
                 is AdminApiResult.Error -> AdminSkuConfigState.Error(config.message)
             }
@@ -58,7 +58,7 @@ class AdminSkuController(private val client: AdminApiClient) {
 
     fun create(itemNumber: String, name: String, category: String?, description: String?) {
         if (itemNumber.isBlank() || name.isBlank()) {
-            _createState.value = AdminSkuCreateState.Error("item number and name are required")
+            _createState.value = AdminSkuCreateState.Error("admin.error.item_name_required")
             return
         }
         _createState.value = AdminSkuCreateState.Creating

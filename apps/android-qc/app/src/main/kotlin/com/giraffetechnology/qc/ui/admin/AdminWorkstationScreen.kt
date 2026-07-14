@@ -99,7 +99,7 @@ fun AdminWorkstationScreen(
                 )
                 Spacer(Modifier.height(6.dp))
                 when (val op = opState) {
-                    is AdminWorkstationOpState.Error -> AdminErrorBanner(op.message)
+                    is AdminWorkstationOpState.Error -> AdminErrorBanner(skill.t(op.message))
                     is AdminWorkstationOpState.Done -> AdminOkBanner(skill.t("admin.workstations.op_done"))
                     is AdminWorkstationOpState.Working -> Text(skill.t("common.loading"), fontSize = 12.sp)
                     else -> {}
@@ -116,7 +116,7 @@ fun AdminWorkstationScreen(
             Column(modifier = Modifier.weight(1f)) {
                 when (val w = workstations) {
                     is AdminWorkstationState.Loading -> Text(skill.t("common.loading"), fontSize = 13.sp)
-                    is AdminWorkstationState.Error -> AdminErrorBanner(w.message)
+                    is AdminWorkstationState.Error -> AdminErrorBanner(skill.t(w.message))
                     is AdminWorkstationState.Loaded -> {
                         if (w.workstations.isEmpty()) {
                             Text(skill.t("admin.workstations.empty"), fontSize = 13.sp)

@@ -201,7 +201,7 @@ fun AdminStandardScreen(
                     is AdminUploadState.Uploading -> Text(skill.t("admin.standard.uploading"), fontSize = 12.sp)
                     is AdminUploadState.Uploaded ->
                         AdminOkBanner(skill.t("admin.standard.photo_uploaded"))
-                    is AdminUploadState.Error -> AdminErrorBanner(u.message)
+                    is AdminUploadState.Error -> AdminErrorBanner(skill.t(u.message))
                     else -> {}
                 }
                 when (val u = processCardUploadState) {
@@ -209,7 +209,7 @@ fun AdminStandardScreen(
                         Text(skill.t("admin.standard.process_card_uploading"), fontSize = 12.sp)
                     is AdminProcessCardUploadState.Uploaded ->
                         AdminOkBanner(skill.t("admin.standard.process_card_uploaded"))
-                    is AdminProcessCardUploadState.Error -> AdminErrorBanner(u.message)
+                    is AdminProcessCardUploadState.Error -> AdminErrorBanner(skill.t(u.message))
                     else -> {}
                 }
                 Spacer(Modifier.height(8.dp))
@@ -271,9 +271,10 @@ fun AdminStandardScreen(
                         ) { Text(skill.t("admin.standard.regions.save")) }
                     }
                     when (val r = regionState) {
-                        is AdminRegionSaveState.Invalid -> AdminErrorBanner(r.message)
+                        is AdminRegionSaveState.Invalid -> AdminErrorBanner(skill.t(r.message))
                         is AdminRegionSaveState.QueuedForRetry -> AdminErrorBanner(
-                            skill.t("admin.standard.regions.pending") + " (${r.count}): ${r.message}"
+                            skill.t("admin.standard.regions.pending") +
+                                " (${r.count}): ${skill.t(r.message)}"
                         )
                         is AdminRegionSaveState.SavedToServer ->
                             AdminOkBanner(skill.t("admin.standard.regions.saved"))
@@ -463,7 +464,7 @@ private fun DetectionPointForm(
             )
         }
         when (pointState) {
-            is AdminPointEditState.Error -> AdminErrorBanner(pointState.message)
+            is AdminPointEditState.Error -> AdminErrorBanner(skill.t(pointState.message))
             is AdminPointEditState.Saved -> AdminOkBanner(skill.t("admin.standard.point.saved"))
             is AdminPointEditState.Saving -> Text(skill.t("common.loading"), fontSize = 12.sp)
             else -> {}
@@ -505,7 +506,7 @@ private fun CategoryConfirmationPanel(
     when (state) {
         AdminCategoryState.Loading, AdminCategoryState.Confirming ->
             Text(skill.t("admin.standard.category.loading"), fontSize = 12.sp)
-        is AdminCategoryState.Error -> AdminErrorBanner(state.message)
+        is AdminCategoryState.Error -> AdminErrorBanner(skill.t(state.message))
         else -> Unit
     }
     if (loaded != null && selectedPointId != null) {

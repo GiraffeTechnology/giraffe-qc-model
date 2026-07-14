@@ -88,7 +88,7 @@ fun AdminProbationScreen(
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(skill.t("admin.probation.gate"), fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(6.dp))
-                        current.notice?.let { Text(it, fontSize = 13.sp) }
+                        current.notice?.let { Text(skill.t(it), fontSize = 13.sp) }
                         current.probation?.let { probation ->
                             val actions = probationActionPolicy(probation.status)
                             KeyValueRow(skill.t("admin.probation.field.status"), probation.status)
