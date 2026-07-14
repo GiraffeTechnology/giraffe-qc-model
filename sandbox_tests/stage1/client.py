@@ -59,6 +59,7 @@ class SandboxVLMClient:
                     }
                 ],
                 "temperature": 0,
+                "max_tokens": self.config.max_tokens,
             }
         else:
             payload = {

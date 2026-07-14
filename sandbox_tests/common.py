@@ -73,6 +73,7 @@ class SandboxConfig:
     timeout_seconds: float
     max_image_bytes: int
     max_output_chars: int
+    max_tokens: int
     production_cloud_model: str
     production_admin_model: str
 
@@ -91,7 +92,8 @@ class SandboxConfig:
         timeout = float(os.getenv("SANDBOX_QC_TIMEOUT_SECONDS", "60"))
         max_bytes = int(os.getenv("SANDBOX_QC_MAX_IMAGE_BYTES", "5242880"))
         max_output = int(os.getenv("SANDBOX_QC_MAX_OUTPUT_CHARS", "100000"))
-        if timeout <= 0 or max_bytes <= 0 or max_output <= 0:
+        max_tokens = int(os.getenv("SANDBOX_QC_MAX_TOKENS", "256"))
+        if timeout <= 0 or max_bytes <= 0 or max_output <= 0 or max_tokens <= 0:
             raise SandboxConfigurationError("sandbox timeout and size limits must be positive")
         return cls(
             server=server,
@@ -102,6 +104,7 @@ class SandboxConfig:
             timeout_seconds=timeout,
             max_image_bytes=max_bytes,
             max_output_chars=max_output,
+            max_tokens=max_tokens,
             production_cloud_model=_required("SANDBOX_PRODUCTION_CLOUD_MODEL"),
             production_admin_model=_required("SANDBOX_PRODUCTION_ADMIN_MODEL"),
         )

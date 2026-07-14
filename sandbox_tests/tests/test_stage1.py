@@ -45,6 +45,7 @@ def _config(**updates) -> SandboxConfig:
         "timeout_seconds": 5.0,
         "max_image_bytes": 5_242_880,
         "max_output_chars": 100_000,
+        "max_tokens": 256,
         "production_cloud_model": "cloud-default-model",
         "production_admin_model": "admin-default-model",
     }
@@ -174,6 +175,7 @@ def test_openai_client_extracts_real_envelope_without_logging_endpoint():
         assert request.url.path == "/v1/chat/completions"
         payload = json.loads(request.content)
         assert payload["model"] == "sandbox-configured-model"
+        assert payload["max_tokens"] == 256
         return httpx.Response(200, json={"choices": [{"message": {"content": _valid_raw("p")}}]})
 
     client = SandboxVLMClient(_config(), transport=httpx.MockTransport(handler))

@@ -206,6 +206,7 @@ def build_report(
         "runtime": {
             "api_style": config.api_style,
             "model": config.model,
+            "max_tokens": config.max_tokens,
             "server": "SANDBOX_QC_SERVER",
             "server_value_redacted": True,
         },
