@@ -206,6 +206,7 @@ def test_openai_parser_probe_normalizes_real_split_reasoning_field():
         payload = json.loads(request.content)
         assert payload["chat_template_kwargs"] == {"enable_thinking": True}
         assert payload["reasoning_format"] == "none"
+        assert payload["special"] is True
         return httpx.Response(
             200,
             json={

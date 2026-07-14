@@ -68,6 +68,7 @@ class SandboxVLMClient:
                 # llama.cpp's raw reasoning format preserves the model's real
                 # special think tokens for this one parser-cleaning probe.
                 payload["reasoning_format"] = "none"
+                payload["special"] = True
         else:
             payload = {
                 "model": self.config.model,
