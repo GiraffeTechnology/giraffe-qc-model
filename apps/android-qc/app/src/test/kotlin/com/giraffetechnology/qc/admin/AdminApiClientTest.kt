@@ -192,6 +192,37 @@ class AdminApiClientTest {
         assertTrue(body.contains("Content-Type: image/jpeg"))
     }
 
+    @Test
+    fun `uploadProcessCard uses real Source Workbench multipart route`() {
+        val transport = FakeAdminTransport()
+        val client = loggedInClient(transport)
+        transport.stub(
+            "POST", "/admin/qc-model/training-packs/pack%20one/sources/upload",
+            AdminHttpResponse(
+                303,
+                null,
+                mapOf("location" to listOf("/admin/qc-model/training-packs/pack%20one/sources")),
+            ),
+        )
+
+        val result = client.uploadProcessCard(
+            "pack one", "process-card.txt", "text/plain", "seam allowance 6mm".toByteArray(),
+        )
+        assertTrue(result is AdminApiResult.Ok)
+
+        val request = transport.requests.last()
+        assertEquals("session=abc123", request.headers["Cookie"])
+        assertTrue(request.contentType!!.startsWith("multipart/form-data; boundary="))
+        val body = String(request.body!!, Charsets.ISO_8859_1)
+        assertTrue(body.contains("name=\"tenant_id\""))
+        assertTrue(body.contains("demo"))
+        assertTrue(body.contains("name=\"title\""))
+        assertTrue(body.contains("name=\"file\""))
+        assertTrue(body.contains("filename=\"process-card.txt\""))
+        assertTrue(body.contains("seam allowance 6mm"))
+        assertFalse(body.contains("name=\"image\""))
+    }
+
     // ── bundles / workstations ───────────────────────────────────────────────
 
     @Test
