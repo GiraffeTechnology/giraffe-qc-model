@@ -37,6 +37,10 @@ from src.db.studio_models import QCPublishBundle
 from src.intake.service import confirm_standard_intake, reject_standard_intake
 from src.qc_model.studio import service as studio
 from src.qc_model.studio.regions import InvalidRegion, set_detection_point_regions
+from src.qc_model.studio.analysis_config import (
+    InvalidAnalysisConfig,
+    set_detection_point_analysis_config,
+)
 from src.storage.upload_validation import (
     UploadValidationError,
     read_and_validate_upload,
@@ -391,6 +395,81 @@ def studio_update_detection_point(
     )
     if point is None:
         raise HTTPException(status_code=404, detail="Detection point not found")
+    already_published = db.query(QCPublishBundle.id).filter_by(
+        tenant_id=body.tenant_id,
+        standard_revision_id=point.standard_revision_id,
+    ).first()
+    if already_published:
+        raise HTTPException(
+            status_code=409,
+            detail="judgment-field edits after publish require a new qualified revision",
+        )
+    if not body.point_code.strip() or not body.label.strip():
+        raise HTTPException(status_code=400, detail="point code and label are required")
+    if body.method_hint == "counting" and not (body.expected_value or "").strip():
+        raise HTTPException(status_code=400, detail="counting checkpoint needs an expected count")
+    if body.severity not in {"minor", "major", "critical"}:
+        raise HTTPException(status_code=400, detail="unsupported severity")
+
+    point.point_code = body.point_code.strip()
+    point.label = body.label.strip()
+    point.description = body.description
+    point.method_hint = body.method_hint
+    point.expected_value = body.expected_value
+    point.severity = body.severity
+    point.updated_at = _now()
+    db.commit()
+    db.refresh(point)
+    return {
+        "id": point.id,
+        "point_code": point.point_code,
+        "label": point.label,
+        "description": point.description,
+        "method_hint": point.method_hint,
+        "expected_value": point.expected_value,
+        "severity": point.severity,
+        "regions": point.regions_json or [],
+    }
+
+class SetAnalysisConfigRequest(BaseModel):
+    tenant_id: str = "default"
+    expected_features: Dict[str, Any] = {}
+    cv_config: Dict[str, Any] = {}
+
+
+class UpdateStudioDetectionPointRequest(BaseModel):
+    tenant_id: str = "default"
+    point_code: str
+    label: str
+    description: Optional[str] = None
+    expected_value: Optional[str] = None
+    method_hint: Optional[str] = None
+    severity: str = "major"
+
+
+@router.patch("/admin/studio/detection-points/{detection_point_id}")
+def studio_update_detection_point(
+    detection_point_id: str,
+    body: UpdateStudioDetectionPointRequest,
+    db: Session = Depends(get_db_dep),
+):
+    """Edit checkpoint judgment fields behind the Administrator auth gate."""
+    point = (
+        db.query(QCDetectionPoint)
+        .filter_by(id=detection_point_id, tenant_id=body.tenant_id, is_active=True)
+        .first()
+    )
+    if point is None:
+        raise HTTPException(status_code=404, detail="Detection point not found")
+    already_published = db.query(QCPublishBundle.id).filter_by(
+        tenant_id=body.tenant_id,
+        standard_revision_id=point.standard_revision_id,
+    ).first()
+    if already_published:
+        raise HTTPException(
+            status_code=409,
+            detail="judgment-field edits after publish require a new qualified revision",
+        )
     if not body.point_code.strip() or not body.label.strip():
         raise HTTPException(status_code=400, detail="point code and label are required")
     if body.method_hint == "counting" and not (body.expected_value or "").strip():
@@ -447,6 +526,29 @@ def studio_set_regions(
         "status": "regions_saved",
         "detection_point_id": dp.id,
         "regions": dp.regions_json or [],
+        "sku": studio.sku_summary(db, sku) if sku else None,
+    }
+
+
+@router.post("/admin/studio/detection-points/{detection_point_id}/analysis-config")
+def studio_set_analysis_config(
+    detection_point_id: str,
+    body: SetAnalysisConfigRequest,
+    db: Session = Depends(get_db_dep),
+):
+    """Persist WS8 analyzer hooks before publish; no provider/model coupling."""
+    try:
+        point = set_detection_point_analysis_config(
+            db, detection_point_id, body.expected_features, body.cv_config, body.tenant_id,
+        )
+    except InvalidAnalysisConfig as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    sku = db.query(QCSkuItem).filter_by(id=point.sku_id, tenant_id=body.tenant_id).first()
+    return {
+        "status": "analysis_config_saved",
+        "detection_point_id": point.id,
+        "expected_features": point.expected_features_json or {},
+        "cv_config": point.cv_config_json or {},
         "sku": studio.sku_summary(db, sku) if sku else None,
     }
 

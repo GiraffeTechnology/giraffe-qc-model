@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.models import Base, _utcnow
@@ -18,6 +18,7 @@ class QCPadSubmission(Base):
     """A verdict submission received from a Pad for a completed inspection job."""
 
     __tablename__ = "qc_pad_submissions"
+    __table_args__ = (UniqueConstraint("tenant_id", "job_ref", name="uq_pad_submission_tenant_job"),)
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default="default")

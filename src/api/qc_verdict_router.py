@@ -74,18 +74,23 @@ def _verdict_view(v) -> dict:
 
 @router.post("/api/qc/results/submissions", status_code=201)
 def submit_verdict(body: SubmitVerdictBody, db: Session = Depends(get_db_dep)):
-    _, verdict_model, _ = service.ingest_submission(
-        db,
-        tenant_id=body.tenant_id,
-        job_ref=body.job_ref,
-        standard_revision_id=body.standard_revision_id,
-        bundle_version=body.bundle_version,
-        pad_overall_result=body.pad_overall_result,
-        checkpoints=[(c.checkpoint_id, c.result) for c in body.checkpoints],
-        workstation_id=body.workstation_id,
-        expected_bundle_version=body.expected_bundle_version,
-        raw=body.model_dump(),
-    )
+    try:
+        _, verdict_model, _ = service.ingest_submission(
+            db,
+            tenant_id=body.tenant_id,
+            job_ref=body.job_ref,
+            standard_revision_id=body.standard_revision_id,
+            bundle_version=body.bundle_version,
+            pad_overall_result=body.pad_overall_result,
+            checkpoints=[(c.checkpoint_id, c.result) for c in body.checkpoints],
+            workstation_id=body.workstation_id,
+            expected_bundle_version=body.expected_bundle_version,
+            raw=body.model_dump(),
+        )
+    except ValueError as exc:
+        if str(exc) == "idempotency_conflict":
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise
     return _verdict_view(verdict_model)
 
 
