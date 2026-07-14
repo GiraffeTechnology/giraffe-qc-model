@@ -35,6 +35,15 @@ import com.giraffetechnology.qc.i18n.LanguageController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+private fun localizedProbationStatus(
+    skill: com.giraffetechnology.qc.contracts.GiraffeLanguageSkill,
+    status: String,
+): String {
+    val key = "admin.probation.status.${status.lowercase()}"
+    val localized = skill.t(key)
+    return if (localized == key) status else localized
+}
+
 /** Live probation state/actions from docs/api-contracts/probation-api.md. */
 @Composable
 fun AdminProbationScreen(
@@ -91,7 +100,10 @@ fun AdminProbationScreen(
                         current.notice?.let { Text(skill.t(it), fontSize = 13.sp) }
                         current.probation?.let { probation ->
                             val actions = probationActionPolicy(probation.status)
-                            KeyValueRow(skill.t("admin.probation.field.status"), probation.status)
+                            KeyValueRow(
+                                skill.t("admin.probation.field.status"),
+                                localizedProbationStatus(skill, probation.status),
+                            )
                             KeyValueRow(skill.t("admin.probation.field.sku"), probation.skuId)
                             KeyValueRow(skill.t("admin.probation.field.revision"), probation.standardRevisionId)
                             KeyValueRow(
@@ -201,7 +213,7 @@ fun AdminProbationScreen(
                                             Text(suspension.id, fontWeight = FontWeight.SemiBold)
                                             KeyValueRow(
                                                 skill.t("admin.probation.field.status"),
-                                                suspension.status,
+                                                localizedProbationStatus(skill, suspension.status),
                                             )
                                             KeyValueRow(
                                                 skill.t("admin.probation.field.reason"),
