@@ -257,7 +257,14 @@ def main(argv: list[str] | None = None) -> int:
         architecture = {"ready": False, "error": str(exc)}
     client = SandboxVLMClient(config)
     try:
-        results = [execute_case(case, client=client) for case in cases]
+        results = []
+        for case in cases:
+            result = execute_case(case, client=client)
+            results.append(result)
+            print(
+                f"completed {result['case_id']}; "
+                f"passed={result['passed']} verdict={result['verdict']}"
+            )
     finally:
         client.close()
     report = build_report(config, cases, results, architecture)
