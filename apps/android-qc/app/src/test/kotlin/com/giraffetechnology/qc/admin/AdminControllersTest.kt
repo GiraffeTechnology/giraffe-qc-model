@@ -161,7 +161,7 @@ class AdminStandardControllerTest {
         val controller = AdminStandardController(loggedInClient(transport))
         controller.addDetectionPoint("s1", "DP-1", "Stones", null, "counting", null, "major")
         val state = controller.pointState.value as AdminPointEditState.Error
-        assertTrue(state.message.contains("expected count"))
+        assertEquals("admin.error.counting_expected_required", state.message)
         assertEquals(1, transport.requests.size) // login only
     }
 

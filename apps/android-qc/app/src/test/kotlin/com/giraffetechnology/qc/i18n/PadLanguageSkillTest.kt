@@ -66,4 +66,9 @@ class PadLanguageSkillTest {
             assertTrue(table.containsKey(OperatorTaskSelectionController.KEY_SKU_NOT_FOUND))
         }
     }
+
+    @Test fun `all product locales define the complete English key set`() {
+        assertEquals(PadLanguageCatalog.EN.keys, PadLanguageCatalog.ZH_CN.keys)
+        assertEquals(PadLanguageCatalog.EN.keys, PadLanguageCatalog.JA.keys)
+    }
 }

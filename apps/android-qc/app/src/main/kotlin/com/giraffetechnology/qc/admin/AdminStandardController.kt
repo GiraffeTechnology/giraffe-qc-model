@@ -83,7 +83,7 @@ class AdminStandardController(
         viewType: String?,
     ) {
         if (bytes.isEmpty()) {
-            _uploadState.value = AdminUploadState.Error("empty file")
+            _uploadState.value = AdminUploadState.Error("admin.error.empty_file")
             return
         }
         _uploadState.value = AdminUploadState.Uploading
@@ -102,11 +102,11 @@ class AdminStandardController(
     ) {
         if (trainingPackId.isBlank()) {
             _processCardUploadState.value =
-                AdminProcessCardUploadState.Error("training pack id is required")
+                AdminProcessCardUploadState.Error("admin.error.training_pack_required")
             return
         }
         if (bytes.isEmpty()) {
-            _processCardUploadState.value = AdminProcessCardUploadState.Error("empty file")
+            _processCardUploadState.value = AdminProcessCardUploadState.Error("admin.error.empty_file")
             return
         }
         _processCardUploadState.value = AdminProcessCardUploadState.Uploading
@@ -130,14 +130,14 @@ class AdminStandardController(
         severity: String,
     ) {
         if (pointCode.isBlank() || label.isBlank()) {
-            _pointState.value = AdminPointEditState.Error("point code and label are required")
+            _pointState.value = AdminPointEditState.Error("admin.error.point_code_label_required")
             return
         }
         // Counting checkpoints must carry an expected count — mirror the
         // backend's fail-closed studio confirm rule (§5.4) at input time.
         if (methodHint == "counting" && expectedValue.isNullOrBlank()) {
             _pointState.value =
-                AdminPointEditState.Error("counting checkpoint needs an expected count")
+                AdminPointEditState.Error("admin.error.counting_expected_required")
             return
         }
         _pointState.value = AdminPointEditState.Saving
@@ -222,7 +222,7 @@ class AdminStandardController(
                 pendingRegions.put(detectionPointId, normalized)
                 _regionState.value =
                     AdminRegionSaveState.QueuedForRetry(
-                        detectionPointId, normalized.size, "save failed; retry required",
+                        detectionPointId, normalized.size, "admin.error.region_save_retry",
                     )
             }
         }
@@ -234,9 +234,9 @@ class AdminStandardController(
         methodHint: String?,
         expectedValue: String?,
     ): String? = when {
-        pointCode.isBlank() || label.isBlank() -> "point code and label are required"
+        pointCode.isBlank() || label.isBlank() -> "admin.error.point_code_label_required"
         methodHint == "counting" && expectedValue.isNullOrBlank() ->
-            "counting checkpoint needs an expected count"
+            "admin.error.counting_expected_required"
         else -> null
     }
 

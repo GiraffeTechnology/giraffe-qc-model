@@ -13,6 +13,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.giraffetechnology.qc.contracts.GiraffeLanguageSkill
+import com.giraffetechnology.qc.i18n.LanguageController
 import com.giraffetechnology.qc.sku.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -46,11 +48,13 @@ fun TaskSelectionScreen(
     taskSelectionController: TaskSelectionController,
     runtimeLoader: MnnRuntime,
     skuRepository: ApiSkuRepository?,
+    languageController: LanguageController,
     onTaskConfirmed: (QcTask) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val selectionState by taskSelectionController.state.collectAsState()
     val runtimeState by runtimeLoader.runtimeState.collectAsState()
+    val skill by languageController.skill.collectAsState()
 
     // Unconditional remember — avoids conditional composable call violation.
     val fallbackConnectionFlow = remember {
@@ -75,13 +79,17 @@ fun TaskSelectionScreen(
             .fillMaxSize()
             .padding(16.dp),
     ) {
-        Text("Select QC Task", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(skill.t("pad.task.title"), fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            LanguageSwitch(languageController)
+        }
         Spacer(Modifier.height(8.dp))
 
         // Status chips row
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            RuntimeStatusChip(runtimeState)
-            BackendStatusChip(backendState)
+            RuntimeStatusChip(runtimeState, skill)
+            BackendStatusChip(backendState, skill)
         }
         Spacer(Modifier.height(16.dp))
 
@@ -93,7 +101,7 @@ fun TaskSelectionScreen(
             OutlinedTextField(
                 value         = query,
                 onValueChange = { query = it },
-                label         = { Text("Item number") },
+                label         = { Text(skill.t("admin.skus.create.item_number")) },
                 singleLine    = true,
                 modifier      = Modifier.weight(1f),
             )
@@ -104,37 +112,43 @@ fun TaskSelectionScreen(
                 },
                 enabled  = query.isNotBlank()
                     && selectionState !is TaskSelectionState.SearchingBackend,
-            ) { Text("Search") }
+            ) { Text(skill.t("common.search")) }
         }
         Spacer(Modifier.height(8.dp))
 
         // State feedback
         when (val st = selectionState) {
             is TaskSelectionState.SearchingBackend ->
-                Text("Searching backend…", color = MaterialTheme.colorScheme.primary)
+                Text(skill.t("legacy.task.searching_backend"), color = MaterialTheme.colorScheme.primary)
 
             is TaskSelectionState.BackendError ->
-                Text("Backend error: ${st.message}", color = MaterialTheme.colorScheme.error)
+                Text(
+                    skill.t("legacy.task.backend_error", mapOf("message" to st.message)),
+                    color = MaterialTheme.colorScheme.error,
+                )
 
             is TaskSelectionState.MnnPending ->
-                StatusBanner("MNN pending — please select SKU manually", Color(0xFFFFA000))
+                StatusBanner(skill.t("legacy.task.mnn_pending"), Color(0xFFFFA000))
 
             is TaskSelectionState.ReviewRequired ->
-                StatusBanner("review_required — please select SKU manually", Color(0xFFFFA000))
+                StatusBanner(skill.t("legacy.task.review_manual"), Color(0xFFFFA000))
 
             is TaskSelectionState.NoMatch ->
-                StatusBanner("No SKU match found", Color(0xFFB71C1C))
+                StatusBanner(skill.t("legacy.task.no_match"), Color(0xFFB71C1C))
 
             is TaskSelectionState.ManualResults -> {
                 if (st.results.isEmpty()) {
-                    Text("No results for \"$query\"")
+                    Text(skill.t("legacy.task.no_results", mapOf("query" to query)))
                 } else {
-                    Text("${st.results.size} result(s) — tap a SKU to select it")
+                    Text(skill.t("legacy.task.results_count", mapOf("count" to st.results.size.toString())))
                 }
             }
 
             is TaskSelectionState.MatchCandidates ->
-                Text("${st.result.candidates.size} photo-match candidate(s) — confirm below")
+                Text(skill.t(
+                    "legacy.task.candidates_count",
+                    mapOf("count" to st.result.candidates.size.toString()),
+                ))
 
             else -> Unit
         }
@@ -171,7 +185,10 @@ fun TaskSelectionScreen(
                         Text(source.sku.name, fontSize = 13.sp)
                         if (source is SelectedSkuSource.MnnCandidate) {
                             Text(
-                                "Match: ${(source.candidate.similarity * 100).toInt()}%",
+                                skill.t(
+                                    "legacy.task.match",
+                                    mapOf("percent" to (source.candidate.similarity * 100).toInt().toString()),
+                                ),
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -186,7 +203,7 @@ fun TaskSelectionScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
                 onClick = { scope.launch { taskSelectionController.runMatch("") } },
-            ) { Text("Photo Match") }
+            ) { Text(skill.t("legacy.task.photo_match")) }
 
             Spacer(Modifier.weight(1f))
 
@@ -206,28 +223,28 @@ fun TaskSelectionScreen(
                     }
                 },
                 enabled = selectedSource != null,
-            ) { Text("Confirm SKU") }
+            ) { Text(skill.t("pad.task.confirm")) }
         }
     }
 }
 
 @Composable
-private fun RuntimeStatusChip(state: MnnRuntimeState) {
+private fun RuntimeStatusChip(state: MnnRuntimeState, skill: GiraffeLanguageSkill) {
     val (label, color) = when (state) {
-        is MnnRuntimeState.Ready    -> "Ready" to Color(0xFF2E7D32)
-        is MnnRuntimeState.Loading  -> "MNN loading" to Color(0xFFF57F17)
-        is MnnRuntimeState.NotReady -> "Local runtime not ready" to Color(0xFFB71C1C)
+        is MnnRuntimeState.Ready    -> skill.t("readiness.model_ready") to Color(0xFF2E7D32)
+        is MnnRuntimeState.Loading  -> skill.t("legacy.task.mnn_loading") to Color(0xFFF57F17)
+        is MnnRuntimeState.NotReady -> skill.t("readiness.local_runtime_not_ready") to Color(0xFFB71C1C)
     }
     StatusChip(label = label, color = color)
 }
 
 @Composable
-private fun BackendStatusChip(state: BackendConnectionState) {
+private fun BackendStatusChip(state: BackendConnectionState, skill: GiraffeLanguageSkill) {
     val (label, color) = when (state) {
-        is BackendConnectionState.Unknown   -> "Backend unknown" to Color(0xFF757575)
-        is BackendConnectionState.Connected -> "Connected" to Color(0xFF2E7D32)
-        is BackendConnectionState.Offline   -> "Offline" to Color(0xFFB71C1C)
-        is BackendConnectionState.Error     -> "Error" to Color(0xFFB71C1C)
+        is BackendConnectionState.Unknown   -> skill.t("legacy.task.backend_unknown") to Color(0xFF757575)
+        is BackendConnectionState.Connected -> skill.t("legacy.task.connected") to Color(0xFF2E7D32)
+        is BackendConnectionState.Offline   -> skill.t("readiness.offline") to Color(0xFFB71C1C)
+        is BackendConnectionState.Error     -> skill.t("legacy.task.error") to Color(0xFFB71C1C)
     }
     StatusChip(label = label, color = color)
 }

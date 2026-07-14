@@ -97,7 +97,7 @@ class AdminWorkstationController(private val client: AdminApiClient) {
 
     fun register(workstationId: String, displayName: String, siteOrLine: String?) {
         if (workstationId.isBlank() || displayName.isBlank()) {
-            _opState.value = AdminWorkstationOpState.Error("workstation id and name are required")
+            _opState.value = AdminWorkstationOpState.Error("admin.error.workstation_name_required")
             return
         }
         _opState.value = AdminWorkstationOpState.Working
@@ -257,7 +257,7 @@ class AdminProbationController(private val client: AdminApiClient) {
         if (revisionId.isNullOrBlank()) {
             _state.value = AdminProbationState.Loaded(
                 suspensions = suspensions,
-                notice = "Enter a standard revision ID to load its probation state.",
+                notice = "admin.probation.notice.enter_revision",
             )
             return
         }
@@ -270,7 +270,7 @@ class AdminProbationController(private val client: AdminApiClient) {
             is AdminApiResult.Error -> _state.value = if (r.httpCode == 404) {
                 AdminProbationState.Loaded(
                     suspensions = suspensions,
-                    notice = "No probation record exists for this standard revision.",
+                    notice = "admin.probation.notice.not_found",
                 )
             } else {
                 AdminProbationState.Error(r.message)

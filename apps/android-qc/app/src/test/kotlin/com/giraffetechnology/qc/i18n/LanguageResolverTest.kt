@@ -45,4 +45,27 @@ class LanguageResolverTest {
         assertTrue(LanguageResolver.isSupported("zh-CN"))
         assertFalse(LanguageResolver.isSupported("ko"))
     }
+
+    @Test fun `controller publishes normalized explicit choices for persistence`() {
+        val persisted = mutableListOf<String>()
+        val controller = LanguageController(
+            deviceLanguageTags = listOf("en-US"),
+            onSelectionChanged = persisted::add,
+        )
+
+        controller.select("zh-Hans-CN")
+
+        assertEquals("zh-CN", controller.locale.value)
+        assertEquals(listOf("zh-CN"), persisted)
+    }
+
+    @Test fun `controller restores a persisted choice before device language`() {
+        val controller = LanguageController(
+            deviceLanguageTags = listOf("zh-Hans-CN"),
+            initialSelection = "ja-JP",
+        )
+
+        assertEquals("ja", controller.locale.value)
+        assertEquals("ja", controller.skill.value.locale)
+    }
 }

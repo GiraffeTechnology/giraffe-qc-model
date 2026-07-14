@@ -201,7 +201,7 @@ fun AdminStandardScreen(
                     is AdminUploadState.Uploading -> Text(skill.t("admin.standard.uploading"), fontSize = 12.sp)
                     is AdminUploadState.Uploaded ->
                         AdminOkBanner(skill.t("admin.standard.photo_uploaded"))
-                    is AdminUploadState.Error -> AdminErrorBanner(u.message)
+                    is AdminUploadState.Error -> AdminErrorBanner(skill.t(u.message))
                     else -> {}
                 }
                 when (val u = processCardUploadState) {
@@ -209,7 +209,7 @@ fun AdminStandardScreen(
                         Text(skill.t("admin.standard.process_card_uploading"), fontSize = 12.sp)
                     is AdminProcessCardUploadState.Uploaded ->
                         AdminOkBanner(skill.t("admin.standard.process_card_uploaded"))
-                    is AdminProcessCardUploadState.Error -> AdminErrorBanner(u.message)
+                    is AdminProcessCardUploadState.Error -> AdminErrorBanner(skill.t(u.message))
                     else -> {}
                 }
                 Spacer(Modifier.height(8.dp))
@@ -233,7 +233,7 @@ fun AdminStandardScreen(
                                 cookie = client.identity?.sessionCookie,
                                 modifier = Modifier.size(96.dp),
                             )
-                            Text(photo.viewType ?: "photo", fontSize = 10.sp)
+                            Text(photo.viewType ?: skill.t("admin.standard.photo_default"), fontSize = 10.sp)
                         }
                     }
                 }
@@ -271,9 +271,10 @@ fun AdminStandardScreen(
                         ) { Text(skill.t("admin.standard.regions.save")) }
                     }
                     when (val r = regionState) {
-                        is AdminRegionSaveState.Invalid -> AdminErrorBanner(r.message)
+                        is AdminRegionSaveState.Invalid -> AdminErrorBanner(skill.t(r.message))
                         is AdminRegionSaveState.QueuedForRetry -> AdminErrorBanner(
-                            skill.t("admin.standard.regions.pending") + " (${r.count}): ${r.message}"
+                            skill.t("admin.standard.regions.pending") +
+                                " (${r.count}): ${skill.t(r.message)}"
                         )
                         is AdminRegionSaveState.SavedToServer ->
                             AdminOkBanner(skill.t("admin.standard.regions.saved"))
@@ -364,6 +365,7 @@ fun AdminStandardScreen(
                     },
                 )
                 CategoryConfirmationPanel(
+                    skill = skill,
                     state = categoryState,
                     selectedPointId = selectedPointId,
                     onConfirm = { pointId, category ->
@@ -462,7 +464,7 @@ private fun DetectionPointForm(
             )
         }
         when (pointState) {
-            is AdminPointEditState.Error -> AdminErrorBanner(pointState.message)
+            is AdminPointEditState.Error -> AdminErrorBanner(skill.t(pointState.message))
             is AdminPointEditState.Saved -> AdminOkBanner(skill.t("admin.standard.point.saved"))
             is AdminPointEditState.Saving -> Text(skill.t("common.loading"), fontSize = 12.sp)
             else -> {}
@@ -477,7 +479,7 @@ private fun DetectionPointForm(
                         selectedPoint.id, code, label, method,
                         expected.takeIf { it.isNotBlank() }, severity,
                     )
-                }) { Text("Save edit") }
+                }) { Text(skill.t("admin.standard.point.save_edit")) }
             }
         }
     }
@@ -485,6 +487,7 @@ private fun DetectionPointForm(
 
 @Composable
 private fun CategoryConfirmationPanel(
+    skill: com.giraffetechnology.qc.contracts.GiraffeLanguageSkill,
     state: AdminCategoryState,
     selectedPointId: String?,
     onConfirm: (String, String) -> Unit,
@@ -499,18 +502,18 @@ private fun CategoryConfirmationPanel(
         )
     }
     Spacer(Modifier.height(8.dp))
-    Text("Checkpoint category", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+    Text(skill.t("admin.standard.category.title"), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
     when (state) {
         AdminCategoryState.Loading, AdminCategoryState.Confirming ->
-            Text("Loading categories…", fontSize = 12.sp)
-        is AdminCategoryState.Error -> AdminErrorBanner(state.message)
+            Text(skill.t("admin.standard.category.loading"), fontSize = 12.sp)
+        is AdminCategoryState.Error -> AdminErrorBanner(skill.t(state.message))
         else -> Unit
     }
     if (loaded != null && selectedPointId != null) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column {
                 OutlinedButton(onClick = { menuOpen = true }) {
-                    Text(category.ifEmpty { "Select category" })
+                    Text(category.ifEmpty { skill.t("admin.standard.category.select") })
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     loaded.options.forEach { option ->
@@ -524,12 +527,18 @@ private fun CategoryConfirmationPanel(
             Button(
                 enabled = category.isNotBlank(),
                 onClick = { onConfirm(selectedPointId, category) },
-            ) { Text("Confirm category") }
+            ) { Text(skill.t("admin.standard.category.confirm")) }
         }
         val current = loaded.byPointId[selectedPointId]
         if (current?.confirmedCategory != null) {
             Text(
-                "Confirmed by ${current.confirmedBy ?: "administrator"}; AI role: ${current.aiRole}",
+                skill.t(
+                    "admin.standard.category.confirmed_by",
+                    mapOf(
+                        "actor" to (current.confirmedBy ?: skill.t("welcome.administrator")),
+                        "role" to current.aiRole,
+                    ),
+                ),
                 fontSize = 11.sp,
             )
         }

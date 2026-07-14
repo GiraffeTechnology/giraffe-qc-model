@@ -102,6 +102,8 @@ data class PadRuntimeConfig(
  */
 object PadRuntimeGraph {
     private const val TAG = "PadRuntimeGraph"
+    private const val UI_PREFERENCES = "giraffe_qc_ui"
+    private const val UI_LANGUAGE = "language"
 
     private val bgScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -231,13 +233,20 @@ object PadRuntimeGraph {
             _bundleImporter = BundleImporter(standardStore)
             _operatorTaskSelectionController = OperatorTaskSelectionController(standardStore)
 
-            // i18n seam: resolve the initial locale from the device language list
-            // with English fallback; explicit operator selection takes over later.
+            // i18n seam: an explicit choice survives process/device restarts and
+            // continues to override the device locale until the user changes it.
             val deviceTags = run {
                 val locales = appContext.resources.configuration.locales
                 (0 until locales.size()).map { locales.get(it).toLanguageTag() }
             }
-            _languageController = LanguageController(deviceLanguageTags = deviceTags)
+            val uiPreferences = appContext.getSharedPreferences(UI_PREFERENCES, Context.MODE_PRIVATE)
+            _languageController = LanguageController(
+                deviceLanguageTags = deviceTags,
+                initialSelection = uiPreferences.getString(UI_LANGUAGE, null),
+                onSelectionChanged = { language ->
+                    uiPreferences.edit().putString(UI_LANGUAGE, language).apply()
+                },
+            )
 
             // Result outbox (S6 §9): offline-persisted results drained to the
             // Server over the factory LAN. This carries result metadata only —

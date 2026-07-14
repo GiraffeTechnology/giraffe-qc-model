@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.giraffetechnology.qc.camera.CameraXCaptureController
 import com.giraffetechnology.qc.capture.*
+import com.giraffetechnology.qc.contracts.GiraffeLanguageSkill
+import com.giraffetechnology.qc.i18n.LanguageController
 import com.giraffetechnology.qc.sku.*
 import kotlinx.coroutines.launch
 
@@ -44,6 +46,7 @@ fun QcCaptureScreen(
     autoCaptureController: AutoCaptureController,
     runtimeLoader: MnnRuntime,
     cameraXController: CameraXCaptureController,
+    languageController: LanguageController,
     inspectionCoordinator: PadInspectionCoordinator? = null,
     onInspectionResult: (PadInspectionResult) -> Unit,
     onBack: () -> Unit,
@@ -52,6 +55,7 @@ fun QcCaptureScreen(
     val captureState by autoCaptureController.state.collectAsState()
     val runtimeState by runtimeLoader.runtimeState.collectAsState()
     val isCameraReady by cameraXController.isReady.collectAsState()
+    val skill by languageController.skill.collectAsState()
 
     val context = LocalContext.current
 
@@ -80,7 +84,7 @@ fun QcCaptureScreen(
             val result = inspectionCoordinator?.inspect(task, photo)
                 ?: PadInspectionResult(
                     overallResult      = "CLOUD_UNAVAILABLE",
-                    reason             = "Cloud inspection coordinator not available — no verdict",
+                    reason             = skill.t("pad.work.coordinator_unavailable_no_verdict"),
                     modelName          = "configured-cloud-vlm",
                     localOnly          = false,
                     cloudInferenceUsed = true,
@@ -129,14 +133,14 @@ fun QcCaptureScreen(
                             .padding(24.dp),
                     ) {
                         Text(
-                            "Camera permission required",
+                            skill.t("pad.work.camera_permission_required"),
                             color      = Color.White,
                             fontSize   = 16.sp,
                             fontWeight = FontWeight.Bold,
                         )
                         Spacer(Modifier.height(12.dp))
                         Button(onClick = { permLauncher.launch(Manifest.permission.CAMERA) }) {
-                            Text("Grant Camera Permission")
+                            Text(skill.t("legacy.capture.grant_camera"))
                         }
                     }
                 }
@@ -150,14 +154,14 @@ fun QcCaptureScreen(
                             .padding(24.dp),
                     ) {
                         Text(
-                            "Camera permission denied",
+                            skill.t("pad.work.camera_permission_denied"),
                             color      = Color(0xFFEF5350),
                             fontSize   = 16.sp,
                             fontWeight = FontWeight.Bold,
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            "Manual capture unavailable until camera permission is granted",
+                            skill.t("legacy.capture.permission_unavailable"),
                             color    = Color.White,
                             fontSize = 13.sp,
                         )
@@ -175,40 +179,46 @@ fun QcCaptureScreen(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("SKU", fontWeight = FontWeight.Bold, fontSize = 11.sp,
+            Text(skill.t("admin.probation.field.sku"), fontWeight = FontWeight.Bold, fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(task.sku.itemNumber, fontWeight = FontWeight.Bold)
             Text(task.sku.name, fontSize = 12.sp)
-            Text("Resolved: ${task.resolvedBy.name}", fontSize = 11.sp,
+            Text(skill.t("legacy.capture.resolved", mapOf("method" to task.resolvedBy.name)), fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
-                if (task.confirmedByUser) "Confirmed by user" else "Not confirmed",
+                skill.t(
+                    if (task.confirmedByUser) {
+                        "legacy.capture.confirmed_by_user"
+                    } else {
+                        "legacy.capture.not_confirmed"
+                    }
+                ),
                 fontSize = 11.sp,
                 color = if (task.confirmedByUser) Color(0xFF2E7D32) else Color(0xFFB71C1C),
             )
 
             Divider()
 
-            Text("Runtime", fontWeight = FontWeight.Bold, fontSize = 11.sp,
+            Text(skill.t("legacy.capture.runtime"), fontWeight = FontWeight.Bold, fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
                 when (runtimeState) {
-                    is MnnRuntimeState.Ready    -> "Ready"
-                    is MnnRuntimeState.Loading  -> "MNN loading…"
-                    is MnnRuntimeState.NotReady -> "Not ready"
+                    is MnnRuntimeState.Ready    -> skill.t("readiness.model_ready")
+                    is MnnRuntimeState.Loading  -> skill.t("legacy.task.mnn_loading")
+                    is MnnRuntimeState.NotReady -> skill.t("admin.health.model.not_ready")
                 },
                 fontSize = 12.sp,
             )
 
             Divider()
 
-            Text("Capture state", fontWeight = FontWeight.Bold, fontSize = 11.sp,
+            Text(skill.t("legacy.capture.state"), fontWeight = FontWeight.Bold, fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(captureStateLabel(captureState), fontSize = 12.sp)
+            Text(captureStateLabel(captureState, skill), fontSize = 12.sp)
 
             captureError?.let { err ->
                 Text(
-                    "Capture failed: $err",
+                    skill.t("legacy.capture.failed", mapOf("message" to err)),
                     color    = MaterialTheme.colorScheme.error,
                     fontSize = 12.sp,
                 )
@@ -226,7 +236,7 @@ fun QcCaptureScreen(
                                 val result = inspectionCoordinator?.inspect(task, photo)
                                     ?: PadInspectionResult(
                                         overallResult      = "CLOUD_UNAVAILABLE",
-                                        reason             = "Cloud inspection coordinator not available — no verdict",
+                                        reason             = skill.t("pad.work.coordinator_unavailable_no_verdict"),
                                         modelName          = "configured-cloud-vlm",
                                         localOnly          = false,
                                         cloudInferenceUsed = true,
@@ -235,23 +245,23 @@ fun QcCaptureScreen(
                                 onInspectionResult(result)
                             }
                             .onFailure { e ->
-                                captureError = e.message ?: "Capture failed"
+                                captureError = e.message ?: skill.t("common.error_generic")
                             }
                     }
                 },
                 enabled  = isCameraReady && cameraPermState == CameraPermissionState.Granted,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Manual Capture") }
+            ) { Text(skill.t("legacy.capture.manual")) }
 
             OutlinedButton(
                 onClick  = { autoCaptureController.onCameraStreaming() },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Reset / Retake") }
+            ) { Text(skill.t("legacy.capture.reset")) }
 
             TextButton(
                 onClick  = onBack,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Back to Task Selection") }
+            ) { Text(skill.t("legacy.capture.back")) }
         }
     }
 }
@@ -266,17 +276,17 @@ private fun LockBoxOverlay() {
     )
 }
 
-private fun captureStateLabel(state: AutoCaptureState): String = when (state) {
-    is AutoCaptureState.Idle              -> "Waiting for camera"
-    is AutoCaptureState.Searching         -> "Searching target"
-    is AutoCaptureState.CandidateDetected -> "Candidate detected"
-    is AutoCaptureState.Locking           -> "Locking…"
-    is AutoCaptureState.Locked            -> "Locked"
-    is AutoCaptureState.Capturing         -> "Capturing…"
-    is AutoCaptureState.Captured          -> "Captured"
+private fun captureStateLabel(state: AutoCaptureState, skill: GiraffeLanguageSkill): String = when (state) {
+    is AutoCaptureState.Idle              -> skill.t("legacy.capture.waiting")
+    is AutoCaptureState.Searching         -> skill.t("legacy.capture.searching")
+    is AutoCaptureState.CandidateDetected -> skill.t("legacy.capture.candidate")
+    is AutoCaptureState.Locking           -> skill.t("legacy.capture.locking")
+    is AutoCaptureState.Locked            -> skill.t("legacy.capture.locked")
+    is AutoCaptureState.Capturing         -> skill.t("legacy.capture.capturing")
+    is AutoCaptureState.Captured          -> skill.t("legacy.capture.captured")
     is AutoCaptureState.Rejected          -> when (state.reason) {
-        RejectReason.LOCKING_TIMEOUT  -> "Locking timeout"
-        RejectReason.CAPTURE_IO_ERROR -> "Capture IO error"
+        RejectReason.LOCKING_TIMEOUT  -> skill.t("legacy.capture.lock_timeout")
+        RejectReason.CAPTURE_IO_ERROR -> skill.t("legacy.capture.io_error")
     }
 }
 

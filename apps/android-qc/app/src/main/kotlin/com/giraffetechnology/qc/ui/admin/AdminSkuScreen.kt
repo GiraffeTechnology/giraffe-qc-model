@@ -134,13 +134,13 @@ fun AdminSkuScreen(
                 Spacer(Modifier.height(8.dp))
 
                 if (configState is AdminSkuConfigState.Error) {
-                    AdminErrorBanner((configState as AdminSkuConfigState.Error).message)
+                    AdminErrorBanner(skill.t((configState as AdminSkuConfigState.Error).message))
                     Spacer(Modifier.height(4.dp))
                 }
 
                 when (val s = listState) {
                     is AdminSkuListState.Loading -> Text(skill.t("common.loading"), fontSize = 13.sp)
-                    is AdminSkuListState.Error -> AdminErrorBanner(s.message)
+                    is AdminSkuListState.Error -> AdminErrorBanner(skill.t(s.message))
                     is AdminSkuListState.Loaded -> {
                         if (s.skus.isEmpty()) {
                             Text(skill.t("admin.skus.empty"), fontSize = 13.sp)
@@ -206,7 +206,7 @@ fun AdminSkuScreen(
                 )
                 Spacer(Modifier.height(6.dp))
                 when (val c = createState) {
-                    is AdminSkuCreateState.Error -> AdminErrorBanner(c.message)
+                    is AdminSkuCreateState.Error -> AdminErrorBanner(skill.t(c.message))
                     is AdminSkuCreateState.Created -> AdminOkBanner(skill.t("admin.skus.create.done"))
                     is AdminSkuCreateState.Creating -> Text(skill.t("common.loading"), fontSize = 13.sp)
                     else -> {}

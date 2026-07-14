@@ -169,6 +169,7 @@ private fun PadApp() {
             runtimeLoader           = PadRuntimeGraph.runtimeLoader,
             skuRepository           = PadRuntimeGraph.skuRepository
                 as? com.giraffetechnology.qc.sku.ApiSkuRepository,
+            languageController      = PadRuntimeGraph.languageController,
             onTaskConfirmed         = { task -> screen = PadScreen.QcCapture(task) },
         )
 
@@ -177,6 +178,7 @@ private fun PadApp() {
             autoCaptureController = PadRuntimeGraph.autoCaptureController,
             runtimeLoader         = PadRuntimeGraph.runtimeLoader,
             cameraXController     = PadRuntimeGraph.cameraXCaptureController,
+            languageController    = PadRuntimeGraph.languageController,
             inspectionCoordinator = PadRuntimeGraph.inspectionCoordinator,
             onInspectionResult    = { result -> screen = PadScreen.Result(s.task, result) },
             onBack                = { screen = PadScreen.OperatorTaskSelection },
@@ -185,6 +187,7 @@ private fun PadApp() {
         is PadScreen.Result -> ResultScreen(
             task     = s.task,
             result   = s.result,
+            languageController = PadRuntimeGraph.languageController,
             onRetake = { screen = PadScreen.QcCapture(s.task) },
             onDone   = { screen = PadScreen.OperatorTaskSelection },
         )
