@@ -61,11 +61,6 @@ class SandboxVLMClient:
                 "temperature": 0,
                 "max_tokens": self.config.max_tokens,
             }
-            if case.get("require_think_wrapper"):
-                # The parser probe needs the requested tag to remain in the real
-                # model text instead of being consumed by the server chat
-                # template's built-in reasoning channel.
-                payload["chat_template_kwargs"] = {"enable_thinking": False}
         else:
             payload = {
                 "model": self.config.model,
@@ -163,8 +158,8 @@ def _prompt(case: dict[str, Any], cv_result: dict[str, Any]) -> str:
         ],
     }
     parser_probe = (
-        "For the Stage 1 parser probe, prefix exactly "
-        "<think>stage1 parser probe</think> before the JSON object. "
+        "For the Stage 1 parser probe, use a brief native reasoning trace "
+        "before the final JSON object. "
         if case.get("require_think_wrapper")
         else ""
     )

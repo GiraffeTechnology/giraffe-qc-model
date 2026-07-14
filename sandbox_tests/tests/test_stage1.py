@@ -199,34 +199,6 @@ def test_openai_client_extracts_real_envelope_without_logging_endpoint():
     assert response.raw_output == response.parser_input
 
 
-def test_openai_parser_probe_disables_template_thinking_channel():
-    def handler(request: httpx.Request) -> httpx.Response:
-        payload = json.loads(request.content)
-        assert payload["chat_template_kwargs"] == {"enable_thinking": False}
-        content = "<think>stage1 parser probe</think>" + _valid_raw("p")
-        return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
-
-    client = SandboxVLMClient(_config(), transport=httpx.MockTransport(handler))
-    try:
-        response = client.infer(
-            case={
-                "qc_point_id": "p",
-                "name": "point",
-                "category": "visual_defect",
-                "criterion": "clean",
-                "expected_behavior": "pass",
-                "require_think_wrapper": True,
-            },
-            image_path=ROOT / "tests" / "fixtures" / "red_square.png",
-            cv_result={"schema_version": "1.0"},
-        )
-    finally:
-        client.close()
-    parsed = parse_strict_sandbox_output(response.parser_input, expected_qc_point_ids=["p"])
-    assert parsed.verdict == "pass"
-    assert parsed.think_tags_stripped is True
-
-
 def test_inspection_client_preserves_raw_body_and_maps_strict_schema():
     body = {
         "detection_point_code": "p",
