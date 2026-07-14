@@ -72,6 +72,8 @@ class SandboxVLMClient:
                 # special think tokens for this one parser-cleaning probe.
                 payload["reasoning_format"] = "none"
                 payload["special"] = True
+            else:
+                payload["response_format"] = {"type": "json_object"}
         else:
             payload = {
                 "model": self.config.model,
