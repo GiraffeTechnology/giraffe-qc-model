@@ -238,7 +238,38 @@ def test_openai_parser_probe_normalizes_real_split_reasoning_field():
     finally:
         client.close()
     parsed = parse_strict_sandbox_output(response.parser_input, expected_qc_point_ids=["p"])
-    assert response.raw_output.startswith("<think>real provider reasoning</think>")
+    assert response.raw_output == content
+    assert response.parser_input.startswith("<think>real provider reasoning</think>")
+    assert parsed.verdict == "pass"
+    assert parsed.think_tags_stripped is True
+
+
+def test_openai_parser_probe_restores_exact_server_stripped_sentinel_only():
+    content = "stage1 parser probe\n" + _valid_raw("p")
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": content}}]},
+        )
+    )
+    client = SandboxVLMClient(_config(), transport=transport)
+    try:
+        response = client.infer(
+            case={
+                "qc_point_id": "p",
+                "name": "point",
+                "category": "visual_defect",
+                "criterion": "clean",
+                "expected_behavior": "pass",
+                "require_think_wrapper": True,
+            },
+            image_path=ROOT / "tests" / "fixtures" / "red_square.png",
+            cv_result={"schema_version": "1.0"},
+        )
+    finally:
+        client.close()
+    parsed = parse_strict_sandbox_output(response.parser_input, expected_qc_point_ids=["p"])
+    assert response.raw_output == content
     assert parsed.verdict == "pass"
     assert parsed.think_tags_stripped is True
 

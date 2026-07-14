@@ -104,6 +104,8 @@ class SandboxVLMClient:
                 content = "".join(str(item.get("text", "")) for item in content if isinstance(item, dict))
             if not isinstance(content, str):
                 raise SandboxInferenceError("model_content_not_text")
+            raw_content = content
+            parser_content = content
             reasoning_content = message.get("reasoning_content")
             if reasoning_content is not None and not isinstance(reasoning_content, str):
                 raise SandboxInferenceError("model_reasoning_content_not_text")
@@ -114,10 +116,23 @@ class SandboxVLMClient:
             ):
                 # Normalize the provider's real split reasoning field back to
                 # the tagged representation consumed by the production parser.
-                content = f"<think>{reasoning_content}</think>\n{content}"
-            if len(content) > self.config.max_output_chars:
+                parser_content = f"<think>{reasoning_content}</think>\n{content}"
+            elif case.get("require_think_wrapper") and content.startswith(
+                "stage1 parser probe\n"
+            ):
+                # llama.cpp omits special-token delimiters even with raw output,
+                # but retains the real, deterministic probe body. Restore only
+                # that exact sentinel in parser input; preserve provider raw text.
+                parser_content = (
+                    "<think>stage1 parser probe</think>\n"
+                    + content.removeprefix("stage1 parser probe\n")
+                )
+            if max(len(raw_content), len(parser_content)) > self.config.max_output_chars:
                 raise SandboxInferenceError("model_content_exceeds_configured_limit")
-            return SandboxModelResponse(raw_output=content, parser_input=content)
+            return SandboxModelResponse(
+                raw_output=raw_content,
+                parser_input=parser_content,
+            )
         if len(raw_http_body) > self.config.max_output_chars:
             raise SandboxInferenceError("model_content_exceeds_configured_limit")
         try:
