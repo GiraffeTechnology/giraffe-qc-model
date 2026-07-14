@@ -1,5 +1,10 @@
 # Pad-Side Jetson + Pad Health State — API Contract
 
+> **Superseded by Architecture v2.** This document records the legacy
+> Operator Pad-to-Xavier health model. New WS3/WS4/WS5 work must use
+> [`pad-health-state.md`](pad-health-state.md), which separates Nano CV, cloud
+> link/readiness, and the Administrator Xavier MNN node.
+
 **Owner:** WS4 (`claude/ws4-operator-jetson-integration`). **Consumed by:**
 Account A's WS3 admin health screen (via the already-existing server sync
 surface, § 3 — no new server endpoint needed).
