@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 class LanguageController(
     deviceLanguageTags: List<String>,
     initialSelection: String? = null,
+    private val onSelectionChanged: (String) -> Unit = {},
 ) {
     private val _locale = MutableStateFlow(
         LanguageResolver.resolve(initialSelection, deviceLanguageTags)
@@ -38,5 +39,6 @@ class LanguageController(
         val normalized = LanguageResolver.normalize(tag) ?: return
         _locale.value = normalized
         _skill.value = PadLanguageCatalog.skillFor(normalized)
+        onSelectionChanged(normalized)
     }
 }

@@ -55,12 +55,18 @@ fun AdminHealthScreen(
         Spacer(Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth()) {
             Text(
-                "Operator readiness: ${snapshot.operatorPipelineReadiness}",
+                skill.t(
+                    "admin.health.operator_readiness",
+                    mapOf("status" to snapshot.operatorPipelineReadiness),
+                ),
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 13.sp,
             )
             Spacer(Modifier.weight(1f))
-            Text("Observed: ${snapshot.observedAt}", fontSize = 11.sp)
+            Text(
+                skill.t("admin.health.observed", mapOf("time" to snapshot.observedAt)),
+                fontSize = 11.sp,
+            )
             Spacer(Modifier.padding(horizontal = 4.dp))
             OutlinedButton(
                 enabled = !state.refreshing,
@@ -75,87 +81,114 @@ fun AdminHealthScreen(
             modifier = Modifier.fillMaxSize(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            HealthPanel("Operator Nano CV", Modifier.weight(1f)) {
-                KeyValueRow("Status", snapshot.nanoCv.status)
-                KeyValueRow("Agent", snapshot.nanoCv.agentVersion ?: "unknown")
-                KeyValueRow("Pipeline", snapshot.nanoCv.pipelineVersion ?: "unknown")
+            val unknown = skill.t("common.unknown")
+            val noneUnknown = skill.t("admin.health.value.none_unknown")
+            HealthPanel(skill.t("admin.health.nano_cv"), Modifier.weight(1f)) {
+                KeyValueRow(skill.t("admin.health.field.status"), snapshot.nanoCv.status)
+                KeyValueRow(skill.t("admin.health.field.agent"), snapshot.nanoCv.agentVersion ?: unknown)
+                KeyValueRow(skill.t("admin.health.field.pipeline"), snapshot.nanoCv.pipelineVersion ?: unknown)
                 KeyValueRow(
-                    "Last real CV",
-                    snapshot.nanoCv.lastCvDurationMs?.let { "$it ms" } ?: "unknown",
+                    skill.t("admin.health.field.last_real_cv"),
+                    snapshot.nanoCv.lastCvDurationMs?.let { "$it ms" } ?: unknown,
                 )
-                KeyValueRow("Last success", snapshot.nanoCv.lastSuccessAt ?: "unknown")
-                KeyValueRow("Last error", snapshot.nanoCv.lastErrorCode ?: "none / unknown")
+                KeyValueRow(skill.t("admin.health.field.last_success"), snapshot.nanoCv.lastSuccessAt ?: unknown)
+                KeyValueRow(skill.t("admin.health.field.last_error"), snapshot.nanoCv.lastErrorCode ?: noneUnknown)
             }
 
-            HealthPanel("Cloud connection", Modifier.weight(1.2f)) {
-                KeyValueRow("Link", snapshot.cloudLink.state)
-                KeyValueRow("Cloud service", snapshot.cloudLink.cloudService)
-                KeyValueRow("Accepting jobs", snapshot.cloudLink.acceptingJobs.toString())
-                KeyValueRow("Current network", snapshot.cloudLink.currentNetwork)
-                KeyValueRow("Active-job network", snapshot.cloudLink.activeJobNetwork ?: "none")
+            HealthPanel(skill.t("admin.health.cloud_connection"), Modifier.weight(1.2f)) {
+                KeyValueRow(skill.t("admin.health.field.link"), snapshot.cloudLink.state)
+                KeyValueRow(skill.t("admin.health.field.cloud_service"), snapshot.cloudLink.cloudService)
                 KeyValueRow(
-                    "Deferred switch",
-                    snapshot.cloudLink.switchDeferredUntilJobEnd.toString(),
+                    skill.t("admin.health.field.accepting_jobs"),
+                    skill.t(if (snapshot.cloudLink.acceptingJobs) "common.yes" else "common.no"),
+                )
+                KeyValueRow(skill.t("admin.health.field.current_network"), snapshot.cloudLink.currentNetwork)
+                KeyValueRow(
+                    skill.t("admin.health.field.active_job_network"),
+                    snapshot.cloudLink.activeJobNetwork ?: skill.t("admin.health.value.none"),
                 )
                 KeyValueRow(
-                    "Uplink",
+                    skill.t("admin.health.field.deferred_switch"),
+                    skill.t(if (snapshot.cloudLink.switchDeferredUntilJobEnd) "common.yes" else "common.no"),
+                )
+                KeyValueRow(
+                    skill.t("admin.health.field.uplink"),
                     snapshot.cloudLink.effectiveUplinkMbps?.let { "%.1f Mbps".format(it) }
-                        ?: "unknown (min %.1f)".format(snapshot.cloudLink.thresholds.minUplinkMbps),
-                )
-                KeyValueRow(
-                    "RTT",
-                    snapshot.cloudLink.rttMs?.let { "$it ms" }
-                        ?: "unknown (max ${snapshot.cloudLink.thresholds.maxRttMs})",
-                )
-                KeyValueRow(
-                    "Packet loss",
-                    snapshot.cloudLink.packetLossPercent?.let { "%.1f%%".format(it) }
-                        ?: "unknown (max %.1f%%)".format(
-                            snapshot.cloudLink.thresholds.maxPacketLossPercent
+                        ?: skill.t(
+                            "admin.health.value.unknown_min",
+                            mapOf("value" to "%.1f Mbps".format(snapshot.cloudLink.thresholds.minUplinkMbps)),
                         ),
                 )
                 KeyValueRow(
-                    "Threshold breaches",
-                    snapshot.cloudLink.thresholdBreaches.joinToString().ifEmpty { "none / unknown" },
+                    skill.t("admin.health.field.rtt"),
+                    snapshot.cloudLink.rttMs?.let { "$it ms" }
+                        ?: skill.t(
+                            "admin.health.value.unknown_max",
+                            mapOf("value" to "${snapshot.cloudLink.thresholds.maxRttMs} ms"),
+                        ),
                 )
-                KeyValueRow("Last switch", snapshot.cloudLink.lastSwitchSummary ?: "none / unknown")
                 KeyValueRow(
-                    "Pending uploads",
-                    snapshot.offlineQueue.pendingUploadJobs?.toString() ?: "unknown",
+                    skill.t("admin.health.field.packet_loss"),
+                    snapshot.cloudLink.packetLossPercent?.let { "%.1f%%".format(it) }
+                        ?: skill.t(
+                            "admin.health.value.unknown_max",
+                            mapOf(
+                                "value" to "%.1f%%".format(
+                                    snapshot.cloudLink.thresholds.maxPacketLossPercent
+                                )
+                            ),
+                        ),
+                )
+                KeyValueRow(
+                    skill.t("admin.health.field.threshold_breaches"),
+                    snapshot.cloudLink.thresholdBreaches.joinToString().ifEmpty { noneUnknown },
+                )
+                KeyValueRow(
+                    skill.t("admin.health.field.last_switch"),
+                    snapshot.cloudLink.lastSwitchSummary ?: noneUnknown,
+                )
+                KeyValueRow(
+                    skill.t("admin.health.field.pending_uploads"),
+                    snapshot.offlineQueue.pendingUploadJobs?.toString() ?: unknown,
                 )
             }
 
-            HealthPanel("Administrator Xavier MNN", Modifier.weight(1f)) {
-                KeyValueRow("Status", snapshot.xavierAdmin.status)
-                KeyValueRow("Runner", snapshot.xavierAdmin.runnerId ?: "not configured")
-                KeyValueRow("Engine", snapshot.xavierAdmin.runtimeEngine ?: "unknown")
-                KeyValueRow("Adapter", snapshot.xavierAdmin.adapterMode ?: "unknown")
-                KeyValueRow("Configured model", snapshot.xavierAdmin.modelName ?: "unknown")
+            HealthPanel(skill.t("admin.health.xavier_admin"), Modifier.weight(1f)) {
+                KeyValueRow(skill.t("admin.health.field.status"), snapshot.xavierAdmin.status)
                 KeyValueRow(
-                    "Model loaded",
-                    snapshot.xavierAdmin.modelLoaded?.toString() ?: "unknown",
+                    skill.t("admin.health.field.runner"),
+                    snapshot.xavierAdmin.runnerId ?: skill.t("admin.health.value.not_configured"),
+                )
+                KeyValueRow(skill.t("admin.health.field.engine"), snapshot.xavierAdmin.runtimeEngine ?: unknown)
+                KeyValueRow(skill.t("admin.health.field.adapter"), snapshot.xavierAdmin.adapterMode ?: unknown)
+                KeyValueRow(skill.t("admin.health.field.configured_model"), snapshot.xavierAdmin.modelName ?: unknown)
+                KeyValueRow(
+                    skill.t("admin.health.field.model_loaded"),
+                    snapshot.xavierAdmin.modelLoaded?.let {
+                        skill.t(if (it) "common.yes" else "common.no")
+                    } ?: unknown,
                 )
                 KeyValueRow(
-                    "Temperature",
+                    skill.t("admin.health.field.temperature"),
                     snapshot.xavierAdmin.temperatureC?.let { "%.1f °C".format(it) }
-                        ?: "unknown",
+                        ?: unknown,
                 )
-                KeyValueRow("Thermal", snapshot.xavierAdmin.thermalState)
+                KeyValueRow(skill.t("admin.health.field.thermal"), snapshot.xavierAdmin.thermalState)
                 KeyValueRow(
-                    "Disk free",
+                    skill.t("admin.health.field.disk_free"),
                     snapshot.xavierAdmin.diskFreeBytes?.let { "%.1f GB".format(it / 1e9) }
-                        ?: "unknown",
+                        ?: unknown,
                 )
                 KeyValueRow(
-                    "Last real recognition",
-                    snapshot.xavierAdmin.lastRecognitionLatencyMs?.let { "$it ms" } ?: "unknown",
+                    skill.t("admin.health.field.last_recognition"),
+                    snapshot.xavierAdmin.lastRecognitionLatencyMs?.let { "$it ms" } ?: unknown,
                 )
                 KeyValueRow(
-                    "Hardware validation",
+                    skill.t("admin.health.field.hardware_validation"),
                     snapshot.xavierAdmin.hardwareValidationStatus,
                 )
                 if (snapshot.xavierAdmin.mock) {
-                    AdminErrorBanner("MOCK INFERENCE — NOT REAL QC JUDGMENT")
+                    AdminErrorBanner(skill.t("pad.jetson.health.mock_warning"))
                 }
             }
         }

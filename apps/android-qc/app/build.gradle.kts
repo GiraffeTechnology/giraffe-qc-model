@@ -78,6 +78,8 @@ android {
         }
     }
 
+    sourceSets["main"].assets.srcDir("../../../src/web/static")
+
     if (withMnnNative) {
         externalNativeBuild {
             cmake {

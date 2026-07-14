@@ -62,17 +62,17 @@ fun AdminProbationScreen(
             OutlinedTextField(
                 value = revisionId,
                 onValueChange = { revisionId = it },
-                label = { Text("Standard revision ID") },
+                label = { Text(skill.t("admin.probation.revision_id")) },
                 singleLine = true,
                 modifier = Modifier.weight(1f),
             )
             Button(
                 enabled = revisionId.isNotBlank() && mutation !is AdminProbationMutationState.Working,
                 onClick = { scope.launch(Dispatchers.IO) { controller.refresh(revisionId) } },
-            ) { Text("Load") }
+            ) { Text(skill.t("common.load")) }
         }
         if (mutation is AdminProbationMutationState.Working) {
-            Text("Updating from server…", fontSize = 12.sp)
+            Text(skill.t("admin.probation.updating"), fontSize = 12.sp)
         }
         (mutation as? AdminProbationMutationState.Error)?.let { AdminErrorBanner(it.message) }
         Spacer(Modifier.height(10.dp))
@@ -86,32 +86,55 @@ fun AdminProbationScreen(
             ) {
                 Surface(tonalElevation = 2.dp, modifier = Modifier.weight(1f)) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text("Probation gate", fontWeight = FontWeight.SemiBold)
+                        Text(skill.t("admin.probation.gate"), fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(6.dp))
                         current.notice?.let { Text(it, fontSize = 13.sp) }
                         current.probation?.let { probation ->
                             val actions = probationActionPolicy(probation.status)
-                            KeyValueRow("Status", probation.status)
-                            KeyValueRow("SKU", probation.skuId)
-                            KeyValueRow("Revision", probation.standardRevisionId)
+                            KeyValueRow(skill.t("admin.probation.field.status"), probation.status)
+                            KeyValueRow(skill.t("admin.probation.field.sku"), probation.skuId)
+                            KeyValueRow(skill.t("admin.probation.field.revision"), probation.standardRevisionId)
                             KeyValueRow(
-                                "Jobs",
+                                skill.t("admin.probation.field.jobs"),
                                 "${probation.gate.jobsRecorded} / ${probation.gate.minSampleSize}",
                             )
-                            KeyValueRow("Agreements", probation.gate.agreements.toString())
                             KeyValueRow(
-                                "Agreement rate",
-                                "%.1f%% (threshold %.1f%%)".format(
-                                    probation.gate.agreementRate * 100,
-                                    probation.gate.agreementThreshold * 100,
+                                skill.t("admin.probation.field.agreements"),
+                                probation.gate.agreements.toString(),
+                            )
+                            KeyValueRow(
+                                skill.t("admin.probation.field.agreement_rate"),
+                                skill.t(
+                                    "admin.probation.rate_threshold",
+                                    mapOf(
+                                        "rate" to "%.1f".format(probation.gate.agreementRate * 100),
+                                        "threshold" to "%.1f".format(
+                                            probation.gate.agreementThreshold * 100
+                                        ),
+                                    ),
                                 ),
                             )
-                            KeyValueRow("Next cadence", "every ${probation.gate.recheckInterval} jobs")
-                            KeyValueRow("Check due", probation.gate.checkDue.toString())
-                            KeyValueRow("Qualified", probation.gate.qualified.toString())
                             KeyValueRow(
-                                "Human final verdict required",
-                                actions.humanFinalVerdictRequired.toString(),
+                                skill.t("admin.probation.field.next_cadence"),
+                                skill.t(
+                                    "admin.probation.every_jobs",
+                                    mapOf("count" to probation.gate.recheckInterval.toString()),
+                                ),
+                            )
+                            KeyValueRow(
+                                skill.t("admin.probation.field.check_due"),
+                                skill.t(if (probation.gate.checkDue) "common.yes" else "common.no"),
+                            )
+                            KeyValueRow(
+                                skill.t("admin.probation.field.qualified"),
+                                skill.t(if (probation.gate.qualified) "common.yes" else "common.no"),
+                            )
+                            KeyValueRow(
+                                skill.t("admin.probation.field.human_required"),
+                                skill.t(
+                                    if (actions.humanFinalVerdictRequired) "common.yes"
+                                    else "common.no"
+                                ),
                             )
                             Spacer(Modifier.height(8.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -119,13 +142,13 @@ fun AdminProbationScreen(
                                     OutlinedButton(
                                         enabled = mutation !is AdminProbationMutationState.Working,
                                         onClick = { scope.launch(Dispatchers.IO) { controller.pause() } },
-                                    ) { Text("Pause") }
+                                    ) { Text(skill.t("admin.probation.pause")) }
                                 }
                                 if (actions.canResume) {
                                     OutlinedButton(
                                         enabled = mutation !is AdminProbationMutationState.Working,
                                         onClick = { scope.launch(Dispatchers.IO) { controller.resume() } },
-                                    ) { Text("Resume") }
+                                    ) { Text(skill.t("admin.probation.resume")) }
                                 }
                                 OutlinedButton(
                                     enabled = actions.canViewReport &&
@@ -133,20 +156,30 @@ fun AdminProbationScreen(
                                     onClick = {
                                         scope.launch(Dispatchers.IO) { controller.loadDisagreementReport() }
                                     },
-                                ) { Text("View disagreements") }
+                                ) { Text(skill.t("admin.probation.view_disagreements")) }
                             }
                         }
                         current.report?.let { report ->
                             Spacer(Modifier.height(10.dp))
-                            Text("Disagreement report", fontWeight = FontWeight.SemiBold)
-                            KeyValueRow("Disagreeing jobs", report.disagreements.toString())
+                            Text(skill.t("admin.probation.report"), fontWeight = FontWeight.SemiBold)
+                            KeyValueRow(
+                                skill.t("admin.probation.disagreeing_jobs"),
+                                report.disagreements.toString(),
+                            )
                             report.detectionPoints.forEach { point ->
                                 KeyValueRow(point.pointCode, point.disagreementCount.toString())
                             }
                             report.jobs.take(10).forEach { job ->
                                 Text(
-                                    "#${job.sequenceNo} ${job.jobRef}: " +
-                                        "AI ${job.aiVerdict} / human ${job.humanFinalVerdict}",
+                                    skill.t(
+                                        "admin.probation.job_line",
+                                        mapOf(
+                                            "sequence" to job.sequenceNo.toString(),
+                                            "job" to job.jobRef,
+                                            "ai" to job.aiVerdict,
+                                            "human" to job.humanFinalVerdict,
+                                        ),
+                                    ),
                                     fontSize = 11.sp,
                                 )
                             }
@@ -166,8 +199,14 @@ fun AdminProbationScreen(
                                     Surface(tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
                                         Column(modifier = Modifier.padding(8.dp)) {
                                             Text(suspension.id, fontWeight = FontWeight.SemiBold)
-                                            KeyValueRow("Status", suspension.status)
-                                            KeyValueRow("Reason", suspension.reason ?: "unknown")
+                                            KeyValueRow(
+                                                skill.t("admin.probation.field.status"),
+                                                suspension.status,
+                                            )
+                                            KeyValueRow(
+                                                skill.t("admin.probation.field.reason"),
+                                                suspension.reason ?: skill.t("common.unknown"),
+                                            )
                                         }
                                     }
                                 }

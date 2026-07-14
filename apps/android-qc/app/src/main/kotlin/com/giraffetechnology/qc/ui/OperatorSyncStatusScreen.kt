@@ -33,6 +33,7 @@ import com.giraffetechnology.qc.i18n.LanguageController
 import com.giraffetechnology.qc.submit.OutboxEntry
 import com.giraffetechnology.qc.submit.OutboxUploader
 import com.giraffetechnology.qc.submit.PadOutbox
+import com.giraffetechnology.qc.submit.HumanDecision
 import kotlinx.coroutines.launch
 
 /**
@@ -92,7 +93,12 @@ fun OperatorSyncStatusScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(Modifier.padding(10.dp)) {
-                        Text("${s.itemNumber} — ${s.humanDecision.wire}", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        val decision = when (s.humanDecision) {
+                            HumanDecision.PASS -> skill.t("verdict.pass")
+                            HumanDecision.FAIL -> skill.t("verdict.fail")
+                            HumanDecision.REVIEW_REQUIRED -> skill.t("verdict.review_required")
+                        }
+                        Text("${s.itemNumber} — $decision", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                         Text(
                             "rev=${s.standardRevisionId ?: "—"} · bundle=${s.bundleVersion ?: "—"}",
                             fontSize = 11.sp,

@@ -143,7 +143,7 @@ fun OperatorQcWorkScreen(
             } else {
                 PadInspectionResult(
                     overallResult = "CLOUD_UNAVAILABLE",
-                    reason = "Cloud inspection unavailable — no verdict available",
+                    reason = skill.t("pad.work.cloud_unavailable_no_verdict"),
                     modelName = runtimeLoader.javaClass.simpleName,
                     localOnly = false,
                     cloudInferenceUsed = true,
@@ -162,7 +162,7 @@ fun OperatorQcWorkScreen(
             val result = inspectionCoordinator?.inspect(task, photo)
                 ?: PadInspectionResult(
                     overallResult = "CLOUD_UNAVAILABLE",
-                    reason = "Cloud inspection coordinator unavailable — no verdict available",
+                    reason = skill.t("pad.work.coordinator_unavailable_no_verdict"),
                     modelName = runtimeLoader.javaClass.simpleName,
                     localOnly = false,
                     cloudInferenceUsed = true,
@@ -189,14 +189,20 @@ fun OperatorQcWorkScreen(
                     }
                 }
                 CameraPermissionState.Checking -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Camera permission required", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text(
+                        skill.t("pad.work.camera_permission_required"),
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                    )
                     Spacer(Modifier.height(8.dp))
                     Button(onClick = { permLauncher.launch(Manifest.permission.CAMERA) }) {
                         Text(skill.t("pad.work.capture"))
                     }
                 }
                 CameraPermissionState.Denied -> Text(
-                    "Camera permission denied", color = Color(0xFFEF5350), fontWeight = FontWeight.Bold,
+                    skill.t("pad.work.camera_permission_denied"),
+                    color = Color(0xFFEF5350),
+                    fontWeight = FontWeight.Bold,
                 )
             }
         }

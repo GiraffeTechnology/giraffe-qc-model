@@ -96,7 +96,7 @@ fun AdminResultsScreen(
                                     Text(v.submissionId.take(12) + "…", fontWeight = FontWeight.SemiBold)
                                     Spacer(Modifier.weight(1f))
                                     Text(
-                                        v.serverOverallResult.uppercase(),
+                                        localizedVerdict(skill, v.serverOverallResult),
                                         color = when (v.serverOverallResult) {
                                             "pass" -> Color(0xFF2E7D32)
                                             "fail" -> Color(0xFFB71C1C)
@@ -107,7 +107,8 @@ fun AdminResultsScreen(
                                 }
                                 KeyValueRow(
                                     skill.t("admin.results.field.pad_vs_server"),
-                                    "${v.padOverallResult} / ${v.serverOverallResult}" +
+                                    "${localizedVerdict(skill, v.padOverallResult)} / " +
+                                        localizedVerdict(skill, v.serverOverallResult) +
                                         if (v.agrees) " ✓" else " ✗",
                                 )
                                 if (v.failingCheckpoints.isNotEmpty()) {
@@ -121,7 +122,10 @@ fun AdminResultsScreen(
                                     v.bundleVersion ?: "—",
                                 )
                                 v.humanFinalDecision?.let {
-                                    KeyValueRow(skill.t("admin.results.field.final"), it)
+                                    KeyValueRow(
+                                        skill.t("admin.results.field.final"),
+                                        localizedVerdict(skill, it),
+                                    )
                                 }
                                 if (v.reviewRequired && v.humanFinalDecision == null) {
                                     Spacer(Modifier.height(6.dp))
@@ -159,4 +163,14 @@ fun AdminResultsScreen(
             }
         }
     }
+}
+
+private fun localizedVerdict(
+    skill: com.giraffetechnology.qc.contracts.GiraffeLanguageSkill,
+    value: String,
+): String = when (value.lowercase()) {
+    "pass", "accepted" -> skill.t("verdict.pass")
+    "fail", "not_accepted" -> skill.t("verdict.fail")
+    "review_required" -> skill.t("verdict.review_required")
+    else -> value
 }

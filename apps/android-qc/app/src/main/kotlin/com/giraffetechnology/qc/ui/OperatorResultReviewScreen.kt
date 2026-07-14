@@ -113,7 +113,7 @@ fun OperatorResultReviewScreen(
         OutlinedTextField(
             value = decidedBy,
             onValueChange = { decidedBy = it },
-            label = { Text("Operator identity (required for audit)") },
+            label = { Text(skill.t("pad.review.operator_identity")) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -123,7 +123,11 @@ fun OperatorResultReviewScreen(
         if (submitBlocked) {
             Surface(color = Color(0xFFB71C1C).copy(alpha = 0.15f), modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    if (result.overallResult == "PENDING_UPLOAD") "Pending upload — no verdict available" else "Cloud verdict unavailable — submission blocked",
+                    if (result.overallResult == "PENDING_UPLOAD") {
+                        skill.t("pad.review.pending_upload_no_verdict")
+                    } else {
+                        skill.t("pad.review.cloud_verdict_unavailable")
+                    },
                     modifier = Modifier.padding(12.dp),
                     color = Color(0xFFB71C1C),
                     fontWeight = FontWeight.Bold,
