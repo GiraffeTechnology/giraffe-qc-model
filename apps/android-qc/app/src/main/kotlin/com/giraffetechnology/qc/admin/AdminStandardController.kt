@@ -11,6 +11,13 @@ sealed class AdminUploadState {
     data class Error(val message: String) : AdminUploadState()
 }
 
+sealed class AdminProcessCardUploadState {
+    object Idle : AdminProcessCardUploadState()
+    object Uploading : AdminProcessCardUploadState()
+    data class Uploaded(val trainingPackId: String) : AdminProcessCardUploadState()
+    data class Error(val message: String) : AdminProcessCardUploadState()
+}
+
 sealed class AdminPointEditState {
     object Idle : AdminPointEditState()
     object Saving : AdminPointEditState()
@@ -52,6 +59,11 @@ class AdminStandardController(
     private val _uploadState = MutableStateFlow<AdminUploadState>(AdminUploadState.Idle)
     val uploadState: StateFlow<AdminUploadState> = _uploadState.asStateFlow()
 
+    private val _processCardUploadState =
+        MutableStateFlow<AdminProcessCardUploadState>(AdminProcessCardUploadState.Idle)
+    val processCardUploadState: StateFlow<AdminProcessCardUploadState> =
+        _processCardUploadState.asStateFlow()
+
     private val _pointState = MutableStateFlow<AdminPointEditState>(AdminPointEditState.Idle)
     val pointState: StateFlow<AdminPointEditState> = _pointState.asStateFlow()
 
@@ -80,6 +92,32 @@ class AdminStandardController(
                 is AdminApiResult.Ok -> AdminUploadState.Uploaded(r.value)
                 is AdminApiResult.Error -> AdminUploadState.Error(r.message)
             }
+    }
+
+    fun uploadProcessCard(
+        trainingPackId: String,
+        fileName: String,
+        mimeType: String,
+        bytes: ByteArray,
+    ) {
+        if (trainingPackId.isBlank()) {
+            _processCardUploadState.value =
+                AdminProcessCardUploadState.Error("training pack id is required")
+            return
+        }
+        if (bytes.isEmpty()) {
+            _processCardUploadState.value = AdminProcessCardUploadState.Error("empty file")
+            return
+        }
+        _processCardUploadState.value = AdminProcessCardUploadState.Uploading
+        _processCardUploadState.value = when (
+            val r = client.uploadProcessCard(
+                trainingPackId.trim(), fileName, mimeType, bytes,
+            )
+        ) {
+            is AdminApiResult.Ok -> AdminProcessCardUploadState.Uploaded(trainingPackId.trim())
+            is AdminApiResult.Error -> AdminProcessCardUploadState.Error(r.message)
+        }
     }
 
     fun addDetectionPoint(
@@ -203,5 +241,8 @@ class AdminStandardController(
     }
 
     fun resetUploadState() { _uploadState.value = AdminUploadState.Idle }
+    fun resetProcessCardUploadState() {
+        _processCardUploadState.value = AdminProcessCardUploadState.Idle
+    }
     fun resetPointState() { _pointState.value = AdminPointEditState.Idle }
 }

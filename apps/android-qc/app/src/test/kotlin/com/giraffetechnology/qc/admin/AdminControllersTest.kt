@@ -128,6 +128,33 @@ class AdminSkuControllerTest {
 class AdminStandardControllerTest {
 
     @Test
+    fun `process card requires a training pack before opening the real flow`() {
+        val transport = FakeAdminTransport()
+        val controller = AdminStandardController(loggedInClient(transport))
+        controller.uploadProcessCard("", "card.txt", "text/plain", "step one".toByteArray())
+        val state = controller.processCardUploadState.value
+        assertTrue(state is AdminProcessCardUploadState.Error)
+        assertEquals(1, transport.requests.size) // login only
+    }
+
+    @Test
+    fun `process card upload reaches Source Workbench and reports stored`() {
+        val transport = FakeAdminTransport()
+        val client = loggedInClient(transport)
+        transport.stub(
+            "POST", "/admin/qc-model/training-packs/tp1/sources/upload",
+            AdminHttpResponse(303, null, mapOf("location" to listOf("/sources"))),
+        )
+        val controller = AdminStandardController(client)
+        controller.uploadProcessCard(
+            "tp1", "card.txt", "text/plain", "step one".toByteArray(),
+        )
+        val state = controller.processCardUploadState.value
+        assertTrue(state is AdminProcessCardUploadState.Uploaded)
+        assertEquals("tp1", (state as AdminProcessCardUploadState.Uploaded).trainingPackId)
+    }
+
+    @Test
     fun `counting point without expected count is rejected before the network`() {
         val transport = FakeAdminTransport()
         val controller = AdminStandardController(loggedInClient(transport))

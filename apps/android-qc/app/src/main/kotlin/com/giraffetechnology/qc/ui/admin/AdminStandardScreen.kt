@@ -54,6 +54,7 @@ import com.giraffetechnology.qc.admin.AdminApiClient
 import com.giraffetechnology.qc.admin.AdminCategoryState
 import com.giraffetechnology.qc.admin.AdminDetectionPoint
 import com.giraffetechnology.qc.admin.AdminPointEditState
+import com.giraffetechnology.qc.admin.AdminProcessCardUploadState
 import com.giraffetechnology.qc.admin.AdminRegionSaveState
 import com.giraffetechnology.qc.admin.AdminSkuController
 import com.giraffetechnology.qc.admin.AdminStandardController
@@ -62,6 +63,8 @@ import com.giraffetechnology.qc.admin.Region
 import com.giraffetechnology.qc.i18n.LanguageController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+
+private enum class AdminDocumentUploadTarget { STANDARD_PHOTO, PROCESS_CARD }
 
 /**
  * Standard authoring for one SKU (WS3 items 3–5):
@@ -84,13 +87,17 @@ fun AdminStandardScreen(
     val skill by languageController.skill.collectAsState()
     val sku by skuController.selected.collectAsState()
     val uploadState by standardController.uploadState.collectAsState()
+    val processCardUploadState by standardController.processCardUploadState.collectAsState()
     val pointState by standardController.pointState.collectAsState()
     val regionState by standardController.regionState.collectAsState()
     val categoryState by standardController.categoryState.collectAsState()
     val pendingRegions by standardController.pendingRegionsByPoint.collectAsState()
 
     val context = androidx.compose.ui.platform.LocalContext.current
-    var pendingViewType by remember { mutableStateOf<String?>(null) }
+    var uploadTarget by remember {
+        mutableStateOf(AdminDocumentUploadTarget.STANDARD_PHOTO)
+    }
+    var trainingPackId by remember { mutableStateOf("") }
 
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
@@ -99,10 +106,19 @@ fun AdminStandardScreen(
             scope.launch(Dispatchers.IO) {
                 val resolver = context.contentResolver
                 val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
-                val mime = resolver.getType(uri) ?: "image/jpeg"
-                val name = uri.lastPathSegment ?: "upload.jpg"
-                standardController.uploadPhoto(skuId, name, mime, bytes, pendingViewType)
-                skuController.reloadSelected()
+                val mime = resolver.getType(uri) ?: "application/octet-stream"
+                val name = uri.lastPathSegment ?: "upload"
+                when (uploadTarget) {
+                    AdminDocumentUploadTarget.STANDARD_PHOTO -> {
+                        standardController.uploadPhoto(skuId, name, mime, bytes, null)
+                        skuController.reloadSelected()
+                    }
+                    AdminDocumentUploadTarget.PROCESS_CARD -> {
+                        standardController.uploadProcessCard(
+                            trainingPackId, name, mime, bytes,
+                        )
+                    }
+                }
             }
         }
     }
@@ -152,19 +168,48 @@ fun AdminStandardScreen(
                 Text(skill.t("admin.standard.photos"), fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(4.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { pendingViewType = null; filePicker.launch("image/*") }) {
+                    Button(onClick = {
+                        uploadTarget = AdminDocumentUploadTarget.STANDARD_PHOTO
+                        filePicker.launch("image/*")
+                    }) {
                         Text(skill.t("admin.standard.upload_photo"))
                     }
-                    OutlinedButton(onClick = {
-                        pendingViewType = "process_card"; filePicker.launch("image/*")
-                    }) {
+                    OutlinedButton(
+                        enabled = trainingPackId.isNotBlank(),
+                        onClick = {
+                            uploadTarget = AdminDocumentUploadTarget.PROCESS_CARD
+                            filePicker.launch("*/*")
+                        },
+                    ) {
                         Text(skill.t("admin.standard.upload_process_card"))
                     }
                 }
+                OutlinedTextField(
+                    value = trainingPackId,
+                    onValueChange = {
+                        trainingPackId = it
+                        standardController.resetProcessCardUploadState()
+                    },
+                    label = { Text(skill.t("admin.standard.training_pack_id")) },
+                    supportingText = {
+                        Text(skill.t("admin.standard.process_card_supported_formats"))
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 when (val u = uploadState) {
                     is AdminUploadState.Uploading -> Text(skill.t("admin.standard.uploading"), fontSize = 12.sp)
-                    is AdminUploadState.Uploaded -> AdminOkBanner(skill.t("admin.standard.uploaded"))
+                    is AdminUploadState.Uploaded ->
+                        AdminOkBanner(skill.t("admin.standard.photo_uploaded"))
                     is AdminUploadState.Error -> AdminErrorBanner(u.message)
+                    else -> {}
+                }
+                when (val u = processCardUploadState) {
+                    is AdminProcessCardUploadState.Uploading ->
+                        Text(skill.t("admin.standard.process_card_uploading"), fontSize = 12.sp)
+                    is AdminProcessCardUploadState.Uploaded ->
+                        AdminOkBanner(skill.t("admin.standard.process_card_uploaded"))
+                    is AdminProcessCardUploadState.Error -> AdminErrorBanner(u.message)
                     else -> {}
                 }
                 Spacer(Modifier.height(8.dp))

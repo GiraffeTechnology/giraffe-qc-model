@@ -235,6 +235,7 @@ class AdminApiClient internal constructor(
         identity?.let { mapOf("Cookie" to it.sessionCookie) } ?: emptyMap()
 
     private fun enc(v: String): String = URLEncoder.encode(v, "UTF-8")
+    private fun pathEnc(v: String): String = enc(v).replace("+", "%20")
 
     // ── 1. Admin login / identity binding ───────────────────────────────────
 
@@ -340,6 +341,55 @@ class AdminApiClient internal constructor(
             )
         }.getOrElse { e -> return AdminApiResult.Error(e.message ?: "network error") }
         return parseResponse(resp) { it.getString("photo_id") }
+    }
+
+    /**
+     * Upload a process-card source through the same real Source Workbench route
+     * used by Studio. The backend stores/classifies every accepted document and
+     * only extracts formats for which it has a real parser; this client does not
+     * duplicate or guess extraction behavior.
+     */
+    fun uploadProcessCard(
+        trainingPackId: String,
+        fileName: String,
+        mimeType: String,
+        bytes: ByteArray,
+    ): AdminApiResult<String> {
+        if (identity == null) return AdminApiResult.Error("administrator authentication required", 401)
+        val tenant = identity?.tenantId ?: "default"
+        val boundary = "----GiraffeQcPad${UUID.randomUUID().toString().replace("-", "")}"
+        val safeFileName = fileName.replace(Regex("[\\r\\n\\\"]"), "_")
+        val out = ByteArrayOutputStream()
+        fun field(name: String, value: String) {
+            out.write("--$boundary\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n".toByteArray())
+        }
+        field("tenant_id", tenant)
+        field("title", safeFileName)
+        out.write(
+            ("--$boundary\r\nContent-Disposition: form-data; name=\"file\"; " +
+                "filename=\"$safeFileName\"\r\nContent-Type: $mimeType\r\n\r\n").toByteArray()
+        )
+        out.write(bytes)
+        out.write("\r\n--$boundary--\r\n".toByteArray())
+
+        val resp = runCatching {
+            transport.request(
+                "POST",
+                "$baseUrl/admin/qc-model/training-packs/${pathEnc(trainingPackId)}/sources/upload",
+                headers = cookieHeaders(),
+                body = out.toByteArray(),
+                contentType = "multipart/form-data; boundary=$boundary",
+                readTimeoutMs = 60_000,
+            )
+        }.getOrElse { e -> return AdminApiResult.Error(e.message ?: "network error") }
+
+        // The Source Workbench returns a 303 to its source list after the file
+        // has been stored and the source document committed.
+        if (resp.code == 303) {
+            val location = resp.headers["location"]?.firstOrNull().orEmpty()
+            return AdminApiResult.Ok(location.ifBlank { trainingPackId })
+        }
+        return AdminApiResult.Error(errorMessage(resp), resp.code)
     }
 
     // ── 4. Detection point input / edit / confirm ───────────────────────────
