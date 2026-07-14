@@ -37,6 +37,10 @@ from src.db.studio_models import QCPublishBundle
 from src.intake.service import confirm_standard_intake, reject_standard_intake
 from src.qc_model.studio import service as studio
 from src.qc_model.studio.regions import InvalidRegion, set_detection_point_regions
+from src.qc_model.studio.analysis_config import (
+    InvalidAnalysisConfig,
+    set_detection_point_analysis_config,
+)
 from src.storage.upload_validation import (
     UploadValidationError,
     read_and_validate_upload,
@@ -418,6 +422,11 @@ def studio_update_detection_point(
         "regions": point.regions_json or [],
     }
 
+class SetAnalysisConfigRequest(BaseModel):
+    tenant_id: str = "default"
+    expected_features: Dict[str, Any] = {}
+    cv_config: Dict[str, Any] = {}
+
 
 @router.post("/admin/studio/detection-points/{detection_point_id}/regions")
 def studio_set_regions(
@@ -447,6 +456,29 @@ def studio_set_regions(
         "status": "regions_saved",
         "detection_point_id": dp.id,
         "regions": dp.regions_json or [],
+        "sku": studio.sku_summary(db, sku) if sku else None,
+    }
+
+
+@router.post("/admin/studio/detection-points/{detection_point_id}/analysis-config")
+def studio_set_analysis_config(
+    detection_point_id: str,
+    body: SetAnalysisConfigRequest,
+    db: Session = Depends(get_db_dep),
+):
+    """Persist WS8 analyzer hooks before publish; no provider/model coupling."""
+    try:
+        point = set_detection_point_analysis_config(
+            db, detection_point_id, body.expected_features, body.cv_config, body.tenant_id,
+        )
+    except InvalidAnalysisConfig as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    sku = db.query(QCSkuItem).filter_by(id=point.sku_id, tenant_id=body.tenant_id).first()
+    return {
+        "status": "analysis_config_saved",
+        "detection_point_id": point.id,
+        "expected_features": point.expected_features_json or {},
+        "cv_config": point.cv_config_json or {},
         "sku": studio.sku_summary(db, sku) if sku else None,
     }
 

@@ -814,6 +814,68 @@ def test_published_bundle_manifest_contains_authored_regions(client, db_session_
     assert dp_manifest["regions"] == [region]
 
 
+def test_analysis_config_real_endpoint_persists_and_bundle_carries_hooks(client):
+    """WS6 v2: authored expected_features/cv_config reach the signed manifest."""
+    import io
+    import json
+    import tarfile
+
+    sku_id = _create_flw(client)
+    client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": "default"},
+        files={"image": ("flw.png", _tiny_png(), "image/png")},
+    )
+    dp_id = _confirm_one_point(client, sku_id)
+    expected = {"rhinestone_count": 24}
+    cv_config = {"analyzers": [{"name": "rhinestone_count", "params": {"min_area": 8}}]}
+    saved = client.post(
+        f"/admin/studio/detection-points/{dp_id}/analysis-config",
+        json={"expected_features": expected, "cv_config": cv_config},
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["expected_features"] == expected
+    assert saved.json()["cv_config"] == cv_config
+
+    published = client.post("/admin/studio/publish", json={"sku_id": sku_id})
+    assert published.status_code == 200, published.text
+    bundle_id = published.json()["bundle"]["id"]
+    archive = client.get(f"/admin/studio/bundles/{bundle_id}/download")
+    with tarfile.open(fileobj=io.BytesIO(archive.content), mode="r:gz") as tf:
+        manifest = json.loads(tf.extractfile("manifest.json").read())
+    point = next(item for item in manifest["detection_points"] if item["point_code"] == "STAMEN_CENTERING")
+    assert point["expected_features"] == expected
+    assert point["cv_config"] == cv_config
+
+
+def test_analysis_config_rejects_unknown_analyzer(client):
+    sku_id = _create_flw(client)
+    dp_id = _confirm_one_point(client, sku_id)
+    response = client.post(
+        f"/admin/studio/detection-points/{dp_id}/analysis-config",
+        json={"cv_config": {"analyzers": [{"name": "vendor_magic", "params": {}}]}},
+    )
+    assert response.status_code == 400
+    assert "unsupported analyzer" in response.json()["error"]
+
+
+def test_analysis_config_change_after_publish_requires_new_revision(client):
+    sku_id = _create_flw(client)
+    client.post(
+        "/admin/studio/upload",
+        data={"sku_id": sku_id, "tenant_id": "default"},
+        files={"image": ("flw.png", _tiny_png(), "image/png")},
+    )
+    dp_id = _confirm_one_point(client, sku_id)
+    assert client.post("/admin/studio/publish", json={"sku_id": sku_id}).status_code == 200
+    response = client.post(
+        f"/admin/studio/detection-points/{dp_id}/analysis-config",
+        json={"expected_features": {"petal_count": 5}},
+    )
+    assert response.status_code == 400
+    assert "new revision" in response.json()["error"]
+
+
 # ── Probation auto-start on publish (WS7 §1.1) ────────────────────────────────
 
 

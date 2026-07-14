@@ -285,6 +285,8 @@ def _dp_view(dp: QCDetectionPoint) -> Dict[str, Any]:
         "severity": dp.severity,
         "sort_order": dp.sort_order,
         "regions": dp.regions_json or [],
+        "expected_features": dp.expected_features_json or {},
+        "cv_config": dp.cv_config_json or {},
     }
 
 
@@ -514,6 +516,8 @@ def build_bundle_manifest(db: Session, sku: QCSkuItem, tenant_id: str) -> Dict[s
                 "severity": dp.severity,
                 "sort_order": dp.sort_order,
                 "regions": dp.regions_json or [],
+                "expected_features": dp.expected_features_json or {},
+                "cv_config": dp.cv_config_json or {},
             }
             for dp in dps
         ],

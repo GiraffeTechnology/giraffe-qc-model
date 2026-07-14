@@ -125,6 +125,9 @@
           `<button type="button" class="btn dp-regions-btn" data-dp-id="${esc(dp.id)}">` +
           (regionCount ? `Regions (${regionCount})` : "Add regions") +
           `</button>` +
+          `<button type="button" class="btn dp-analysis-btn" data-dp-id="${esc(dp.id)}">` +
+          ((dp.cv_config && (dp.cv_config.analyzers || []).length) ? "Edit CV config" : "Add CV config") +
+          `</button>` +
           `<div class="region-editor-slot"></div>` +
           `</li>`
         );
@@ -150,8 +153,44 @@
     skuCard.querySelectorAll(".dp-regions-btn").forEach((btn) => {
       btn.addEventListener("click", () => toggleRegionEditor(btn));
     });
+    skuCard.querySelectorAll(".dp-analysis-btn").forEach((btn) => {
+      btn.addEventListener("click", () => editAnalysisConfig(btn.dataset.dpId));
+    });
 
     if (sku.active_revision_id) loadProbation(sku.active_revision_id);
+  }
+
+  function editAnalysisConfig(dpId) {
+    const dp = findDp(dpId);
+    if (!dp) return;
+    const expectedRaw = window.prompt(
+      "Expected features JSON (example: {\"rhinestone_count\":24})",
+      JSON.stringify(dp.expected_features || {})
+    );
+    if (expectedRaw === null) return;
+    const configRaw = window.prompt(
+      "CV config JSON (analyzers: rhinestone_count, petal_segmentation, pistil_localization)",
+      JSON.stringify(dp.cv_config || {})
+    );
+    if (configRaw === null) return;
+    let expectedFeatures, cvConfig;
+    try {
+      expectedFeatures = JSON.parse(expectedRaw || "{}");
+      cvConfig = JSON.parse(configRaw || "{}");
+    } catch (err) {
+      addBubble("Analysis config must be valid JSON: " + err.message, "system");
+      return;
+    }
+    api(`/admin/studio/detection-points/${dpId}/analysis-config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tenant_id: tenant, expected_features: expectedFeatures, cv_config: cvConfig }),
+    })
+      .then((data) => {
+        setActiveSku(data.sku);
+        addBubble("Detection-point CV configuration saved.", "system");
+      })
+      .catch((err) => addBubble("Could not save CV configuration: " + err.message, "system"));
   }
 
   // ── Probation / qualification (§3, WS7) ─────────────────────────────────

@@ -187,6 +187,10 @@ class QCDetectionPoint(Base):
     # ``[{"image_id", "x", "y", "w", "h"}]`` (0–1 coords, top-left origin). A
     # point supports zero, one, or many regions; empty/None is valid.
     regions_json: Mapped[Optional[list]] = mapped_column(JSON)
+    # Architecture v2 classical-CV hints. These are provider-neutral data;
+    # they never name or select an LLM/VLM vendor.
+    expected_features_json: Mapped[Optional[dict]] = mapped_column(JSON)
+    cv_config_json: Mapped[Optional[dict]] = mapped_column(JSON)
     expected_value: Mapped[Optional[str]] = mapped_column(String(256))
     method_hint: Mapped[Optional[str]] = mapped_column(String(128))
     # Human-readable pass/fail criterion for this detection point.  Carried
@@ -209,4 +213,3 @@ class QCDetectionPoint(Base):
     requirement: Mapped[Optional["QCInspectionRequirement"]] = relationship(
         "QCInspectionRequirement", back_populates="detection_points"
     )
-
