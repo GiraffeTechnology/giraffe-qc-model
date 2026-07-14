@@ -445,6 +445,7 @@ class UpdateStudioDetectionPointRequest(BaseModel):
     expected_value: Optional[str] = None
     method_hint: Optional[str] = None
     severity: str = "major"
+    pass_criteria: Optional[str] = None
 
 
 @router.patch("/admin/studio/detection-points/{detection_point_id}")
@@ -461,27 +462,43 @@ def studio_update_detection_point(
     )
     if point is None:
         raise HTTPException(status_code=404, detail="Detection point not found")
+    expected_value = (
+        body.expected_value if "expected_value" in body.model_fields_set else point.expected_value
+    )
+    pass_criteria = (
+        body.pass_criteria if "pass_criteria" in body.model_fields_set else point.pass_criteria
+    )
+    if not body.point_code.strip() or not body.label.strip():
+        raise HTTPException(status_code=400, detail="point code and label are required")
+    if body.method_hint == "counting" and not (expected_value or "").strip():
+        raise HTTPException(status_code=400, detail="counting checkpoint needs an expected count")
+    if body.severity not in {"minor", "major", "critical"}:
+        raise HTTPException(status_code=400, detail="unsupported severity")
+
     already_published = db.query(QCPublishBundle.id).filter_by(
         tenant_id=body.tenant_id,
         standard_revision_id=point.standard_revision_id,
     ).first()
-    if already_published:
+    judgment_changed = any((
+        point.point_code != body.point_code.strip(),
+        point.label != body.label.strip(),
+        point.method_hint != body.method_hint,
+        point.expected_value != expected_value,
+        point.pass_criteria != pass_criteria,
+        point.severity != body.severity,
+    ))
+    if already_published and judgment_changed:
         raise HTTPException(
             status_code=409,
             detail="judgment-field edits after publish require a new qualified revision",
         )
-    if not body.point_code.strip() or not body.label.strip():
-        raise HTTPException(status_code=400, detail="point code and label are required")
-    if body.method_hint == "counting" and not (body.expected_value or "").strip():
-        raise HTTPException(status_code=400, detail="counting checkpoint needs an expected count")
-    if body.severity not in {"minor", "major", "critical"}:
-        raise HTTPException(status_code=400, detail="unsupported severity")
 
     point.point_code = body.point_code.strip()
     point.label = body.label.strip()
     point.description = body.description
     point.method_hint = body.method_hint
-    point.expected_value = body.expected_value
+    point.expected_value = expected_value
+    point.pass_criteria = pass_criteria
     point.severity = body.severity
     point.updated_at = _now()
     db.commit()
@@ -493,6 +510,7 @@ def studio_update_detection_point(
         "description": point.description,
         "method_hint": point.method_hint,
         "expected_value": point.expected_value,
+        "pass_criteria": point.pass_criteria,
         "severity": point.severity,
         "regions": point.regions_json or [],
     }

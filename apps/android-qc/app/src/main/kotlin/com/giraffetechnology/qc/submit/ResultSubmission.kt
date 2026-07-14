@@ -38,6 +38,7 @@ data class ResultSubmission(
     val modelResult: String,
     /** The operator's binding final decision. */
     val humanDecision: HumanDecision,
+    val humanDecidedBy: String,
     val reason: String,
     val modelName: String,
     val capturedImagePath: String?,
@@ -56,6 +57,7 @@ data class ResultSubmission(
             task: QcTask,
             result: PadInspectionResult,
             decision: HumanDecision,
+            decidedBy: String,
             clientJobId: String,
             createdAtEpochMs: Long,
         ): ResultSubmission = ResultSubmission(
@@ -67,6 +69,7 @@ data class ResultSubmission(
             bundleVersion = task.bundleVersion,
             modelResult = result.overallResult,
             humanDecision = decision,
+            humanDecidedBy = decidedBy.trim().also { require(it.isNotEmpty()) { "operator identity required" } },
             reason = result.reason,
             modelName = result.modelName,
             capturedImagePath = result.capturedImagePath,
