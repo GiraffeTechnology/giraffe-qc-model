@@ -692,7 +692,7 @@ Parsed result:
 ### stage2-ui-simulator-ready
 
 - Category: `subjective_judgment`
-- Input: `sandbox_tests/reports/evidence/stage2/ui/simulator-ready.png`
+- Input: `sandbox_tests/reports/evidence/stage2/ui/chrome-simulator-ready.jpg`
 - Verdict: `pass`
 - Passed: `true`
 - Timings (ms): `{"cv": 0.0, "inference": 0.0, "parse": 0.0, "total": 0.0}`
@@ -709,13 +709,15 @@ Parsed result:
 
 ```json
 {
+  "camera_connected": false,
+  "external_drive_label_visible": true,
   "fail_closed": false,
   "inference_call_count": 0,
   "mock_label_visible": true,
   "qemu_aarch64_label_visible": true,
   "result_count": 0,
-  "screenshot_height_px": 1800,
-  "screenshot_width_px": 2560,
+  "screenshot_height_px": 666,
+  "screenshot_width_px": 1437,
   "status": "READY"
 }
 ```
@@ -723,7 +725,7 @@ Parsed result:
 ### stage2-ui-simulated-capture
 
 - Category: `subjective_judgment`
-- Input: `sandbox_tests/reports/evidence/stage2/ui/simulated-capture.png`
+- Input: `sandbox_tests/reports/evidence/stage2/ui/chrome-simulated-capture.jpg`
 - Verdict: `pass`
 - Passed: `true`
 - Timings (ms): `{"cv": 0.0, "inference": 0.0, "parse": 0.0, "total": 0.0}`
@@ -740,13 +742,15 @@ Parsed result:
 
 ```json
 {
+  "camera_connected": false,
+  "external_drive_label_visible": true,
   "fail_closed": false,
   "inference_call_count": 0,
   "mock_label_visible": true,
   "qemu_aarch64_label_visible": true,
   "result_count": 0,
-  "screenshot_height_px": 1800,
-  "screenshot_width_px": 2560,
+  "screenshot_height_px": 666,
+  "screenshot_width_px": 1437,
   "status": "FIXTURE LOADED"
 }
 ```
@@ -754,7 +758,7 @@ Parsed result:
 ### stage2-ui-cv-success
 
 - Category: `subjective_judgment`
-- Input: `sandbox_tests/reports/evidence/stage2/ui/cv-success.png`
+- Input: `sandbox_tests/reports/evidence/stage2/ui/chrome-cv-success.jpg`
 - Verdict: `pass`
 - Passed: `true`
 - Timings (ms): `{"cv": 0.0, "inference": 0.0, "parse": 0.0, "total": 0.0}`
@@ -771,13 +775,15 @@ Parsed result:
 
 ```json
 {
+  "camera_connected": false,
+  "external_drive_label_visible": true,
   "fail_closed": false,
   "inference_call_count": 0,
   "mock_label_visible": true,
   "qemu_aarch64_label_visible": true,
   "result_count": 1,
-  "screenshot_height_px": 1800,
-  "screenshot_width_px": 2560,
+  "screenshot_height_px": 666,
+  "screenshot_width_px": 1437,
   "status": "CV COMPLETE"
 }
 ```
@@ -785,7 +791,7 @@ Parsed result:
 ### stage2-ui-cv-anomaly
 
 - Category: `subjective_judgment`
-- Input: `sandbox_tests/reports/evidence/stage2/ui/cv-anomaly.png`
+- Input: `sandbox_tests/reports/evidence/stage2/ui/chrome-cv-anomaly.jpg`
 - Verdict: `pass`
 - Passed: `true`
 - Timings (ms): `{"cv": 0.0, "inference": 0.0, "parse": 0.0, "total": 0.0}`
@@ -802,13 +808,15 @@ Parsed result:
 
 ```json
 {
+  "camera_connected": false,
+  "external_drive_label_visible": true,
   "fail_closed": true,
   "inference_call_count": 0,
   "mock_label_visible": true,
   "qemu_aarch64_label_visible": true,
   "result_count": 0,
-  "screenshot_height_px": 1800,
-  "screenshot_width_px": 2560,
+  "screenshot_height_px": 666,
+  "screenshot_width_px": 1437,
   "status": "REVIEW REQUIRED"
 }
 ```
@@ -816,7 +824,7 @@ Parsed result:
 ### stage2-ui-simulator-unavailable
 
 - Category: `subjective_judgment`
-- Input: `sandbox_tests/reports/evidence/stage2/ui/simulator-unavailable.png`
+- Input: `sandbox_tests/reports/evidence/stage2/ui/chrome-simulator-unavailable.jpg`
 - Verdict: `pass`
 - Passed: `true`
 - Timings (ms): `{"cv": 0.0, "inference": 0.0, "parse": 0.0, "total": 0.0}`
@@ -833,13 +841,15 @@ Parsed result:
 
 ```json
 {
+  "camera_connected": false,
+  "external_drive_label_visible": true,
   "fail_closed": true,
   "inference_call_count": 0,
   "mock_label_visible": true,
   "qemu_aarch64_label_visible": true,
   "result_count": 0,
-  "screenshot_height_px": 1800,
-  "screenshot_width_px": 2560,
+  "screenshot_height_px": 666,
+  "screenshot_width_px": 1437,
   "status": "BLOCKED"
 }
 ```
@@ -847,7 +857,7 @@ Parsed result:
 ### stage2-ui-refresh-retry
 
 - Category: `subjective_judgment`
-- Input: `sandbox_tests/reports/evidence/stage2/ui/refresh-retry.png`
+- Input: `sandbox_tests/reports/evidence/stage2/ui/chrome-refresh-retry.jpg`
 - Verdict: `pass`
 - Passed: `true`
 - Timings (ms): `{"cv": 0.0, "inference": 0.0, "parse": 0.0, "total": 0.0}`
@@ -864,16 +874,18 @@ Parsed result:
 
 ```json
 {
-  "after_screenshot": "sandbox_tests/reports/evidence/stage2/ui/refresh-retry.png",
-  "before_screenshot": "sandbox_tests/reports/evidence/stage2/ui/simulator-unavailable.png",
-  "event_log": "sandbox_tests/reports/evidence/stage2/ui/refresh-retry-events.log",
+  "after_screenshot": "sandbox_tests/reports/evidence/stage2/ui/chrome-refresh-retry.jpg",
+  "before_screenshot": "sandbox_tests/reports/evidence/stage2/ui/chrome-simulator-unavailable.jpg",
+  "camera_connected": false,
+  "event_log": "sandbox_tests/reports/evidence/stage2/ui/chrome-refresh-retry-events.log",
+  "external_drive_label_visible": true,
   "fail_closed": false,
   "inference_call_count": 0,
   "mock_label_visible": true,
   "qemu_aarch64_label_visible": true,
   "result_count": 1,
-  "screenshot_height_px": 1800,
-  "screenshot_width_px": 2560,
+  "screenshot_height_px": 666,
+  "screenshot_width_px": 1437,
   "status": "RETRY COMPLETE"
 }
 ```

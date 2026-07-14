@@ -1,0 +1,124 @@
+{
+  "build_commit": "ba47ab9",
+  "build_variant": "desktopChromeValidation",
+  "cases": [
+    {
+      "anomaly_notes": [],
+      "case_id": "simulator-ready",
+      "passed": true,
+      "screenshot": "sandbox_tests/reports/evidence/stage2/ui/chrome-simulator-ready.jpg",
+      "state_payload": {
+        "camera_connected": false,
+        "external_drive_label_visible": true,
+        "fail_closed": false,
+        "inference_call_count": 0,
+        "mock_label_visible": true,
+        "qemu_aarch64_label_visible": true,
+        "result_count": 0,
+        "screenshot_height_px": 666,
+        "screenshot_width_px": 1437,
+        "status": "READY"
+      }
+    },
+    {
+      "anomaly_notes": [],
+      "case_id": "simulated-capture",
+      "passed": true,
+      "screenshot": "sandbox_tests/reports/evidence/stage2/ui/chrome-simulated-capture.jpg",
+      "state_payload": {
+        "camera_connected": false,
+        "external_drive_label_visible": true,
+        "fail_closed": false,
+        "inference_call_count": 0,
+        "mock_label_visible": true,
+        "qemu_aarch64_label_visible": true,
+        "result_count": 0,
+        "screenshot_height_px": 666,
+        "screenshot_width_px": 1437,
+        "status": "FIXTURE LOADED"
+      }
+    },
+    {
+      "anomaly_notes": [],
+      "case_id": "cv-success",
+      "passed": true,
+      "screenshot": "sandbox_tests/reports/evidence/stage2/ui/chrome-cv-success.jpg",
+      "state_payload": {
+        "camera_connected": false,
+        "external_drive_label_visible": true,
+        "fail_closed": false,
+        "inference_call_count": 0,
+        "mock_label_visible": true,
+        "qemu_aarch64_label_visible": true,
+        "result_count": 1,
+        "screenshot_height_px": 666,
+        "screenshot_width_px": 1437,
+        "status": "CV COMPLETE"
+      }
+    },
+    {
+      "anomaly_notes": [],
+      "case_id": "cv-anomaly",
+      "passed": true,
+      "screenshot": "sandbox_tests/reports/evidence/stage2/ui/chrome-cv-anomaly.jpg",
+      "state_payload": {
+        "camera_connected": false,
+        "external_drive_label_visible": true,
+        "fail_closed": true,
+        "inference_call_count": 0,
+        "mock_label_visible": true,
+        "qemu_aarch64_label_visible": true,
+        "result_count": 0,
+        "screenshot_height_px": 666,
+        "screenshot_width_px": 1437,
+        "status": "REVIEW REQUIRED"
+      }
+    },
+    {
+      "anomaly_notes": [],
+      "case_id": "simulator-unavailable",
+      "passed": true,
+      "screenshot": "sandbox_tests/reports/evidence/stage2/ui/chrome-simulator-unavailable.jpg",
+      "state_payload": {
+        "camera_connected": false,
+        "external_drive_label_visible": true,
+        "fail_closed": true,
+        "inference_call_count": 0,
+        "mock_label_visible": true,
+        "qemu_aarch64_label_visible": true,
+        "result_count": 0,
+        "screenshot_height_px": 666,
+        "screenshot_width_px": 1437,
+        "status": "BLOCKED"
+      }
+    },
+    {
+      "anomaly_notes": [],
+      "case_id": "refresh-retry",
+      "passed": true,
+      "screenshot": "sandbox_tests/reports/evidence/stage2/ui/chrome-refresh-retry.jpg",
+      "state_payload": {
+        "after_screenshot": "sandbox_tests/reports/evidence/stage2/ui/chrome-refresh-retry.jpg",
+        "before_screenshot": "sandbox_tests/reports/evidence/stage2/ui/chrome-simulator-unavailable.jpg",
+        "camera_connected": false,
+        "event_log": "sandbox_tests/reports/evidence/stage2/ui/chrome-refresh-retry-events.log",
+        "external_drive_label_visible": true,
+        "fail_closed": false,
+        "inference_call_count": 0,
+        "mock_label_visible": true,
+        "qemu_aarch64_label_visible": true,
+        "result_count": 1,
+        "screenshot_height_px": 666,
+        "screenshot_width_px": 1437,
+        "status": "RETRY COMPLETE"
+      }
+    }
+  ],
+  "console_error_or_warning_count": 0,
+  "cv_payload_source": "recorded QEMU aarch64 probe",
+  "generated_at": "2026-07-14T21:45:11.814253Z",
+  "interaction_evidence": "Chrome DOM snapshots, screenshots, and console log inspection",
+  "platform": "chrome",
+  "schema_version": "stage2-ui-evidence-v1",
+  "surface": "test-only loopback browser validation surface"
+}

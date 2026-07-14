@@ -660,21 +660,23 @@
     {
       "anomaly_notes": [],
       "case_id": "stage2-ui-simulator-ready",
-      "case_type": "android_ui_validation",
+      "case_type": "chrome_ui_validation",
       "category": "subjective_judgment",
-      "input_ref": "sandbox_tests/reports/evidence/stage2/ui/simulator-ready.png",
+      "input_ref": "sandbox_tests/reports/evidence/stage2/ui/chrome-simulator-ready.jpg",
       "mock_flags": [
         "NON-PRODUCTION MOCK — UI state is driven by Stage 2 simulation evidence.",
         "NON-PRODUCTION MOCK — Stage 2 stops after standalone CV; no LLM/VLM was invoked."
       ],
       "parsed_result": {
+        "camera_connected": false,
+        "external_drive_label_visible": true,
         "fail_closed": false,
         "inference_call_count": 0,
         "mock_label_visible": true,
         "qemu_aarch64_label_visible": true,
         "result_count": 0,
-        "screenshot_height_px": 1800,
-        "screenshot_width_px": 2560,
+        "screenshot_height_px": 666,
+        "screenshot_width_px": 1437,
         "status": "READY"
       },
       "passed": true,
@@ -690,21 +692,23 @@
     {
       "anomaly_notes": [],
       "case_id": "stage2-ui-simulated-capture",
-      "case_type": "android_ui_validation",
+      "case_type": "chrome_ui_validation",
       "category": "subjective_judgment",
-      "input_ref": "sandbox_tests/reports/evidence/stage2/ui/simulated-capture.png",
+      "input_ref": "sandbox_tests/reports/evidence/stage2/ui/chrome-simulated-capture.jpg",
       "mock_flags": [
         "NON-PRODUCTION MOCK — UI state is driven by Stage 2 simulation evidence.",
         "NON-PRODUCTION MOCK — Stage 2 stops after standalone CV; no LLM/VLM was invoked."
       ],
       "parsed_result": {
+        "camera_connected": false,
+        "external_drive_label_visible": true,
         "fail_closed": false,
         "inference_call_count": 0,
         "mock_label_visible": true,
         "qemu_aarch64_label_visible": true,
         "result_count": 0,
-        "screenshot_height_px": 1800,
-        "screenshot_width_px": 2560,
+        "screenshot_height_px": 666,
+        "screenshot_width_px": 1437,
         "status": "FIXTURE LOADED"
       },
       "passed": true,
@@ -720,21 +724,23 @@
     {
       "anomaly_notes": [],
       "case_id": "stage2-ui-cv-success",
-      "case_type": "android_ui_validation",
+      "case_type": "chrome_ui_validation",
       "category": "subjective_judgment",
-      "input_ref": "sandbox_tests/reports/evidence/stage2/ui/cv-success.png",
+      "input_ref": "sandbox_tests/reports/evidence/stage2/ui/chrome-cv-success.jpg",
       "mock_flags": [
         "NON-PRODUCTION MOCK — UI state is driven by Stage 2 simulation evidence.",
         "NON-PRODUCTION MOCK — Stage 2 stops after standalone CV; no LLM/VLM was invoked."
       ],
       "parsed_result": {
+        "camera_connected": false,
+        "external_drive_label_visible": true,
         "fail_closed": false,
         "inference_call_count": 0,
         "mock_label_visible": true,
         "qemu_aarch64_label_visible": true,
         "result_count": 1,
-        "screenshot_height_px": 1800,
-        "screenshot_width_px": 2560,
+        "screenshot_height_px": 666,
+        "screenshot_width_px": 1437,
         "status": "CV COMPLETE"
       },
       "passed": true,
@@ -750,21 +756,23 @@
     {
       "anomaly_notes": [],
       "case_id": "stage2-ui-cv-anomaly",
-      "case_type": "android_ui_validation",
+      "case_type": "chrome_ui_validation",
       "category": "subjective_judgment",
-      "input_ref": "sandbox_tests/reports/evidence/stage2/ui/cv-anomaly.png",
+      "input_ref": "sandbox_tests/reports/evidence/stage2/ui/chrome-cv-anomaly.jpg",
       "mock_flags": [
         "NON-PRODUCTION MOCK — UI state is driven by Stage 2 simulation evidence.",
         "NON-PRODUCTION MOCK — Stage 2 stops after standalone CV; no LLM/VLM was invoked."
       ],
       "parsed_result": {
+        "camera_connected": false,
+        "external_drive_label_visible": true,
         "fail_closed": true,
         "inference_call_count": 0,
         "mock_label_visible": true,
         "qemu_aarch64_label_visible": true,
         "result_count": 0,
-        "screenshot_height_px": 1800,
-        "screenshot_width_px": 2560,
+        "screenshot_height_px": 666,
+        "screenshot_width_px": 1437,
         "status": "REVIEW REQUIRED"
       },
       "passed": true,
@@ -780,21 +788,23 @@
     {
       "anomaly_notes": [],
       "case_id": "stage2-ui-simulator-unavailable",
-      "case_type": "android_ui_validation",
+      "case_type": "chrome_ui_validation",
       "category": "subjective_judgment",
-      "input_ref": "sandbox_tests/reports/evidence/stage2/ui/simulator-unavailable.png",
+      "input_ref": "sandbox_tests/reports/evidence/stage2/ui/chrome-simulator-unavailable.jpg",
       "mock_flags": [
         "NON-PRODUCTION MOCK — UI state is driven by Stage 2 simulation evidence.",
         "NON-PRODUCTION MOCK — Stage 2 stops after standalone CV; no LLM/VLM was invoked."
       ],
       "parsed_result": {
+        "camera_connected": false,
+        "external_drive_label_visible": true,
         "fail_closed": true,
         "inference_call_count": 0,
         "mock_label_visible": true,
         "qemu_aarch64_label_visible": true,
         "result_count": 0,
-        "screenshot_height_px": 1800,
-        "screenshot_width_px": 2560,
+        "screenshot_height_px": 666,
+        "screenshot_width_px": 1437,
         "status": "BLOCKED"
       },
       "passed": true,
@@ -810,24 +820,26 @@
     {
       "anomaly_notes": [],
       "case_id": "stage2-ui-refresh-retry",
-      "case_type": "android_ui_validation",
+      "case_type": "chrome_ui_validation",
       "category": "subjective_judgment",
-      "input_ref": "sandbox_tests/reports/evidence/stage2/ui/refresh-retry.png",
+      "input_ref": "sandbox_tests/reports/evidence/stage2/ui/chrome-refresh-retry.jpg",
       "mock_flags": [
         "NON-PRODUCTION MOCK — UI state is driven by Stage 2 simulation evidence.",
         "NON-PRODUCTION MOCK — Stage 2 stops after standalone CV; no LLM/VLM was invoked."
       ],
       "parsed_result": {
-        "after_screenshot": "sandbox_tests/reports/evidence/stage2/ui/refresh-retry.png",
-        "before_screenshot": "sandbox_tests/reports/evidence/stage2/ui/simulator-unavailable.png",
-        "event_log": "sandbox_tests/reports/evidence/stage2/ui/refresh-retry-events.log",
+        "after_screenshot": "sandbox_tests/reports/evidence/stage2/ui/chrome-refresh-retry.jpg",
+        "before_screenshot": "sandbox_tests/reports/evidence/stage2/ui/chrome-simulator-unavailable.jpg",
+        "camera_connected": false,
+        "event_log": "sandbox_tests/reports/evidence/stage2/ui/chrome-refresh-retry-events.log",
+        "external_drive_label_visible": true,
         "fail_closed": false,
         "inference_call_count": 0,
         "mock_label_visible": true,
         "qemu_aarch64_label_visible": true,
         "result_count": 1,
-        "screenshot_height_px": 1800,
-        "screenshot_width_px": 2560,
+        "screenshot_height_px": 666,
+        "screenshot_width_px": 1437,
         "status": "RETRY COMPLETE"
       },
       "passed": true,
@@ -859,7 +871,7 @@
     "write_fsync_completed": true
   },
   "environment_declaration": "this is a SANDBOX environment, not a production configuration. No test conclusion, performance number, or stability result from it may be presented as evidence of production readiness; production admission is re-evaluated only after Stage 3+4.",
-  "generated_at": "2026-07-14T21:24:04.048187Z",
+  "generated_at": "2026-07-14T21:45:15.334074Z",
   "model_delta_note": "Stage 2 CV/UI simulation requires no real LLM/VLM call. Sandbox and production model selections remain replaceable configured defaults, not Giraffe product identity or ecosystem dependencies. Qwen is one configured default, not a required product ecosystem. This report contains no model-quality evidence.",
   "runtime": {
     "camera_connected": false,
@@ -899,9 +911,9 @@
     "ui_case_count": 6
   },
   "ui_evidence": {
-    "build_variant": "padLocalDebug",
+    "build_variant": "desktopChromeValidation",
     "case_count": 6,
-    "platform": "android_x86_64_emulator",
+    "platform": "chrome",
     "required_case_ids": [
       "cv-anomaly",
       "cv-success",

@@ -1,0 +1,2 @@
+state=simulator-unavailable inference_calls=0 result_count=0 fail_closed=true
+state=refresh-retry inference_calls=0 result_count=1 fail_closed=false
