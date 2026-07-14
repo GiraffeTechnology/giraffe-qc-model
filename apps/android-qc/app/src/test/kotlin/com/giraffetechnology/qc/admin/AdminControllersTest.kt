@@ -285,9 +285,10 @@ class AdminProbationControllerTest {
         val controller = AdminProbationController(client)
         controller.refresh("r1")
         val state = controller.state.value as AdminProbationState.Loaded
+        val probation = requireNotNull(state.probation)
         assertEquals(1, state.suspensions.size)
-        assertEquals(24, state.probation!!.gate.jobsRecorded)
-        assertEquals("active", state.probation.status)
+        assertEquals(24, probation.gate.jobsRecorded)
+        assertEquals("active", probation.status)
     }
 
     @Test
@@ -325,8 +326,9 @@ class AdminProbationControllerTest {
         controller.refresh("r1")
         controller.loadDisagreementReport()
         val loaded = controller.state.value as AdminProbationState.Loaded
-        assertEquals(1, loaded.report!!.disagreements)
-        assertEquals("DP-1", loaded.report.detectionPoints.single().pointCode)
+        val report = requireNotNull(loaded.report)
+        assertEquals(1, report.disagreements)
+        assertEquals("DP-1", report.detectionPoints.single().pointCode)
     }
 
     private fun probationJson(status: String) =
