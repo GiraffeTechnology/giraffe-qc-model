@@ -1,0 +1,33 @@
+{
+  "schema_version": "sandbox-qc-report-v1",
+  "stage": 1,
+  "status": "blocked",
+  "environment_declaration": "this is a SANDBOX environment, not a production configuration. No test conclusion, performance number, or stability result from it may be presented as evidence of production readiness; production admission is re-evaluated only after Stage 3+4.",
+  "model_delta_note": "Sandbox server is specified to run qwen3-vl-8b-int4; production v2 specifies cloud qwen3-vl-30b-A3B and admin-side qwen3-vl-4b (MNN). These are replaceable configured defaults, not Giraffe product identity or an ecosystem dependency. Results, once executed, are chain-validity evidence, not model-quality evidence.",
+  "runtime": {
+    "server": "SANDBOX_QC_SERVER",
+    "server_value_redacted": true,
+    "execution_started": false
+  },
+  "summary": {
+    "case_count": 0,
+    "passed_case_count": 0,
+    "failed_case_count": 0,
+    "planned_case_count": 12,
+    "blocking_items": [
+      "repository-root sandbox.env is not provisioned in the Codex runtime",
+      "sandbox service base URL including port is not available through configuration",
+      "sandbox endpoint API style and path are not confirmed",
+      "the abcdYi SSH alias is not resolvable in the Codex macOS runtime"
+    ]
+  },
+  "acceptance": {
+    "end_to_end_no_blocking_errors": false,
+    "four_categories_positive_and_anomalous_executed": false,
+    "fail_closed_model_anomaly_timeout_and_format_error": false,
+    "real_output_think_sanitization_observed": false,
+    "all_simulated_elements_labeled": true,
+    "all_cases_passed": false
+  },
+  "cases": []
+}

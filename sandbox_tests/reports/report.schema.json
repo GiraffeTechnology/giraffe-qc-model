@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://giraffetechnology.com/sandbox/qc-report-v1.schema.json",
+  "title": "Sandbox QC phased-test report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "stage",
+    "status",
+    "environment_declaration",
+    "model_delta_note",
+    "summary",
+    "acceptance",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {"const": "sandbox-qc-report-v1"},
+    "stage": {"type": "integer", "minimum": 1, "maximum": 4},
+    "status": {"enum": ["passed", "failed", "blocked"]},
+    "environment_declaration": {"type": "string", "minLength": 1},
+    "model_delta_note": {"type": "string", "minLength": 1},
+    "summary": {"type": "object"},
+    "acceptance": {"type": "object", "additionalProperties": {"type": "boolean"}},
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "case_id",
+          "category",
+          "input_ref",
+          "raw_model_output",
+          "parsed_result",
+          "verdict",
+          "timing_ms",
+          "passed",
+          "anomaly_notes",
+          "mock_flags"
+        ],
+        "properties": {
+          "case_id": {"type": "string"},
+          "category": {"enum": ["visual_defect", "physical_measurement", "rule_verification", "subjective_judgment"]},
+          "input_ref": {"type": "string"},
+          "raw_model_output": {"type": "string"},
+          "parsed_result": {"type": "object"},
+          "verdict": {"enum": ["pass", "reject"]},
+          "timing_ms": {
+            "type": "object",
+            "required": ["cv", "inference", "parse", "total"],
+            "additionalProperties": {"type": "number", "minimum": 0}
+          },
+          "passed": {"type": "boolean"},
+          "anomaly_notes": {"type": "array", "items": {"type": "string"}},
+          "mock_flags": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  }
+}

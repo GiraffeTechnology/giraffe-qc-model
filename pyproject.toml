@@ -39,7 +39,7 @@ dev = [
 packages = ["src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "sandbox_tests/tests"]
 asyncio_mode = "auto"
 
 [tool.hatch.envs.default]
