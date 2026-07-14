@@ -132,8 +132,19 @@ each `crop_part` named in the manifest.
       "severity": "major",
       "expected_value": "24 rhinestones",
       "pass_criteria": "all expected rhinestones present and attached",
-      "cv_status": "not_configured",
-      "cv_analysis": null
+      "expected_features": {"rhinestone_count": 24},
+      "cv_config": {
+        "analyzers": ["rhinestone_count"],
+        "parameters": {"min_radius_px": 3, "max_radius_px": 16}
+      },
+      "cv_status": "completed",
+      "cv_analysis": {
+        "schema_version": "1.0",
+        "analyzers": [{"analyzer": "rhinestone_count", "backend": "contour", "count": 24, "centers": [], "boxes": [], "confidence": 0.84}],
+        "deviations": [],
+        "verdict_effect": "informational_only",
+        "accuracy_note": "accuracy unmeasured — fixture-tuned parameters are starting points"
+      }
     }
   ],
   "client_timing": {
@@ -154,9 +165,13 @@ only; it cannot be used to reconstruct or request the full frame. The service
 must verify the declared media type, size, dimensions, and digest before model
 execution.
 
-WS8 may replace `cv_status: not_configured` with `completed` or `failed` and
-populate `cv_analysis` using the shared CV schema. A CV failure is informational
-and does not block VLM recognition.
+When `cv_config` is absent, clients retain the pre-WS8 `not_configured`/`null`
+wire values. When configured, the Nano runs the shared `cv_preanalysis` package
+inside the two-second CV/crop budget and sends its canonical JSON. The cloud
+adapter inserts the JSON verbatim between `<CV_PREANALYSIS_JSON>` and
+`</CV_PREANALYSIS_JSON>`, followed by the supporting-evidence warning. A CV
+failure sets `cv_status: failed`, logs the error, omits the prompt block, and
+does not block VLM recognition. `deviations` are informational only.
 
 ### 3.2 Successful response
 

@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -108,6 +109,82 @@ def test_mnn_invalid_model_output_is_uncertain_not_a_synthetic_verdict(tmp_path)
     assert result.confidence == 0.0
 
 
+def test_xavier_runs_cv_before_vlm_and_persists_prompt_evidence(tmp_path):
+    image_path = Path(__file__).parents[2] / "tests" / "fixtures" / "cv_preanalysis_fixture.pgm"
+    runtime = FakeMnnRuntime(['{"result":"pass","confidence":0.8,"evidence":"visible"}'])
+    adapter = MnnVlmAdapter(
+        bridge_library="unused", model_dir=str(tmp_path), model_name="configured-vlm", runtime=runtime
+    )
+    cfg = RunnerConfig(inference_mode="real", cv_evidence_dir=str(tmp_path / "evidence"))
+    service = JetsonRunnerService(cfg, identity=generate_identity("xavier-test"), adapter=adapter)
+    manifest = _manifest(image_path.read_bytes())
+    manifest["detection_points"][0].pop("cv_status")
+    manifest["detection_points"][0].pop("cv_analysis")
+    manifest["detection_points"][0]["cv_config"] = {
+        "analyzers": ["rhinestone_count"],
+        "parameters": {"morphology_kernel_px": 1, "min_area_px": 3},
+    }
+    response = service.handle_admin_recognition(
+        manifest=manifest,
+        content_digest=multipart_content_sha256(manifest),
+        image_paths={"front": str(image_path)},
+        request_received_at="2026-07-14T00:00:00.000Z",
+    )
+    point = response["point_results"][0]
+    assert point["cv_status"] == "completed"
+    assert point["cv_analysis"]["analyzers"][0]["count"] == 2
+    assert Path(point["cv_analysis"]["evidence_ref"]).is_file()
+    assert "<CV_PREANALYSIS_JSON>" in runtime.prompts[0]
+    assert response["timing"]["cv_started_at"] is not None
+    assert response["timing"]["cv_completed_at"] is not None
+
+
+def test_xavier_cv_failure_does_not_block_vlm_or_inject_context(tmp_path, caplog):
+    image_path = Path(__file__).parents[2] / "tests" / "fixtures" / "cv_preanalysis_fixture.pgm"
+    runtime = FakeMnnRuntime(['{"result":"uncertain","confidence":0.2,"evidence":"inspect"}'])
+    adapter = MnnVlmAdapter(
+        bridge_library="unused", model_dir=str(tmp_path), model_name="configured-vlm", runtime=runtime
+    )
+    cfg = RunnerConfig(inference_mode="real", cv_evidence_dir=str(tmp_path / "evidence"))
+    service = JetsonRunnerService(cfg, identity=generate_identity("xavier-test"), adapter=adapter)
+    manifest = _manifest(image_path.read_bytes())
+    manifest["detection_points"][0]["cv_config"] = {"analyzers": ["unknown_analyzer"]}
+    response = service.handle_admin_recognition(
+        manifest=manifest,
+        content_digest=multipart_content_sha256(manifest),
+        image_paths={"front": str(image_path)},
+        request_received_at="2026-07-14T00:00:00.000Z",
+    )
+    assert response["status"] == "completed"
+    assert response["point_results"][0]["cv_status"] == "failed"
+    assert "<CV_PREANALYSIS_JSON>" not in runtime.prompts[0]
+    assert any("cv_status=failed" in record.message for record in caplog.records)
+
+
+def test_xavier_absent_cv_config_preserves_preanalysis_free_prompt(tmp_path):
+    runtime = FakeMnnRuntime(['{"result":"pass","confidence":0.8,"evidence":"visible"}'])
+    adapter = MnnVlmAdapter(
+        bridge_library="unused", model_dir=str(tmp_path), model_name="configured-vlm", runtime=runtime
+    )
+    cfg = RunnerConfig(inference_mode="real", cv_evidence_dir=str(tmp_path / "evidence"))
+    service = JetsonRunnerService(cfg, identity=generate_identity("xavier-test"), adapter=adapter)
+    manifest = _manifest()
+    manifest["detection_points"][0].pop("cv_status")
+    manifest["detection_points"][0].pop("cv_analysis")
+    request_before_ws8 = AdminRecognitionRequest.model_validate(manifest)
+    expected_prompt = adapter._admin_prompt(request_before_ws8.detection_points[0])
+    response = service.handle_admin_recognition(
+        manifest=manifest,
+        content_digest=multipart_content_sha256(manifest),
+        image_paths={"front": "/tmp/front.jpg"},
+        request_received_at="2026-07-14T00:00:00.000Z",
+    )
+    assert runtime.prompts == [expected_prompt]
+    assert response["point_results"][0]["cv_status"] == "not_configured"
+    assert response["timing"]["cv_started_at"] is None
+    assert response["timing"]["cv_completed_at"] is None
+
+
 def _credentials():
     private = Ed25519PrivateKey.generate()
     public = private.public_key().public_bytes(
@@ -180,7 +257,7 @@ def test_signed_admin_health_is_truthful_about_mock_and_validation():
     assert body["runtime"]["engine"] == "mnn"
     assert body["runtime"]["adapter_mode"] == "mock"
     assert body["hardware_validation"]["status"] == "not_run"
-    assert body["cv_pipeline"]["status"] == "not_configured"
+    assert body["cv_pipeline"] == {"status": "ready", "package_version": "1.0"}
     assert body["mock"] is True
 
 

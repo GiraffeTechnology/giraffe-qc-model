@@ -40,6 +40,7 @@ from jetson_runner.app.admin_contract import (
 from jetson_runner.app.config import RunnerConfig
 from jetson_runner.app.identity import JetsonIdentity, generate_identity
 from jetson_runner.app.pairing_agent import PairingAgent, PairingRejected
+from src.cv_preanalysis import run_preanalysis, write_evidence, write_overlay
 
 logger = logging.getLogger("jetson_runner")
 MOCK_BANNER = "MOCK INFERENCE — NOT REAL QC JUDGMENT"
@@ -157,6 +158,54 @@ class JetsonRunnerService:
 
         if self.cfg.mock_mode:
             logger.warning("%s (request_id=%s)", MOCK_BANNER, request.request_id)
+        cv_started_at = None
+        cv_completed_at = None
+        configured_points = [point for point in request.detection_points if point.cv_config]
+        if configured_points:
+            cv_started_at = health.utc_now()
+            for point in configured_points:
+                try:
+                    analysis = run_preanalysis(
+                        image_paths[point.image_id],
+                        point.cv_config,
+                        point.expected_features,
+                    )
+                    evidence_ref = write_evidence(
+                        self.cfg.cv_evidence_dir,
+                        request_id=request.request_id,
+                        point_code=point.point_code,
+                        analysis=analysis,
+                    )
+                    analysis["evidence_ref"] = evidence_ref
+                    if point.cv_config.get("overlay", False):
+                        analysis["overlay_ref"] = write_overlay(
+                            self.cfg.cv_evidence_dir,
+                            request_id=request.request_id,
+                            point_code=point.point_code,
+                            image=image_paths[point.image_id],
+                            analysis=analysis,
+                        )
+                    write_evidence(
+                        self.cfg.cv_evidence_dir,
+                        request_id=request.request_id,
+                        point_code=point.point_code,
+                        analysis=analysis,
+                    )
+                    point.cv_status = "completed"
+                    point.cv_analysis = analysis
+                except Exception as exc:
+                    # CV is supporting context.  Decode/config/analyzer/storage
+                    # failures must never block the configured VLM call.
+                    logger.warning(
+                        "cv_status=failed request_id=%s point_code=%s error=%s",
+                        request.request_id,
+                        point.point_code,
+                        exc,
+                    )
+                    point.cv_status = "failed"
+                    point.cv_analysis = None
+            cv_completed_at = health.utc_now()
+
         inference_started_at = health.utc_now()
         started = time.monotonic()
         try:
@@ -177,6 +226,8 @@ class JetsonRunnerService:
             ),
             timing=RecognitionTiming(
                 request_received_at=request_received_at,
+                cv_started_at=cv_started_at,
+                cv_completed_at=cv_completed_at,
                 inference_started_at=inference_started_at,
                 inference_completed_at=inference_completed_at,
                 response_sent_at=response_sent_at,

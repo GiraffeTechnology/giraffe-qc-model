@@ -1,7 +1,9 @@
 """Mock runner scenario coverage (§14.3) — no hardware, no network."""
+from pathlib import Path
+
 import pytest
 
-from edge_cv_agent.app.cv_pipeline import MockCVError, run_mock_pipeline
+from edge_cv_agent.app.cv_pipeline import MockCVError, run_configured_pipeline, run_mock_pipeline
 from edge_cv_agent.app.live_capture import LiveCaptureTracker
 
 
@@ -39,6 +41,28 @@ def test_partial_result_drops_required_field():
 def test_invalid_schema_uses_bad_hint():
     out = run_mock_pipeline(_job("invalid_schema"))
     assert out.pass_fail_hint == "definitely_broken"
+
+
+def test_real_nano_pipeline_uses_shared_preanalysis_and_persists_evidence(tmp_path):
+    image = Path(__file__).parents[2] / "tests" / "fixtures" / "cv_preanalysis_fixture.pgm"
+    job = {
+        "cv_job_id": "nano-real-1",
+        "input_payload": {
+            "image_path": str(image),
+            "point_code": "stones",
+            "cv_config": {
+                "analyzers": ["rhinestone_count"],
+                "parameters": {"morphology_kernel_px": 1, "min_area_px": 3},
+            },
+            "expected_features": {"rhinestone_count": 2},
+        },
+    }
+    output = run_configured_pipeline(job, output_dir=str(tmp_path))
+    assert output.raw_output == {"runner": "shared_cv_preanalysis", "cv_status": "completed"}
+    assert output.measurements["rhinestone_count_count"] == 2
+    assert output.measurements["deviations"] == []
+    assert Path(output.evidence_assets[0]["asset_uri"]).is_file()
+    assert output.pass_fail_hint == "needs_human_review"
 
 
 def test_live_capture_debounce_and_dedup():
