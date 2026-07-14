@@ -28,10 +28,11 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Resp
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_db_dep
-from src.db.sku_models import QCSkuItem, QCStandardPhoto
+from src.db.sku_models import QCDetectionPoint, QCSkuItem, QCStandardPhoto, SKU_LIFECYCLE_STATES
 from src.db.studio_models import QCPublishBundle
 from src.intake.service import confirm_standard_intake, reject_standard_intake
 from src.qc_model.studio import service as studio
@@ -77,6 +78,49 @@ def studio_page(request: Request, tenant_id: str = "default"):
 
 
 # ── SKU list / search / status filter (left panel) ────────────────────────────
+
+
+@router.get("/admin/studio/config")
+def studio_config():
+    """Shared Studio configuration consumed by web and Pad administrators."""
+    return {"sku_lifecycle_states": list(SKU_LIFECYCLE_STATES)}
+
+
+class CreateStudioSkuRequest(BaseModel):
+    tenant_id: str = "default"
+    item_number: str
+    name: str
+    category: Optional[str] = None
+    description: Optional[str] = None
+
+
+@router.post("/admin/studio/skus", status_code=201)
+def create_studio_sku(body: CreateStudioSkuRequest, db: Session = Depends(get_db_dep)):
+    """Create an Administrator-authored SKU at the first shared lifecycle state."""
+    item_number = body.item_number.strip()
+    name = body.name.strip()
+    if not item_number or not name:
+        raise HTTPException(status_code=400, detail="item number and name are required")
+    now = _now()
+    sku = QCSkuItem(
+        id=_uid(),
+        tenant_id=body.tenant_id,
+        item_number=item_number,
+        name=name,
+        category=body.category,
+        description=body.description,
+        status=SKU_LIFECYCLE_STATES[0],
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(sku)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="item number already exists") from exc
+    db.refresh(sku)
+    return studio.sku_summary(db, sku)
 
 
 @router.get("/admin/studio/skus")
@@ -321,6 +365,58 @@ def studio_reject(body: RejectRequest, db: Session = Depends(get_db_dep)):
 class SetRegionsRequest(BaseModel):
     tenant_id: str = "default"
     regions: List[Dict[str, Any]] = []
+
+
+class UpdateStudioDetectionPointRequest(BaseModel):
+    tenant_id: str = "default"
+    point_code: str
+    label: str
+    description: Optional[str] = None
+    expected_value: Optional[str] = None
+    method_hint: Optional[str] = None
+    severity: str = "major"
+
+
+@router.patch("/admin/studio/detection-points/{detection_point_id}")
+def studio_update_detection_point(
+    detection_point_id: str,
+    body: UpdateStudioDetectionPointRequest,
+    db: Session = Depends(get_db_dep),
+):
+    """Edit checkpoint judgment fields behind the Administrator auth gate."""
+    point = (
+        db.query(QCDetectionPoint)
+        .filter_by(id=detection_point_id, tenant_id=body.tenant_id, is_active=True)
+        .first()
+    )
+    if point is None:
+        raise HTTPException(status_code=404, detail="Detection point not found")
+    if not body.point_code.strip() or not body.label.strip():
+        raise HTTPException(status_code=400, detail="point code and label are required")
+    if body.method_hint == "counting" and not (body.expected_value or "").strip():
+        raise HTTPException(status_code=400, detail="counting checkpoint needs an expected count")
+    if body.severity not in {"minor", "major", "critical"}:
+        raise HTTPException(status_code=400, detail="unsupported severity")
+
+    point.point_code = body.point_code.strip()
+    point.label = body.label.strip()
+    point.description = body.description
+    point.method_hint = body.method_hint
+    point.expected_value = body.expected_value
+    point.severity = body.severity
+    point.updated_at = _now()
+    db.commit()
+    db.refresh(point)
+    return {
+        "id": point.id,
+        "point_code": point.point_code,
+        "label": point.label,
+        "description": point.description,
+        "method_hint": point.method_hint,
+        "expected_value": point.expected_value,
+        "severity": point.severity,
+        "regions": point.regions_json or [],
+    }
 
 
 @router.post("/admin/studio/detection-points/{detection_point_id}/regions")

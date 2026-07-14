@@ -102,6 +102,29 @@ def test_studio_page_renders(client):
     assert "Admin Studio" in resp.text
 
 
+def test_studio_config_exposes_shared_seven_state_lifecycle(client):
+    resp = client.get("/admin/studio/config")
+    assert resp.status_code == 200
+    assert resp.json()["sku_lifecycle_states"] == [
+        "draft",
+        "needs_information",
+        "ready_for_review",
+        "confirmed",
+        "published",
+        "installed",
+        "needs_requalification",
+    ]
+
+
+def test_structured_studio_create_starts_in_draft(client):
+    resp = client.post(
+        "/admin/studio/skus",
+        json={"item_number": "FORM-001", "name": "Form-created SKU"},
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["status"] == "draft"
+
+
 # ── §5.2 SKU creation via chat ────────────────────────────────────────────────
 
 

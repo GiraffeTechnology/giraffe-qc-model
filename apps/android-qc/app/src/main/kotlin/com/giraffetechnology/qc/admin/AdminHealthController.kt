@@ -1,79 +1,147 @@
 package com.giraffetechnology.qc.admin
 
-import com.giraffetechnology.qc.sku.MnnRuntimeState
+import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** Pad-side facts the health screen renders — all real, gathered on refresh. */
-data class PadHealthSnapshot(
-    val modelState: String,
-    val diskFreeBytes: Long,
-    val diskTotalBytes: Long,
-    val appVersionName: String,
-    /** WS1 build provenance (commit SHA etc.) once merged; version until then. */
-    val buildProvenance: String,
+/** Architecture v2 Pad health boundary from docs/api-contracts/pad-health-state.md. */
+data class NanoCvHealth(
+    val status: String,
+    val agentVersion: String? = null,
+    val pipelineVersion: String? = null,
+    val lastSuccessAt: String? = null,
+    val lastErrorCode: String? = null,
+    val lastCvDurationMs: Long? = null,
 )
 
-/** Injectable providers so the controller is unit-testable off-device. */
-interface PadHealthProbe {
-    fun diskFreeBytes(): Long
-    fun diskTotalBytes(): Long
-    fun appVersionName(): String
-    fun buildProvenance(): String
+data class NetworkThresholds(
+    val minUplinkMbps: Double = 4.0,
+    val maxRttMs: Long = 300,
+    val maxPacketLossPercent: Double = 5.0,
+    val wifiReturnMinUplinkMbps: Double = 6.0,
+    val wifiReturnSustainSeconds: Long = 60,
+)
+
+data class CloudLinkHealth(
+    val state: String,
+    val cloudService: String,
+    val acceptingJobs: Boolean,
+    val currentNetwork: String,
+    val activeJobNetwork: String? = null,
+    val switchDeferredUntilJobEnd: Boolean = false,
+    val effectiveUplinkMbps: Double? = null,
+    val rttMs: Long? = null,
+    val packetLossPercent: Double? = null,
+    val sampleWindowSize: Int = 0,
+    val thresholds: NetworkThresholds = NetworkThresholds(),
+    val thresholdBreaches: List<String> = emptyList(),
+    val wifiReturnEligibleAt: String? = null,
+    val lastProbeAt: String? = null,
+    val lastRealTransferAt: String? = null,
+    val lastSwitchSummary: String? = null,
+)
+
+data class OfflineQueueHealth(
+    val pendingUploadJobs: Int? = null,
+    val oldestPendingSince: String? = null,
+    val lastRetryAt: String? = null,
+    val lastErrorCode: String? = null,
+)
+
+data class XavierAdminHealth(
+    val status: String,
+    val runnerId: String? = null,
+    val runtimeEngine: String? = null,
+    val adapterMode: String? = null,
+    val modelName: String? = null,
+    val modelLoaded: Boolean? = null,
+    val temperatureC: Double? = null,
+    val thermalState: String = "unknown",
+    val diskFreeBytes: Long? = null,
+    val lastRecognitionLatencyMs: Long? = null,
+    val lastSeenAt: String? = null,
+    val mock: Boolean = false,
+    val hardwareValidationStatus: String = "not_run",
+)
+
+data class PadHealthState(
+    val schemaVersion: String = "2.0",
+    val observedAt: String,
+    val padDeviceId: String = "",
+    val workstationId: String? = null,
+    val operatorPipelineReadiness: String,
+    val canStartJob: Boolean,
+    val nanoCv: NanoCvHealth,
+    val cloudLink: CloudLinkHealth,
+    val offlineQueue: OfflineQueueHealth,
+    val xavierAdmin: XavierAdminHealth,
+    /** Explicit missing-dependency notes; never converted into healthy values. */
+    val limitations: List<String> = emptyList(),
+)
+
+interface PadHealthStateSource {
+    val state: StateFlow<PadHealthState>
+    suspend fun refresh()
 }
 
-sealed class JetsonHealthState {
-    /**
-     * The Jetson NX health API contract (WS4/WS5) is not yet published to
-     * docs/api-contracts/ — the panel states this instead of showing data.
-     */
-    data class BackendPending(val reason: String) : JetsonHealthState()
-    data class Error(val message: String) : JetsonHealthState()
-    data class Loaded(val summary: String) : JetsonHealthState()
+/**
+ * Contract-correct source used until WS4 supplies the Nano/cloud aggregator and
+ * the signed Xavier client is provisioned. Only the dependency call is pending;
+ * the UI/state shape is real. Unknown numeric facts remain null, never zeroed.
+ */
+class BackendPendingPadHealthStateSource : PadHealthStateSource {
+    private val _state = MutableStateFlow(pendingSnapshot())
+    override val state: StateFlow<PadHealthState> = _state.asStateFlow()
+
+    override suspend fun refresh() {
+        _state.value = pendingSnapshot()
+    }
+
+    private companion object {
+        fun pendingSnapshot() = PadHealthState(
+            observedAt = Instant.now().toString(),
+            operatorPipelineReadiness = "unknown",
+            canStartJob = false,
+            nanoCv = NanoCvHealth(status = "unknown"),
+            cloudLink = CloudLinkHealth(
+                state = "unknown",
+                cloudService = "unknown",
+                acceptingJobs = false,
+                currentNetwork = "unknown",
+            ),
+            offlineQueue = OfflineQueueHealth(),
+            xavierAdmin = XavierAdminHealth(status = "not_configured"),
+            limitations = listOf(
+                "TODO(backend-pending): WS4 PadHealthState producer is not wired; " +
+                    "Nano/cloud observations remain unknown.",
+                "TODO(backend-pending): signed Xavier health provisioning is not wired; " +
+                    "Administrator Xavier remains not_configured.",
+            ),
+        )
+    }
 }
 
 data class AdminHealthState(
-    val pad: PadHealthSnapshot?,
-    val jetson: JetsonHealthState,
+    val snapshot: PadHealthState,
+    val refreshing: Boolean = false,
+    val error: String? = null,
 )
 
-/**
- * Pad/Jetson health view (WS3 item 8). Pad-side health is real (MNN runtime
- * state, disk, app build); the Jetson panel is wired to [AdminApiClient.fetchJetsonHealth],
- * which is backend-pending and says so.
- */
-class AdminHealthController(
-    private val client: AdminApiClient,
-    private val probe: PadHealthProbe,
-    private val runtimeState: StateFlow<MnnRuntimeState>,
-) {
-    private val _state = MutableStateFlow(
-        AdminHealthState(pad = null, jetson = JetsonHealthState.BackendPending("not fetched"))
-    )
+/** WS3 consumes one immutable state source and never polls subsystems itself. */
+class AdminHealthController(private val source: PadHealthStateSource) {
+    private val _state = MutableStateFlow(AdminHealthState(source.state.value))
     val state: StateFlow<AdminHealthState> = _state.asStateFlow()
 
-    fun refresh() {
-        val pad = PadHealthSnapshot(
-            modelState = when (runtimeState.value) {
-                is MnnRuntimeState.Ready -> "ready"
-                is MnnRuntimeState.Loading -> "loading"
-                is MnnRuntimeState.NotReady -> "not_ready"
-            },
-            diskFreeBytes = probe.diskFreeBytes(),
-            diskTotalBytes = probe.diskTotalBytes(),
-            appVersionName = probe.appVersionName(),
-            buildProvenance = probe.buildProvenance(),
-        )
-        val jetson = when (val r = client.fetchJetsonHealth()) {
-            is AdminApiResult.Ok -> JetsonHealthState.Loaded("ok")
-            is AdminApiResult.Error ->
-                if (r.message.startsWith("backend-pending")) {
-                    JetsonHealthState.BackendPending(r.message)
-                } else {
-                    JetsonHealthState.Error(r.message)
-                }
-        }
-        _state.value = AdminHealthState(pad = pad, jetson = jetson)
+    suspend fun refresh() {
+        _state.value = _state.value.copy(refreshing = true, error = null)
+        runCatching { source.refresh() }
+            .onSuccess { _state.value = AdminHealthState(source.state.value) }
+            .onFailure { error ->
+                _state.value = _state.value.copy(
+                    refreshing = false,
+                    error = error.message ?: "health refresh failed",
+                )
+            }
     }
 }

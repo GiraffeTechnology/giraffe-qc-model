@@ -51,6 +51,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.gestures.detectDragGestures
 import com.giraffetechnology.qc.admin.AdminApiClient
+import com.giraffetechnology.qc.admin.AdminCategoryState
+import com.giraffetechnology.qc.admin.AdminDetectionPoint
 import com.giraffetechnology.qc.admin.AdminPointEditState
 import com.giraffetechnology.qc.admin.AdminRegionSaveState
 import com.giraffetechnology.qc.admin.AdminSkuController
@@ -84,6 +86,7 @@ fun AdminStandardScreen(
     val uploadState by standardController.uploadState.collectAsState()
     val pointState by standardController.pointState.collectAsState()
     val regionState by standardController.regionState.collectAsState()
+    val categoryState by standardController.categoryState.collectAsState()
     val pendingRegions by standardController.pendingRegionsByPoint.collectAsState()
 
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -105,12 +108,20 @@ fun AdminStandardScreen(
     }
 
     LaunchedEffect(skuId) {
-        scope.launch(Dispatchers.IO) { skuController.select(skuId) }
+        scope.launch(Dispatchers.IO) {
+            skuController.select(skuId)
+            standardController.loadCategories(skuId)
+        }
     }
     // Refresh the SKU card after successful uploads / point saves.
     LaunchedEffect(uploadState, pointState) {
         if (uploadState is AdminUploadState.Uploaded || pointState is AdminPointEditState.Saved) {
-            scope.launch(Dispatchers.IO) { skuController.reloadSelected() }
+            scope.launch(Dispatchers.IO) {
+                skuController.reloadSelected()
+                if (pointState is AdminPointEditState.Saved) {
+                    standardController.loadCategories(skuId)
+                }
+            }
         }
     }
 
@@ -145,7 +156,7 @@ fun AdminStandardScreen(
                         Text(skill.t("admin.standard.upload_photo"))
                     }
                     OutlinedButton(onClick = {
-                        pendingViewType = "process_card"; filePicker.launch("*/*")
+                        pendingViewType = "process_card"; filePicker.launch("image/*")
                     }) {
                         Text(skill.t("admin.standard.upload_process_card"))
                     }
@@ -216,8 +227,8 @@ fun AdminStandardScreen(
                     }
                     when (val r = regionState) {
                         is AdminRegionSaveState.Invalid -> AdminErrorBanner(r.message)
-                        is AdminRegionSaveState.QueuedPendingBackend -> BackendPendingBanner(
-                            skill.t("admin.standard.regions.pending") + " (${r.count})"
+                        is AdminRegionSaveState.QueuedForRetry -> AdminErrorBanner(
+                            skill.t("admin.standard.regions.pending") + " (${r.count}): ${r.message}"
                         )
                         is AdminRegionSaveState.SavedToServer ->
                             AdminOkBanner(skill.t("admin.standard.regions.saved"))
@@ -241,7 +252,10 @@ fun AdminStandardScreen(
                             tonalElevation = 1.dp,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { selectedPointId = dp.id }
+                                .clickable {
+                                    selectedPointId = dp.id
+                                    draftRegions = dp.regions
+                                }
                                 .border(
                                     width = if (isSel) 2.dp else 0.dp,
                                     color = if (isSel) MaterialTheme.colorScheme.primary
@@ -267,20 +281,49 @@ fun AdminStandardScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
+                                val classification =
+                                    (categoryState as? AdminCategoryState.Loaded)?.byPointId?.get(dp.id)
+                                if (classification != null) {
+                                    val category = classification.confirmedCategory
+                                        ?: "proposed: ${classification.proposedCategory}"
+                                    Text(
+                                        "$category · ${classification.aiRole}",
+                                        fontSize = 11.sp,
+                                        color = if (classification.confirmedCategory != null)
+                                            Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         }
                     }
                 }
                 Spacer(Modifier.height(8.dp))
 
-                AddDetectionPointForm(
+                DetectionPointForm(
                     skill = skill,
                     pointState = pointState,
+                    selectedPoint = s.detectionPoints.firstOrNull { it.id == selectedPointId },
                     onAdd = { code, label, method, expected, severity ->
                         scope.launch(Dispatchers.IO) {
                             standardController.addDetectionPoint(
                                 skuId, code, label, null, method, expected, severity,
                             )
+                        }
+                    },
+                    onUpdate = { pointId, code, label, method, expected, severity ->
+                        scope.launch(Dispatchers.IO) {
+                            standardController.updateDetectionPoint(
+                                pointId, code, label, null, method, expected, severity,
+                            )
+                        }
+                    },
+                )
+                CategoryConfirmationPanel(
+                    state = categoryState,
+                    selectedPointId = selectedPointId,
+                    onConfirm = { pointId, category ->
+                        scope.launch(Dispatchers.IO) {
+                            standardController.confirmCategory(skuId, pointId, category)
                         }
                     },
                 )
@@ -294,10 +337,19 @@ fun AdminStandardScreen(
 }
 
 @Composable
-private fun AddDetectionPointForm(
+private fun DetectionPointForm(
     skill: com.giraffetechnology.qc.contracts.GiraffeLanguageSkill,
     pointState: AdminPointEditState,
+    selectedPoint: AdminDetectionPoint?,
     onAdd: (code: String, label: String, method: String?, expected: String?, severity: String) -> Unit,
+    onUpdate: (
+        pointId: String,
+        code: String,
+        label: String,
+        method: String?,
+        expected: String?,
+        severity: String,
+    ) -> Unit,
 ) {
     var code by remember { mutableStateOf("") }
     var label by remember { mutableStateOf("") }
@@ -306,6 +358,16 @@ private fun AddDetectionPointForm(
     var severity by remember { mutableStateOf("major") }
     var methodMenu by remember { mutableStateOf(false) }
     var severityMenu by remember { mutableStateOf(false) }
+
+    LaunchedEffect(selectedPoint?.id) {
+        selectedPoint?.let { point ->
+            code = point.pointCode
+            label = point.label
+            method = point.methodHint ?: "presence"
+            expected = point.expectedValue.orEmpty()
+            severity = point.severity
+        }
+    }
 
     Column {
         Text(skill.t("admin.standard.add_point"), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
@@ -360,9 +422,72 @@ private fun AddDetectionPointForm(
             is AdminPointEditState.Saving -> Text(skill.t("common.loading"), fontSize = 12.sp)
             else -> {}
         }
-        Button(onClick = {
-            onAdd(code, label, method, expected.takeIf { it.isNotBlank() }, severity)
-        }) { Text(skill.t("admin.standard.point.add")) }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = {
+                onAdd(code, label, method, expected.takeIf { it.isNotBlank() }, severity)
+            }) { Text(skill.t("admin.standard.point.add")) }
+            if (selectedPoint != null) {
+                OutlinedButton(onClick = {
+                    onUpdate(
+                        selectedPoint.id, code, label, method,
+                        expected.takeIf { it.isNotBlank() }, severity,
+                    )
+                }) { Text("Save edit") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryConfirmationPanel(
+    state: AdminCategoryState,
+    selectedPointId: String?,
+    onConfirm: (String, String) -> Unit,
+) {
+    val loaded = state as? AdminCategoryState.Loaded
+    var menuOpen by remember { mutableStateOf(false) }
+    var category by remember(selectedPointId, loaded) {
+        mutableStateOf(
+            selectedPointId?.let { loaded?.byPointId?.get(it)?.confirmedCategory }
+                ?: selectedPointId?.let { loaded?.byPointId?.get(it)?.proposedCategory }
+                ?: ""
+        )
+    }
+    Spacer(Modifier.height(8.dp))
+    Text("Checkpoint category", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+    when (state) {
+        AdminCategoryState.Loading, AdminCategoryState.Confirming ->
+            Text("Loading categories…", fontSize = 12.sp)
+        is AdminCategoryState.Error -> AdminErrorBanner(state.message)
+        else -> Unit
+    }
+    if (loaded != null && selectedPointId != null) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column {
+                OutlinedButton(onClick = { menuOpen = true }) {
+                    Text(category.ifEmpty { "Select category" })
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    loaded.options.forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text("${option.category} · ${option.defaultAiRole}") },
+                            onClick = { category = option.category; menuOpen = false },
+                        )
+                    }
+                }
+            }
+            Button(
+                enabled = category.isNotBlank(),
+                onClick = { onConfirm(selectedPointId, category) },
+            ) { Text("Confirm category") }
+        }
+        val current = loaded.byPointId[selectedPointId]
+        if (current?.confirmedCategory != null) {
+            Text(
+                "Confirmed by ${current.confirmedBy ?: "administrator"}; AI role: ${current.aiRole}",
+                fontSize = 11.sp,
+            )
+        }
     }
 }
 

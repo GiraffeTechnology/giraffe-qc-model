@@ -185,16 +185,19 @@ class AdminResultsController(private val client: AdminApiClient) {
 
 sealed class AdminProbationState {
     object Loading : AdminProbationState()
-    /**
-     * Suspensions come from the live `/api/qc/suspensions` API; the probation
-     * gate/agreement panel awaits WS7's HTTP wiring and is explicitly marked
-     * backend-pending in the UI ([probationBackendPending] carries the reason).
-     */
     data class Loaded(
         val suspensions: List<AdminSuspension>,
-        val probationBackendPending: String,
+        val probation: AdminProbationView? = null,
+        val report: AdminDisagreementReport? = null,
+        val notice: String? = null,
     ) : AdminProbationState()
     data class Error(val message: String) : AdminProbationState()
+}
+
+sealed class AdminProbationMutationState {
+    object Idle : AdminProbationMutationState()
+    object Working : AdminProbationMutationState()
+    data class Error(val message: String) : AdminProbationMutationState()
 }
 
 class AdminProbationController(private val client: AdminApiClient) {
@@ -202,7 +205,12 @@ class AdminProbationController(private val client: AdminApiClient) {
     private val _state = MutableStateFlow<AdminProbationState>(AdminProbationState.Loading)
     val state: StateFlow<AdminProbationState> = _state.asStateFlow()
 
-    fun refresh() {
+    private val _mutation = MutableStateFlow<AdminProbationMutationState>(AdminProbationMutationState.Idle)
+    val mutation: StateFlow<AdminProbationMutationState> = _mutation.asStateFlow()
+
+    private var selectedRevisionId: String? = null
+
+    fun refresh(revisionId: String? = selectedRevisionId) {
         _state.value = AdminProbationState.Loading
         val suspensions = when (val r = client.listSuspensions()) {
             is AdminApiResult.Ok -> r.value
@@ -211,13 +219,58 @@ class AdminProbationController(private val client: AdminApiClient) {
                 return
             }
         }
-        // TODO(backend-pending: docs/api-contracts/probation-service.md) —
-        // probation gate/agreement/pause/resume wiring is WS7's; surface the
-        // pending reason instead of pretending data exists.
-        val pendingReason = when (val r = client.fetchProbation("")) {
-            is AdminApiResult.Ok -> ""
-            is AdminApiResult.Error -> r.message
+        if (revisionId.isNullOrBlank()) {
+            _state.value = AdminProbationState.Loaded(
+                suspensions = suspensions,
+                notice = "Enter a standard revision ID to load its probation state.",
+            )
+            return
         }
-        _state.value = AdminProbationState.Loaded(suspensions, pendingReason)
+        selectedRevisionId = revisionId.trim()
+        when (val r = client.fetchProbation(selectedRevisionId!!)) {
+            is AdminApiResult.Ok -> _state.value = AdminProbationState.Loaded(
+                suspensions = suspensions,
+                probation = r.value,
+            )
+            is AdminApiResult.Error -> _state.value = if (r.httpCode == 404) {
+                AdminProbationState.Loaded(
+                    suspensions = suspensions,
+                    notice = "No probation record exists for this standard revision.",
+                )
+            } else {
+                AdminProbationState.Error(r.message)
+            }
+        }
+    }
+
+    fun pause() = mutate { client.pauseProbation(it.probationId) }
+
+    fun resume() = mutate { client.resumeProbation(it.probationId) }
+
+    fun loadDisagreementReport() {
+        val loaded = _state.value as? AdminProbationState.Loaded ?: return
+        val probation = loaded.probation ?: return
+        _mutation.value = AdminProbationMutationState.Working
+        when (val r = client.fetchDisagreementReport(probation.probationId)) {
+            is AdminApiResult.Ok -> {
+                _state.value = loaded.copy(report = r.value, notice = null)
+                _mutation.value = AdminProbationMutationState.Idle
+            }
+            is AdminApiResult.Error -> _mutation.value = AdminProbationMutationState.Error(r.message)
+        }
+    }
+
+    private fun mutate(call: (AdminProbationView) -> AdminApiResult<AdminProbationView>) {
+        val probation = (_state.value as? AdminProbationState.Loaded)?.probation ?: return
+        _mutation.value = AdminProbationMutationState.Working
+        when (val r = call(probation)) {
+            is AdminApiResult.Ok -> {
+                // Server owns all transitions. Refresh rather than predicting
+                // counters or status from the requested action.
+                _mutation.value = AdminProbationMutationState.Idle
+                refresh(r.value.standardRevisionId)
+            }
+            is AdminApiResult.Error -> _mutation.value = AdminProbationMutationState.Error(r.message)
+        }
     }
 }

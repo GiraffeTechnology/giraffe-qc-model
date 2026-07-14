@@ -8,8 +8,10 @@
 
 **Status on `main`:** the service, read/report/pause/resume router, automatic
 start on Studio Bundle publish, and human-final-decision recording hook exist.
-WS3/WS7b UI binding remains to be completed. This is separate from
-`qc_qualification_router.py` and the L3 accuracy-gate/shadow-mode flow.
+WS3 now binds the live read/report/pause/resume surface on the Pad, including
+in-flight mutation disabling and server-owned refresh. WS7b's remaining hookup
+is separate from `qc_qualification_router.py` and the L3 accuracy-gate/shadow-
+mode flow.
 
 All `/api/qc/*` routes use the repository's authenticated admin/tenant gate.
 Tenant identity comes from the authenticated principal; callers cannot widen

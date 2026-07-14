@@ -21,16 +21,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.giraffetechnology.qc.admin.AdminHealthController
-import com.giraffetechnology.qc.admin.JetsonHealthState
 import com.giraffetechnology.qc.i18n.LanguageController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * Pad / Jetson health (WS3 item 8). The Pad panel is fully real (MNN runtime
- * state, disk, build identity). The Jetson panel is wired to the health API
- * call whose contract (WS4/WS5) is not yet published — it renders an explicit
- * backend-pending banner rather than placeholder numbers.
+ * Architecture v2 health: Operator Nano CV, Operator cloud/link, and the
+ * Administrator Xavier MNN node are deliberately separate. Xavier readiness
+ * never implies the Operator can start a live cloud job.
  */
 @Composable
 fun AdminHealthScreen(
@@ -41,6 +39,7 @@ fun AdminHealthScreen(
     val scope = rememberCoroutineScope()
     val skill by languageController.skill.collectAsState()
     val state by controller.state.collectAsState()
+    val snapshot = state.snapshot
 
     LaunchedEffect(Unit) {
         scope.launch(Dispatchers.IO) { controller.refresh() }
@@ -53,51 +52,123 @@ fun AdminHealthScreen(
             backLabel = skill.t("admin.back"),
             onBack = onBack,
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                "Operator readiness: ${snapshot.operatorPipelineReadiness}",
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+            )
+            Spacer(Modifier.weight(1f))
+            Text("Observed: ${snapshot.observedAt}", fontSize = 11.sp)
+            Spacer(Modifier.padding(horizontal = 4.dp))
+            OutlinedButton(
+                enabled = !state.refreshing,
+                onClick = { scope.launch(Dispatchers.IO) { controller.refresh() } },
+            ) { Text(skill.t("common.retry")) }
+        }
+        state.error?.let { AdminErrorBanner(it) }
+        snapshot.limitations.forEach { BackendPendingBanner(it) }
+        Spacer(Modifier.height(8.dp))
 
-        Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            // ── Pad health (real, on-device) ─────────────────────────────────
-            Surface(tonalElevation = 2.dp, modifier = Modifier.weight(1f)) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text(skill.t("admin.health.pad"), fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                    Spacer(Modifier.height(8.dp))
-                    val pad = state.pad
-                    if (pad == null) {
-                        Text(skill.t("common.loading"), fontSize = 13.sp)
-                    } else {
-                        KeyValueRow(
-                            skill.t("admin.health.model"),
-                            skill.t("admin.health.model.${pad.modelState}"),
-                        )
-                        KeyValueRow(
-                            skill.t("admin.health.disk"),
-                            "%.1f / %.1f GB".format(
-                                pad.diskFreeBytes / 1e9, pad.diskTotalBytes / 1e9,
-                            ),
-                        )
-                        KeyValueRow(skill.t("admin.health.app_version"), pad.appVersionName)
-                        KeyValueRow(skill.t("admin.health.build"), pad.buildProvenance)
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    OutlinedButton(onClick = {
-                        scope.launch(Dispatchers.IO) { controller.refresh() }
-                    }) { Text(skill.t("common.retry")) }
-                }
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            HealthPanel("Operator Nano CV", Modifier.weight(1f)) {
+                KeyValueRow("Status", snapshot.nanoCv.status)
+                KeyValueRow("Agent", snapshot.nanoCv.agentVersion ?: "unknown")
+                KeyValueRow("Pipeline", snapshot.nanoCv.pipelineVersion ?: "unknown")
+                KeyValueRow(
+                    "Last real CV",
+                    snapshot.nanoCv.lastCvDurationMs?.let { "$it ms" } ?: "unknown",
+                )
+                KeyValueRow("Last success", snapshot.nanoCv.lastSuccessAt ?: "unknown")
+                KeyValueRow("Last error", snapshot.nanoCv.lastErrorCode ?: "none / unknown")
             }
 
-            // ── Jetson health (backend-pending, labeled) ─────────────────────
-            Surface(tonalElevation = 2.dp, modifier = Modifier.weight(1f)) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text(skill.t("admin.health.jetson"), fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                    Spacer(Modifier.height(8.dp))
-                    when (val j = state.jetson) {
-                        is JetsonHealthState.Loaded -> KeyValueRow(skill.t("admin.health.model"), j.summary)
-                        is JetsonHealthState.Error -> AdminErrorBanner(j.message)
-                        is JetsonHealthState.BackendPending ->
-                            BackendPendingBanner(skill.t("admin.health.jetson.pending"))
-                    }
+            HealthPanel("Cloud connection", Modifier.weight(1.2f)) {
+                KeyValueRow("Link", snapshot.cloudLink.state)
+                KeyValueRow("Cloud service", snapshot.cloudLink.cloudService)
+                KeyValueRow("Accepting jobs", snapshot.cloudLink.acceptingJobs.toString())
+                KeyValueRow("Current network", snapshot.cloudLink.currentNetwork)
+                KeyValueRow("Active-job network", snapshot.cloudLink.activeJobNetwork ?: "none")
+                KeyValueRow(
+                    "Deferred switch",
+                    snapshot.cloudLink.switchDeferredUntilJobEnd.toString(),
+                )
+                KeyValueRow(
+                    "Uplink",
+                    snapshot.cloudLink.effectiveUplinkMbps?.let { "%.1f Mbps".format(it) }
+                        ?: "unknown (min %.1f)".format(snapshot.cloudLink.thresholds.minUplinkMbps),
+                )
+                KeyValueRow(
+                    "RTT",
+                    snapshot.cloudLink.rttMs?.let { "$it ms" }
+                        ?: "unknown (max ${snapshot.cloudLink.thresholds.maxRttMs})",
+                )
+                KeyValueRow(
+                    "Packet loss",
+                    snapshot.cloudLink.packetLossPercent?.let { "%.1f%%".format(it) }
+                        ?: "unknown (max %.1f%%)".format(
+                            snapshot.cloudLink.thresholds.maxPacketLossPercent
+                        ),
+                )
+                KeyValueRow(
+                    "Threshold breaches",
+                    snapshot.cloudLink.thresholdBreaches.joinToString().ifEmpty { "none / unknown" },
+                )
+                KeyValueRow("Last switch", snapshot.cloudLink.lastSwitchSummary ?: "none / unknown")
+                KeyValueRow(
+                    "Pending uploads",
+                    snapshot.offlineQueue.pendingUploadJobs?.toString() ?: "unknown",
+                )
+            }
+
+            HealthPanel("Administrator Xavier MNN", Modifier.weight(1f)) {
+                KeyValueRow("Status", snapshot.xavierAdmin.status)
+                KeyValueRow("Runner", snapshot.xavierAdmin.runnerId ?: "not configured")
+                KeyValueRow("Engine", snapshot.xavierAdmin.runtimeEngine ?: "unknown")
+                KeyValueRow("Adapter", snapshot.xavierAdmin.adapterMode ?: "unknown")
+                KeyValueRow("Configured model", snapshot.xavierAdmin.modelName ?: "unknown")
+                KeyValueRow(
+                    "Model loaded",
+                    snapshot.xavierAdmin.modelLoaded?.toString() ?: "unknown",
+                )
+                KeyValueRow(
+                    "Temperature",
+                    snapshot.xavierAdmin.temperatureC?.let { "%.1f °C".format(it) }
+                        ?: "unknown",
+                )
+                KeyValueRow("Thermal", snapshot.xavierAdmin.thermalState)
+                KeyValueRow(
+                    "Disk free",
+                    snapshot.xavierAdmin.diskFreeBytes?.let { "%.1f GB".format(it / 1e9) }
+                        ?: "unknown",
+                )
+                KeyValueRow(
+                    "Last real recognition",
+                    snapshot.xavierAdmin.lastRecognitionLatencyMs?.let { "$it ms" } ?: "unknown",
+                )
+                KeyValueRow(
+                    "Hardware validation",
+                    snapshot.xavierAdmin.hardwareValidationStatus,
+                )
+                if (snapshot.xavierAdmin.mock) {
+                    AdminErrorBanner("MOCK INFERENCE — NOT REAL QC JUDGMENT")
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun HealthPanel(title: String, modifier: Modifier, content: @Composable () -> Unit) {
+    Surface(tonalElevation = 2.dp, modifier = modifier) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+            Spacer(Modifier.height(6.dp))
+            content()
         }
     }
 }

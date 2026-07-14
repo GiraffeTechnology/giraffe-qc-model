@@ -94,6 +94,7 @@ its evidence checklist has been completed and reviewed.
 | `XAVIER_MNN_MODEL_NAME` | `qwen3-vl-4b` | Reported model name; Qwen is only the default. |
 | `XAVIER_ADMIN_CREDENTIALS_JSON` | `{}` | Provisioned Administrator credentials. |
 | `XAVIER_MAX_REQUEST_BYTES` | `20971520` | Total uploaded image-byte limit. |
+| `XAVIER_RECOGNITION_CACHE_MAX_ENTRIES` | `256` | Maximum in-memory idempotency/reconciliation responses; least-recently-used entries are evicted. |
 | `XAVIER_HARDWARE_VALIDATION_STATUS` | `not_run` | Manual evidence state; `passed` requires an evidence reference. |
 | `JETSON_BIND_HOST` / `JETSON_BIND_PORT` | `0.0.0.0` / `8600` | Site LAN bind. TLS termination is required outside loopback. |
 

@@ -97,33 +97,25 @@ If language-skill cannot produce a valid canonical packet, QC workflow must ask 
 
 ---
 
-## Runtime Profiles
+## Runtime Architecture and Default Models
 
-Product default runtime profiles:
+Giraffe QC Model is provider- and model-neutral. Qwen models are replaceable
+deployment defaults, not required models, a product identity, or an ecosystem
+dependency. LLM/VLM providers are selected through configuration and adapters.
 
-| Runtime profile | Product default model | Intended runtime | Notes |
-|---|---|---|---|
-| `tablet_mnn` | `qwen3.5-vl-2b-mnn` | Tablet / Pad local MNN | Local visual QC profile for edge-side inspection. Physical Android Pad MNN migration remains separately audited. |
-| `server` | `qwen3.5-vl-8b-int4` | Server-side QC model | Larger server profile for backend visual reasoning when explicitly configured. |
+Architecture v2 defaults:
 
-These are product defaults, not a Qwen ecosystem lock-in. Product services depend on provider abstraction, so mainstream LLM/VLM providers can be added through adapters.
+| Runtime role | Default model | Responsibility |
+|---|---|---|
+| Cloud GPU (A10/V100 class) | `qwen3-vl-30b-A3B` | Production Operator VLM inference; provider is configurable. |
+| Administrator Xavier NX | `qwen3-vl-4b` via MNN | Administrator-side recognition and standard-authoring assistance only. |
+| Operator Pad + Jetson Nano | No VLM | Capture, OpenCV pre-analysis, crop/compress, upload, queue, and health telemetry. |
 
-Environment selection:
-
-```bash
-QC_VISION_RUNTIME_ENV=tablet_mnn
-QC_VISION_RUNTIME_ENV=server
-```
-
-Unknown or unset `QC_VISION_RUNTIME_ENV` falls back to `server`.
-
-Older edition switch remains in place:
-
-```bash
-QC_RUNTIME_EDITION=padLocal|server
-```
-
-The edge profile is tablet, not desktop. Do not use `desktop_pc_mnn` for this product path.
+The Operator path sends bounded crops to the configured cloud inference
+provider. It does not route production judgments through Xavier, and the Nano
+does not host an LLM/VLM. Older Pad-local and Pad-to-Xavier runtime code remains
+only as explicitly marked compatibility material until its scheduled removal;
+it does not define the current product architecture.
 
 ---
 
