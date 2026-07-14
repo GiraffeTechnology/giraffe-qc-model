@@ -21,7 +21,21 @@ lives in `P0_REMEDIATION_MERGE_SUMMARY.md`.
 | 2026-07-13 | #32 | closed — outdated; superseded by current bundle/store/submit implementations (noted Pad-side Ed25519 verifier as a potential fresh work item) | — |
 | 2026-07-14 | #62 | merged — **Step 0 v2 contracts** (cloud-inference-api, xavier-admin-runner-api, pad-health-state, probation-api v2; v1 contracts marked superseded). Docs-only; claims lint✓ | docs-only |
 
+| 2026-07-14 | #63 | merged — WS5 v2 Xavier admin MNN runner | suite 1090✓ + runner 41✓, Android✓, lints✓ |
+| 2026-07-14 | #64 | merged — WS3 v2 Pad Admin completion | suite 1095✓ + runner 42✓, Android 261✓, lints✓ |
+| 2026-07-14 | #65 | merged — WS4 v2 operator cloud pipeline | suite 1095✓, Android 269✓ + provider-SDK audit✓, lints✓ |
+| 2026-07-14 | #66 | merged — WS6 v2 CV authoring config; rebase conflict resolved by restoring author's post-publish 409 guard (mechanical, committed on branch) | suite 1101✓, lints✓ |
+| 2026-07-14 | #67 | merged — WS7 v2 audited S4 probation path; stacked-branch rebuilt via cherry-pick onto main, duplicate PATCH route deduplicated to author's evolved version | suite 1104✓, Android✓, lints✓ |
+| 2026-07-14 | #68 | merged — WS2 v2 Studio CV/probation i18n | suite 1107✓, lints✓ |
+| 2026-07-14 | #69 | merged — ws6b process-card → Source Workbench hookup | suite 1107✓, Android✓, lints✓ |
+| 2026-07-14 | #70 | merged — ws7b probation audit + actor binding (migration 025) | suite 1110✓, Android✓, lints✓ |
+| 2026-07-14 | #71 | merged — final Android i18n sweep + brand icon | suite 1110✓, Android 277✓, lints✓ |
+| 2026-07-14 | #72 | merged — WS8 OpenCV pre-analysis (Nano+Xavier shared) | suite 1116✓ + runner 45✓, Android✓, lints✓ |
+| 2026-07-14 | main | post-train verification: clean-env 1116✓, runner 45✓, alembic → 025 linear✓, lints✓ | — |
+
 ## Architecture v2 queue (CLAUDE_CODE_A_CI_BRIEF §3 — strict order)
+
+All ten v2 PRs merged in order (#63→#72) — queue complete. Original plan:
 
 1. ~~Step 0 v2 contracts~~ ✅ #62
 2. WS1 (build repro deltas, if any) — Codex
