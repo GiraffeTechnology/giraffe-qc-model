@@ -124,4 +124,4 @@ def render_markdown(report: dict[str, Any]) -> str:
                 "",
             ]
         )
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines).rstrip() + "\n"
