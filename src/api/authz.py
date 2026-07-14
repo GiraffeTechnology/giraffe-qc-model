@@ -40,6 +40,7 @@ from __future__ import annotations
 import json
 from urllib.parse import parse_qsl, urlencode
 
+from fastapi import HTTPException
 from starlette.responses import JSONResponse, RedirectResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -81,6 +82,27 @@ def effective_tenant(request, fallback: str = "default") -> str:
     state = getattr(request, "state", None)
     tenant = getattr(state, "tenant_id", None)
     return tenant if tenant else fallback
+
+
+def effective_actor(request, claimed: str | None = None) -> str:
+    """Return the authenticated actor and reject caller-supplied impersonation.
+
+    Protected production routes always have ``request.state.principal`` from
+    :class:`AuthTenantMiddleware`. The fallback exists only for the suite's
+    explicit anonymous ``APP_ENV=test`` compatibility path.
+    """
+    state = getattr(request, "state", None)
+    principal = getattr(state, "principal", None)
+    if principal is not None:
+        if claimed and claimed != principal.subject:
+            raise HTTPException(
+                status_code=403,
+                detail="actor does not match authenticated principal",
+            )
+        return principal.subject
+    if _app_env() == "test":
+        return claimed or "test-admin"
+    raise HTTPException(status_code=401, detail="authenticated actor required")
 
 
 def _principal_from_session(session: dict) -> Principal | None:

@@ -36,6 +36,7 @@ from src.db.qc_probation_models import (
     PROBATION_QUALIFIED,
     QCProbation,
     QCProbationJob,
+    QCProbationTransitionAudit,
 )
 
 # ── Reset rule (§3.4) ─────────────────────────────────────────────────────────
@@ -373,26 +374,62 @@ def disagreement_report(
 # ── Pause / resume (§3.2) ─────────────────────────────────────────────────────
 
 
-def pause_probation(db: Session, probation_id: str, tenant_id: str = "default") -> QCProbation:
+def pause_probation(
+    db: Session,
+    probation_id: str,
+    tenant_id: str = "default",
+    actor: str | None = None,
+) -> QCProbation:
     """Admin pauses probation at any time to edit the standard in Studio."""
     probation = get_probation(db, probation_id, tenant_id)
     if probation.status == PROBATION_QUALIFIED:
         raise InvalidProbationState("cannot pause a qualified standard")
     if probation.status == PROBATION_PAUSED:
         return probation
+    previous_status = probation.status
     probation.status = PROBATION_PAUSED
     probation.paused_at = _now()
+    if actor:
+        db.add(QCProbationTransitionAudit(
+            id=_uid(),
+            tenant_id=tenant_id,
+            probation_id=probation.id,
+            standard_revision_id=probation.standard_revision_id,
+            action="pause",
+            actor=actor,
+            previous_status=previous_status,
+            new_status=PROBATION_PAUSED,
+        ))
     db.commit()
     db.refresh(probation)
     return probation
 
 
-def resume_probation(db: Session, probation_id: str, tenant_id: str = "default") -> QCProbation:
+def resume_probation(
+    db: Session,
+    probation_id: str,
+    tenant_id: str = "default",
+    actor: str | None = None,
+) -> QCProbation:
     probation = get_probation(db, probation_id, tenant_id)
     if probation.status == PROBATION_QUALIFIED:
         raise InvalidProbationState("cannot resume a qualified standard")
+    if probation.status == PROBATION_ACTIVE:
+        return probation
+    previous_status = probation.status
     probation.status = PROBATION_ACTIVE
     probation.paused_at = None
+    if actor:
+        db.add(QCProbationTransitionAudit(
+            id=_uid(),
+            tenant_id=tenant_id,
+            probation_id=probation.id,
+            standard_revision_id=probation.standard_revision_id,
+            action="resume",
+            actor=actor,
+            previous_status=previous_status,
+            new_status=PROBATION_ACTIVE,
+        ))
     db.commit()
     db.refresh(probation)
     return probation

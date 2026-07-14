@@ -26,17 +26,23 @@ import src.db.studio_models       # noqa: F401
 import src.db.qc_bundle_models    # noqa: F401
 import src.db.qc_verdict_models   # noqa: F401
 import src.db.pad_models          # noqa: F401
+import src.db.qc_probation_models # noqa: F401
 
 _PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 # Tables that previously existed only via create_all and now have migration 018.
-_MIGRATED_TABLES = [
+_CREATE_ALL_ADOPTION_TABLES = [
     "qc_bundles",
     "qc_workstations",
     "qc_bundle_assignments",
     "qc_pad_submissions",
     "qc_submitted_checkpoints",
     "qc_server_verdicts",
+]
+
+_MIGRATED_TABLES = [
+    *_CREATE_ALL_ADOPTION_TABLES,
+    "qc_probation_transition_audits",
 ]
 
 
@@ -113,7 +119,7 @@ def test_upgrade_head_adopts_create_all_tables(tmp_path, monkeypatch):
     command.upgrade(cfg, "018")
     # A create_all deployment materialised the S3/S4 tables already.
     Base.metadata.create_all(
-        engine, tables=[Base.metadata.tables[t] for t in _MIGRATED_TABLES]
+        engine, tables=[Base.metadata.tables[t] for t in _CREATE_ALL_ADOPTION_TABLES]
     )
 
     command.upgrade(cfg, "head")  # must not raise 'table already exists'

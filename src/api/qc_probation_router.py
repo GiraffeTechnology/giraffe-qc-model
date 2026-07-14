@@ -14,10 +14,11 @@ accuracy-gate/shadow-mode qualification flow (PR 27).
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_db_dep
+from src.api.authz import effective_actor
 from src.qc_model.qualification import probation as service
 
 router = APIRouter(prefix="/api/qc/probation", tags=["qc-probation"])
@@ -61,9 +62,16 @@ def get_disagreement_report(probation_id: str, tenant_id: str = "default", db: S
 
 
 @router.post("/{probation_id}/pause")
-def pause(probation_id: str, tenant_id: str = "default", db: Session = Depends(get_db_dep)):
+def pause(
+    probation_id: str,
+    request: Request,
+    tenant_id: str = "default",
+    db: Session = Depends(get_db_dep),
+):
     try:
-        p = service.pause_probation(db, probation_id, tenant_id)
+        p = service.pause_probation(
+            db, probation_id, tenant_id, actor=effective_actor(request)
+        )
     except service.ProbationNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except service.InvalidProbationState as exc:
@@ -72,9 +80,16 @@ def pause(probation_id: str, tenant_id: str = "default", db: Session = Depends(g
 
 
 @router.post("/{probation_id}/resume")
-def resume(probation_id: str, tenant_id: str = "default", db: Session = Depends(get_db_dep)):
+def resume(
+    probation_id: str,
+    request: Request,
+    tenant_id: str = "default",
+    db: Session = Depends(get_db_dep),
+):
     try:
-        p = service.resume_probation(db, probation_id, tenant_id)
+        p = service.resume_probation(
+            db, probation_id, tenant_id, actor=effective_actor(request)
+        )
     except service.ProbationNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except service.InvalidProbationState as exc:

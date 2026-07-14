@@ -45,7 +45,6 @@
           {% else %}
           <form method="post" action="/admin/results/{{ r.submission_id }}/final-decision" class="qcm-inline-form">
             <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
-            <input type="text" name="decided_by" placeholder="reviewer" size="8" required>
             <select name="decision">
               <option value="pass">pass</option>
               <option value="reject">reject</option>

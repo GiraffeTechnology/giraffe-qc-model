@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -296,6 +297,17 @@ class AdminHealthControllerTest {
 }
 
 class AdminProbationControllerTest {
+
+    @Test
+    fun `probation action visibility follows contract and unknown states fail closed`() {
+        assertTrue(probationActionPolicy("active").canPause)
+        assertTrue(probationActionPolicy("active").humanFinalVerdictRequired)
+        assertTrue(probationActionPolicy("paused").canResume)
+        assertFalse(probationActionPolicy("paused").humanFinalVerdictRequired)
+        assertTrue(probationActionPolicy("qualified").canViewReport)
+        assertFalse(probationActionPolicy("qualified").canPause)
+        assertFalse(probationActionPolicy("unexpected").canViewReport)
+    }
 
     @Test
     fun `suspensions and live probation gate load together`() {

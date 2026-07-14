@@ -200,6 +200,41 @@ sealed class AdminProbationMutationState {
     data class Error(val message: String) : AdminProbationMutationState()
 }
 
+data class AdminProbationActionPolicy(
+    val canPause: Boolean,
+    val canResume: Boolean,
+    val canViewReport: Boolean,
+    val humanFinalVerdictRequired: Boolean,
+)
+
+/** Presentation policy mirrors probation-api.md and fails closed on new states. */
+fun probationActionPolicy(status: String): AdminProbationActionPolicy = when (status) {
+    "active" -> AdminProbationActionPolicy(
+        canPause = true,
+        canResume = false,
+        canViewReport = true,
+        humanFinalVerdictRequired = true,
+    )
+    "paused" -> AdminProbationActionPolicy(
+        canPause = false,
+        canResume = true,
+        canViewReport = true,
+        humanFinalVerdictRequired = false,
+    )
+    "qualified" -> AdminProbationActionPolicy(
+        canPause = false,
+        canResume = false,
+        canViewReport = true,
+        humanFinalVerdictRequired = false,
+    )
+    else -> AdminProbationActionPolicy(
+        canPause = false,
+        canResume = false,
+        canViewReport = false,
+        humanFinalVerdictRequired = false,
+    )
+}
+
 class AdminProbationController(private val client: AdminApiClient) {
 
     private val _state = MutableStateFlow<AdminProbationState>(AdminProbationState.Loading)
