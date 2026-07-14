@@ -46,7 +46,6 @@ fun AdminHomeScreen(
     onOpenHealth: () -> Unit,
     onOpenProbation: () -> Unit,
     onOpenResults: () -> Unit,
-    onOpenJetsonPairing: () -> Unit,
     onLogout: () -> Unit,
 ) {
     val skill by languageController.skill.collectAsState()
@@ -60,7 +59,6 @@ fun AdminHomeScreen(
         AdminDestination("admin.home.health", "admin.home.health.desc", onOpenHealth),
         AdminDestination("admin.home.probation", "admin.home.probation.desc", onOpenProbation),
         AdminDestination("admin.home.results", "admin.home.results.desc", onOpenResults),
-        AdminDestination("admin.home.pairing", "admin.home.pairing.desc", onOpenJetsonPairing),
     )
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {

@@ -16,8 +16,6 @@ sealed class PadScreen {
     object AdminHealth : PadScreen()
     object AdminProbation : PadScreen()
     object AdminResults : PadScreen()
-    /** Jetson Xavier NX pairing (WS4) — physical/LAN action, entered from AdminHome. */
-    object JetsonPairing : PadScreen()
     /** Operator branch (S5 §8.1): offline search of standards installed on this Pad. */
     object OperatorTaskSelection : PadScreen()
     /** QC Work page (S6 §8.2): split camera / reference / conversation / input. */

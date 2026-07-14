@@ -20,6 +20,9 @@ data class QcPointInput(
     val description: String,
     val roiJson: String? = null,
     val ruleType: String? = null,
+    val expectedValue: String? = null,
+    val passCriteria: String? = null,
+    val cvConfigJson: String? = null,
 )
 
 data class InspectionContext(
@@ -27,6 +30,9 @@ data class InspectionContext(
     val skuId: String,
     val standardId: String,
     val inspectionId: String,
+    val bundleVersion: String? = null,
+    val workstationId: String = "unassigned",
+    val padDeviceId: String = "unprovisioned",
 )
 
 // ── Output types (§4.3.4 schema) ─────────────────────────────────────────────
@@ -55,6 +61,8 @@ data class QwenInspectionOutput(
     val items: List<InspectionItemResult>,
     val fallback: FallbackInfo,
     val summary: String = "",
+    val cloudJobId: String? = null,
+    val timing: Map<String, String> = emptyMap(),
 )
 
 // ── Inspector interface (§4.3.3) ──────────────────────────────────────────────

@@ -79,11 +79,11 @@ fun QcCaptureScreen(
             val photo = (captureState as AutoCaptureState.Captured).capture
             val result = inspectionCoordinator?.inspect(task, photo)
                 ?: PadInspectionResult(
-                    overallResult      = "MNN_PENDING",
-                    reason             = "Inspection coordinator not available",
-                    modelName          = "Qwen3-VL-2B-Instruct-MNN",
-                    localOnly          = true,
-                    cloudInferenceUsed = false,
+                    overallResult      = "CLOUD_UNAVAILABLE",
+                    reason             = "Cloud inspection coordinator not available — no verdict",
+                    modelName          = "configured-cloud-vlm",
+                    localOnly          = false,
+                    cloudInferenceUsed = true,
                     capturedImagePath  = photo.rawImagePath,
                 )
             onInspectionResult(result)
@@ -225,11 +225,11 @@ fun QcCaptureScreen(
                             .onSuccess { photo ->
                                 val result = inspectionCoordinator?.inspect(task, photo)
                                     ?: PadInspectionResult(
-                                        overallResult      = "MNN_PENDING",
-                                        reason             = "Inspection coordinator not available",
-                                        modelName          = "Qwen3-VL-2B-Instruct-MNN",
-                                        localOnly          = true,
-                                        cloudInferenceUsed = false,
+                                        overallResult      = "CLOUD_UNAVAILABLE",
+                                        reason             = "Cloud inspection coordinator not available — no verdict",
+                                        modelName          = "configured-cloud-vlm",
+                                        localOnly          = false,
+                                        cloudInferenceUsed = true,
                                         capturedImagePath  = photo.rawImagePath,
                                     )
                                 onInspectionResult(result)

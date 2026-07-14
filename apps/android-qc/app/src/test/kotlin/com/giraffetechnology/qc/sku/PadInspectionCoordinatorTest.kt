@@ -22,9 +22,9 @@ private class FakeMnnRuntime(state: MnnRuntimeState) : MnnRuntime {
 /** Records the inputs it was called with so tests can assert real data was passed. */
 private class RecordingQwenInspector(
     private val output: QwenInspectionOutput? = null,
+    override val engineName: String = "fake_local",
+    override val modelName: String = "Qwen3-VL-2B-Instruct-MNN",
 ) : QwenInspector {
-    override val engineName = "fake_local"
-    override val modelName  = "Qwen3-VL-2B-Instruct-MNN"
     var lastStandardPhotos: List<StandardPhotoInput>? = null
     var lastQcPoints: List<QcPointInput>? = null
     var lastContext: InspectionContext? = null
@@ -94,6 +94,24 @@ private fun makePhoto() = CapturedPhoto(
 )
 
 class PadInspectionCoordinatorTest {
+
+    @Test fun `fresh architecture v2 cloud runtime fails closed without a cloud verdict`() = runTest {
+        val inspector = RecordingQwenInspector(makeOutput("pass"), "configured_cloud_vlm", "configured-default")
+        val coord = PadInspectionCoordinator(inspector, FakeMnnRuntime(MnnRuntimeState.NotReady))
+        val result = coord.inspect(makeTask(), makePhoto())
+        assertEquals("CLOUD_UNAVAILABLE", result.overallResult)
+        assertTrue(result.cloudInferenceUsed)
+        assertFalse(result.localOnly)
+        assertFalse(inspector.called)
+    }
+
+    @Test fun `retryable cloud loss becomes pending upload and never a verdict`() = runTest {
+        val inspector = RecordingQwenInspector(null, "configured_cloud_vlm", "configured-default")
+        val coord = PadInspectionCoordinator(inspector, FakeMnnRuntime(MnnRuntimeState.Ready))
+        val result = coord.inspect(makeTask(), makePhoto())
+        assertEquals("CLOUD_ERROR", result.overallResult)
+        assertNotEquals("ACCEPTED", result.overallResult)
+    }
 
     @Test fun `MNN not ready returns MNN_PENDING`() = runTest {
         val inspector = RecordingQwenInspector(makeOutput("pass"))

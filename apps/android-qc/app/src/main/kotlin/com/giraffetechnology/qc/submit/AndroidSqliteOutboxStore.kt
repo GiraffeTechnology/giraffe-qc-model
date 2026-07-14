@@ -40,7 +40,7 @@ class AndroidSqliteOutboxStore(
         val out = mutableListOf<OutboxEntry>()
         val sql = "SELECT client_job_id, tenant_id, sku_id, item_number, standard_revision_id, " +
             "bundle_version, model_result, human_decision, reason, model_name, captured_image_path, " +
-            "created_at, uploaded FROM outbox_entry" +
+            "created_at, cloud_job_id, point_results_json, timing_json, uploaded FROM outbox_entry" +
             (where?.let { " WHERE $it" } ?: "") + " ORDER BY created_at"
         helper.readableDatabase.rawQuery(sql, null).use { c ->
             while (c.moveToNext()) {
@@ -57,8 +57,11 @@ class AndroidSqliteOutboxStore(
                     modelName = c.getString(9),
                     capturedImagePath = if (c.isNull(10)) null else c.getString(10),
                     createdAtEpochMs = c.getLong(11),
+                    cloudJobId = if (c.isNull(12)) null else c.getString(12),
+                    pointResultsJson = if (c.isNull(13)) null else c.getString(13),
+                    timingJson = if (c.isNull(14)) null else c.getString(14),
                 )
-                out += OutboxEntry(submission = submission, uploaded = c.getInt(12) != 0)
+                out += OutboxEntry(submission = submission, uploaded = c.getInt(15) != 0)
             }
         }
         out
@@ -77,6 +80,9 @@ class AndroidSqliteOutboxStore(
         put("model_name", submission.modelName)
         put("captured_image_path", submission.capturedImagePath)
         put("created_at", submission.createdAtEpochMs)
+        put("cloud_job_id", submission.cloudJobId)
+        put("point_results_json", submission.pointResultsJson)
+        put("timing_json", submission.timingJson)
         put("uploaded", if (uploaded) 1 else 0)
     }
 
@@ -89,18 +95,22 @@ class AndroidSqliteOutboxStore(
                     "item_number TEXT NOT NULL, standard_revision_id TEXT, bundle_version TEXT, " +
                     "model_result TEXT NOT NULL, human_decision TEXT NOT NULL, reason TEXT NOT NULL, " +
                     "model_name TEXT NOT NULL, captured_image_path TEXT, created_at INTEGER NOT NULL, " +
+                    "cloud_job_id TEXT, point_results_json TEXT, timing_json TEXT, " +
                     "uploaded INTEGER NOT NULL DEFAULT 0)"
             )
         }
 
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-            db.execSQL("DROP TABLE IF EXISTS outbox_entry")
-            onCreate(db)
+            if (oldVersion < 2) {
+                db.execSQL("ALTER TABLE outbox_entry ADD COLUMN cloud_job_id TEXT")
+                db.execSQL("ALTER TABLE outbox_entry ADD COLUMN point_results_json TEXT")
+                db.execSQL("ALTER TABLE outbox_entry ADD COLUMN timing_json TEXT")
+            }
         }
     }
 
     companion object {
         const val DEFAULT_DB_NAME = "giraffe_pad_outbox.db"
-        private const val DB_VERSION = 1
+        private const val DB_VERSION = 2
     }
 }

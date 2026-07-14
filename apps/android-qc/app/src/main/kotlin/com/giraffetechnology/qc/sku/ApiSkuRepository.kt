@@ -134,8 +134,12 @@ class ApiSkuRepository internal constructor(
                 qcPointCode = code,
                 name        = o.optString("label"),
                 description = o.optString("description"),
-                roiJson     = o.optJSONObject("roi_json")?.toString(),
+                roiJson     = o.optJSONArray("regions")?.toString()
+                    ?: o.optJSONObject("roi_json")?.toString(),
                 ruleType    = o.optString("severity").takeIf { it.isNotEmpty() },
+                expectedValue = o.optString("expected_value").takeIf { it.isNotEmpty() },
+                passCriteria = o.optString("pass_criteria").takeIf { it.isNotEmpty() },
+                cvConfigJson = o.optJSONObject("cv_config")?.toString(),
             )
         }
     }

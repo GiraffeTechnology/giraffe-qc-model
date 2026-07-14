@@ -9,7 +9,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Posts result batches to the Server sync endpoint over the factory LAN using
+ * Posts cloud recognition results to the Server S4 recomputation endpoint using
  * [HttpURLConnection] (no OkHttp dependency, matching the SKU client).
  *
  * This uploads **result metadata only** — it is not a QC-inference call and
@@ -27,36 +27,55 @@ class HttpSubmissionClient(
     override suspend fun submit(batch: List<ResultSubmission>): SubmitResult =
         withContext(Dispatchers.IO) {
             if (batch.isEmpty()) return@withContext SubmitResult.Accepted(emptyList())
-            val url = URL(baseUrl.trimEnd('/') + path)
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = timeoutMs
-                readTimeout = timeoutMs
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json")
-                setRequestProperty("Accept", "application/json")
-            }
-            try {
-                conn.outputStream.use { it.write(encodeBody(batch).toByteArray(Charsets.UTF_8)) }
-                val code = conn.responseCode
-                if (code !in 200..299) {
-                    val err = runCatching { conn.errorStream?.bufferedReader()?.readText() }.getOrNull()
-                    Log.w(TAG, "Result upload failed: HTTP $code ${err.orEmpty()}")
-                    return@withContext SubmitResult.Failed("HTTP $code")
+            val accepted = mutableListOf<String>()
+            for (submission in batch) {
+                val url = URL(baseUrl.trimEnd('/') + path)
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"; connectTimeout = timeoutMs; readTimeout = timeoutMs; doOutput = true
+                    setRequestProperty("Content-Type", "application/json"); setRequestProperty("Accept", "application/json")
                 }
-                val body = conn.inputStream.bufferedReader().use { it.readText() }
-                SubmitResult.Accepted(parseAcceptedIds(body, batch))
-            } catch (e: Exception) {
-                Log.w(TAG, "Result upload error: ${e.message}")
-                SubmitResult.Failed(e.message ?: "network error")
-            } finally {
-                conn.disconnect()
+                try {
+                    conn.outputStream.use { it.write(encodeS4Body(submission).toByteArray(Charsets.UTF_8)) }
+                    val code = conn.responseCode
+                    if (code !in 200..299) {
+                        val err = runCatching { conn.errorStream?.bufferedReader()?.readText() }.getOrNull()
+                        Log.w(TAG, "S4 result upload failed: HTTP $code ${err.orEmpty()}")
+                        return@withContext SubmitResult.Failed("HTTP $code")
+                    }
+                    accepted += submission.clientJobId
+                } catch (e: Exception) {
+                    Log.w(TAG, "S4 result upload error: ${e.message}")
+                    return@withContext SubmitResult.Failed(e.message ?: "network error")
+                } finally { conn.disconnect() }
             }
+            SubmitResult.Accepted(accepted)
         }
 
     companion object {
         private const val TAG = "HttpSubmissionClient"
-        const val DEFAULT_PATH = "/api/v1/sync/inspection-jobs/batch"
+        const val DEFAULT_PATH = "/api/qc/results/submissions"
+
+        internal fun encodeS4Body(s: ResultSubmission): String {
+            val checkpoints = runCatching { JSONArray(s.pointResultsJson ?: "[]") }.getOrDefault(JSONArray())
+            val mapped = JSONArray()
+            for (i in 0 until checkpoints.length()) {
+                val point = checkpoints.getJSONObject(i)
+                mapped.put(JSONObject().put("checkpoint_id", point.getString("point_code"))
+                    .put("result", point.getString("result")))
+            }
+            val overall = when (s.modelResult) {
+                "ACCEPTED" -> "pass"; "NOT_ACCEPTED" -> "fail"; else -> "review_required"
+            }
+            return JSONObject().put("tenant_id", s.tenantId)
+                .put("job_ref", s.cloudJobId ?: s.clientJobId)
+                .put("standard_revision_id", s.standardRevisionId ?: "")
+                .put("bundle_version", s.bundleVersion ?: "")
+                .put("pad_overall_result", overall).put("checkpoints", mapped)
+                .put("expected_bundle_version", s.bundleVersion ?: JSONObject.NULL)
+                .put("cloud_recognition", checkpoints)
+                .put("client_timing", runCatching { JSONObject(s.timingJson ?: "{}") }.getOrDefault(JSONObject()))
+                .toString()
+        }
 
         internal fun encodeBody(batch: List<ResultSubmission>): String {
             val jobs = JSONArray()

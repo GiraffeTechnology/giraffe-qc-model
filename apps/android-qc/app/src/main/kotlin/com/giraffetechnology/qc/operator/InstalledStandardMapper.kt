@@ -32,6 +32,8 @@ object InstalledStandardMapper {
                 description = p.description,
                 roiJson = null,
                 ruleType = p.methodHint.ifBlank { null },
+                expectedValue = p.expectedValue,
+                passCriteria = p.passCriteria,
             )
         } ?: emptyList(),
     )

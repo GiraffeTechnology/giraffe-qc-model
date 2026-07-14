@@ -36,7 +36,7 @@ class MnnQwenInspector(
     private val context: Context,
     private val runtimeLoader: MnnRuntimeLoader,
     override val modelName: String = "Qwen3-VL-2B-Instruct-MNN",
-    private val timeoutMs: Long = BuildConfig.QWEN_TIMEOUT_SECONDS * 1000L,
+    private val timeoutMs: Long = BuildConfig.LEGACY_MNN_TIMEOUT_SECONDS * 1000L,
 ) : QwenInspector {
 
     override val engineName: String = "local_qwen_mnn"

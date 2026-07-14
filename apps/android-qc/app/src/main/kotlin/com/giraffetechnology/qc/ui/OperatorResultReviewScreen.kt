@@ -65,7 +65,7 @@ fun OperatorResultReviewScreen(
     // legacy MNN not loaded) -- no real evidence exists for this result. The
     // operator must retake once the runtime is ready rather than being able
     // to confirm a decision against a result that was never really produced.
-    val submitBlocked = result.overallResult == "MNN_PENDING"
+    val submitBlocked = result.overallResult in setOf("MNN_PENDING", "CLOUD_UNAVAILABLE", "CLOUD_ERROR", "PENDING_UPLOAD")
 
     fun submit(decision: HumanDecision) {
         submitting = true
@@ -113,7 +113,7 @@ fun OperatorResultReviewScreen(
         if (submitBlocked) {
             Surface(color = Color(0xFFB71C1C).copy(alpha = 0.15f), modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    skill.t("pad.jetson.submit_blocked"),
+                    if (result.overallResult == "PENDING_UPLOAD") "Pending upload — no verdict available" else "Cloud verdict unavailable — submission blocked",
                     modifier = Modifier.padding(12.dp),
                     color = Color(0xFFB71C1C),
                     fontWeight = FontWeight.Bold,

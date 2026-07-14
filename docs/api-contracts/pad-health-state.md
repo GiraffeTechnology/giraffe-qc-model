@@ -6,11 +6,10 @@
 
 **Consumer:** WS3 Administrator health screen
 
-**Implementation status:** `[PARTIAL]`. WS3 now consumes this exact state as one
-immutable `StateFlow` and renders Nano, cloud/network, queue, and Xavier as
-separate panels. WS5 implements the Xavier v2 health source. WS4 still owns the
-Operator/Nano/cloud producer, so the WS3 fallback remains explicitly unknown
-and fail-closed until that source is connected.
+**Implementation status:** `[PARTIAL]`. WS3 consumes this exact state as one
+immutable `StateFlow`; WS4 now supplies live cloud/network/queue observations.
+Nano CV heartbeat remains explicitly unknown until WS8, and Pad-side Xavier
+endpoint provisioning remains `not_configured` until deployment supplies it.
 
 This contract is an Android-side state boundary, not a fourth inference API.
 WS3 reads one immutable `PadHealthState`/`StateFlow` and does not poll three

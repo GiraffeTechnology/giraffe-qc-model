@@ -7,8 +7,10 @@
 **Consumers:** Android Operator pipeline, WS3 health screen through
 `pad-health-state.md`, Server S4 submission path, and WS8 CV pre-analysis
 
-**Implementation status on `main`:** `[PLANNED]`. The current cloud/dev and
-Pad-to-Jetson paths do not implement this contract.
+**Implementation status:** `[CLIENT IMPLEMENTED IN WS4]`. The Android Operator
+client implements signed batched crop upload, health/probe reads, fail-closed
+queueing, and S4 forwarding. Deployment of a real cloud serving stack and
+real-cellular SLO evidence remain environment/manual prerequisites.
 
 This is the only VLM inference API in the production Operator path. The Pad and
 Jetson Nano detect QC points, create bounded crops, and send all crops for one
