@@ -117,6 +117,16 @@ does not host an LLM/VLM. Older Pad-local and Pad-to-Xavier runtime code remains
 only as explicitly marked compatibility material until its scheduled removal;
 it does not define the current product architecture.
 
+Admin Studio (`/admin/studio`) independently configures a text assistant and a
+vision assistant through the provider-neutral `STUDIO_TEXT_*` and
+`STUDIO_VISION_*` settings. A deployment may currently choose Qwen defaults,
+but the UI and domain services depend only on compatible adapter contracts.
+Text turns draft structured QC requirements; reference-photo turns draft
+visible inspection points. Both outputs remain pending until an authenticated
+Administrator explicitly confirms them, and publication/installation are
+separate human actions. Production fails closed when either requested assistant
+is unconfigured or unavailable; the deterministic parser is test-only.
+
 ---
 
 ## Visual QC Foundation

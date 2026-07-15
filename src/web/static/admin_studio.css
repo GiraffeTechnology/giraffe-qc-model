@@ -1,11 +1,11 @@
 /* Admin Studio — three-panel chat-first SKU + standard training (S2). */
 
 :root {
-  --bg: #f4f5f7;
+  --bg: #f3f0e9;
   --panel-bg: #ffffff;
-  --border: #e2e4e8;
+  --border: #ded8ce;
   --muted: #6b7280;
-  --accent: #111111;
+  --accent: #183f35;
   --accent-text: #ffffff;
   --danger: #b42318;
   --ok: #067647;
@@ -25,7 +25,7 @@ body {
   align-items: center;
   gap: 16px;
   padding: 10px 18px;
-  background: #111;
+  background: #173f35;
   color: #fff;
 }
 .studio-header .brand { color: #fff; font-weight: 700; text-decoration: none; }
@@ -34,12 +34,29 @@ body {
 .studio-nav a { color: #d1d5db; text-decoration: none; font-size: 14px; }
 .studio-nav a:hover { color: #fff; }
 
+.workflow-bar {
+  min-height: 76px;
+  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  background: #fffdf8;
+  border-bottom: 1px solid var(--border);
+}
+.workflow-copy { min-width: 260px; display: flex; flex-direction: column; gap: 3px; }
+.workflow-copy strong { font-family: Georgia, serif; font-size: 18px; color: #173f35; }
+.workflow-copy span { color: var(--muted); font-size: 12px; }
+.workflow-steps { flex: 1; display: grid; grid-template-columns: repeat(6, 1fr); list-style: none; margin: 0; padding: 0; }
+.workflow-steps li { position: relative; padding: 9px 7px; text-align: center; font-size: 11px; color: #395c53; background: #eaf2ee; border-right: 2px solid #fff; }
+.workflow-steps li:first-child { border-radius: 18px 0 0 18px; }
+.workflow-steps li:last-child { border-radius: 0 18px 18px 0; }
+
 .studio-layout {
   display: grid;
   grid-template-columns: 280px 1fr 340px;
   gap: 12px;
   padding: 12px;
-  height: calc(100vh - 52px);
+  height: calc(100vh - 128px);
 }
 
 .panel {
@@ -58,6 +75,9 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .panel-head h2 { font-size: 14px; margin: 0; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.panel-link { margin-left: auto; color: #173f35; text-decoration: none; font-size: 12px; font-weight: 600; }
+.assistant-state { margin-left: auto; font-size: 11px; color: #067647; background: #ecfdf3; border-radius: 999px; padding: 4px 8px; }
+.assistant-state.busy { color: #92400e; background: #fef3c7; }
 
 /* LEFT ------------------------------------------------------------------ */
 .sku-controls { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; }
@@ -83,6 +103,10 @@ body {
 .bubble { max-width: 78%; padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.4; white-space: pre-wrap; word-wrap: break-word; }
 .bubble.user { align-self: flex-end; background: #000; color: #fff; border-bottom-right-radius: 4px; }
 .bubble.system { align-self: flex-start; background: #fff; color: #000; border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+.bubble.pending { color: #7c5f19; background: #fff9e8; }
+.bubble.pending::after { content: ""; display: inline-block; width: 5px; height: 5px; margin-left: 8px; border-radius: 50%; background: currentColor; animation: pulse 1s infinite alternate; }
+.bubble.meta { padding: 3px 8px; border: 0; background: transparent; color: var(--muted); font-size: 11px; }
+@keyframes pulse { to { opacity: .2; transform: scale(.7); } }
 .bubble.system img.chat-photo { max-width: 220px; border-radius: 8px; display: block; margin-top: 6px; }
 
 .chat-input {
@@ -96,6 +120,7 @@ body {
 .icon-btn:hover { background: #f3f4f6; }
 .send-btn { padding: 10px 16px; background: #000; color: #fff; border: none; border-radius: 10px; cursor: pointer; font-size: 14px; }
 .send-btn:hover { background: #333; }
+.human-gate-note { padding: 0 14px 10px; text-align: center; color: var(--muted); font-size: 10px; }
 
 /* Confirmation card inside conversation */
 .confirm-card { align-self: flex-start; max-width: 92%; background: #fff; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
@@ -120,6 +145,10 @@ body {
 .sku-card.empty { display: flex; align-items: center; justify-content: center; text-align: center; }
 .sku-card h3 { margin: 0 0 2px; font-size: 16px; }
 .sku-card .sku-sub { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+.standard-facts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin: 0 0 10px; }
+.standard-facts span { display: flex; flex-direction: column; padding: 7px; border-radius: 7px; background: #f6f5f1; }
+.standard-facts small { color: var(--muted); font-size: 9px; margin-bottom: 2px; }
+.standard-facts strong { font-size: 11px; }
 .standard-preview { width: 100%; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 12px; }
 .standard-preview.placeholder { display: flex; align-items: center; justify-content: center; height: 140px; color: var(--muted); font-size: 13px; background: #fafafa; }
 .status-badge { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
@@ -135,6 +164,11 @@ body {
 .publish-btn:hover { background: #333; }
 .publish-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
 .bundle-note { font-size: 12px; color: var(--muted); margin-top: 8px; word-break: break-all; }
+.install-next { font-size: 11px; line-height: 1.4; color: var(--muted); padding: 10px; background: #f6f5f1; border-radius: 8px; }
+.install-next a { color: #173f35; font-weight: 600; }
+.engineering-settings { margin-top: 7px; }
+.engineering-settings summary { cursor: pointer; color: var(--muted); font-size: 11px; }
+.engineering-settings .btn { margin-right: 5px; }
 
 /* Probation / qualification (§3, WS7) */
 .probation-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
@@ -164,3 +198,15 @@ body {
 .region-list .region-remove { border: none; background: none; color: var(--danger); cursor: pointer; font-size: 12px; }
 .region-editor__actions { display: flex; gap: 8px; margin-top: 8px; }
 .region-error { font-size: 12px; color: var(--danger); margin-top: 6px; }
+
+@media (max-width: 1100px) {
+  .workflow-copy { display: none; }
+  .studio-layout { grid-template-columns: 230px minmax(420px, 1fr) 300px; }
+}
+
+@media (max-width: 820px) {
+  .studio-layout { grid-template-columns: 1fr; height: auto; }
+  .panel { min-height: 420px; }
+  .workflow-steps { grid-template-columns: repeat(3, 1fr); row-gap: 2px; }
+  .studio-nav { display: none; }
+}

@@ -198,8 +198,12 @@ def test_admin_studio_uses_persisted_language_for_static_and_js_copy(client):
     assert translate("studio.search.placeholder", "zh-CN") in body
     assert translate("studio.empty.standard", "zh-CN") in body
     assert "welcome:" in body
-    # Jinja's tojson safely escapes non-ASCII text in the injected JS payload.
-    assert "\\u6b22\\u8fce\\u8fdb\\u5165\\u7ba1\\u7406\\u5de5\\u4f5c\\u5ba4" in body
+    # Jinja's tojson safely escapes the complete localized welcome copy in the
+    # injected JS payload (copy can evolve with the Studio product design).
+    expected_welcome = json.dumps(
+        translate("studio.js.welcome", "zh-CN"), ensure_ascii=True
+    )[1:-1]
+    assert expected_welcome in body
     assert "Admin Studio" not in body
     assert "Create a SKU or describe QC requirements" not in body
 

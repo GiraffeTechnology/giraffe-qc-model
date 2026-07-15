@@ -142,6 +142,40 @@ def extract_standard_draft(
     return intake
 
 
+def persist_structured_draft(
+    db: Session,
+    intake_id: str,
+    *,
+    checkpoints: list[dict],
+    questions: list[dict],
+    parser_version: str,
+) -> QCStandardIntake:
+    """Persist a model-produced draft for explicit human confirmation.
+
+    This is intentionally separate from the deterministic test adapter.  It
+    never creates a standard revision and therefore cannot bypass the Admin
+    Studio confirmation gate.
+    """
+    intake = db.query(QCStandardIntake).filter_by(id=intake_id).one()
+    extracted = {
+        "sku_id": intake.sku_id,
+        "checkpoints": checkpoints,
+        "questions_for_operator": questions,
+    }
+    intake.extracted_json = extracted
+    intake.confirmation_payload_json = {
+        "sku_id": intake.sku_id,
+        "checkpoints": checkpoints,
+        "questions_for_operator": questions,
+    }
+    intake.status = "pending_confirmation"
+    intake.parser_version = parser_version[:64]
+    intake.confidence_score = _score(extracted)
+    db.commit()
+    db.refresh(intake)
+    return intake
+
+
 def _score(extracted: dict) -> float:
     """Rough confidence score: fraction of checkpoints with no open questions."""
     n = len(extracted.get("checkpoints", []))

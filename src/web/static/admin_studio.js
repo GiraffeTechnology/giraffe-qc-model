@@ -3,13 +3,14 @@
   "use strict";
 
   const tenant = document.body.dataset.tenant || "default";
-  const state = { skuId: null, sku: null };
+  const state = { skuId: null, sku: null, renderedIntakes: new Set() };
 
   const $ = (sel) => document.querySelector(sel);
   const conversation = $("#conversation");
   const skuList = $("#sku-list");
   const skuCard = $("#sku-card");
   const activeChip = $("#active-sku-chip");
+  const assistantState = $("#assistant-state");
   const strings = window.GIRAFFE_STUDIO_I18N || {};
 
   function t(key, vars) {
@@ -33,7 +34,7 @@
   function api(path, opts) {
     return fetch(path, opts).then(async (r) => {
       const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || ("HTTP " + r.status));
+      if (!r.ok) throw new Error(data.error || data.detail || ("HTTP " + r.status));
       return data;
     });
   }
@@ -41,7 +42,8 @@
   // ── Conversation bubbles (§3.4) ─────────────────────────────────────────
   function addBubble(text, who, imageUrl) {
     const b = document.createElement("div");
-    b.className = "bubble " + (who === "user" ? "user" : "system");
+    b.className = "bubble " + (who === "user" ? "user" : "system") +
+      ((who === "pending" || who === "meta") ? " " + who : "");
     b.textContent = text;
     if (imageUrl) {
       const img = document.createElement("img");
@@ -52,6 +54,19 @@
     conversation.appendChild(b);
     conversation.scrollTop = conversation.scrollHeight;
     return b;
+  }
+
+  function setAssistantState(text, busy) {
+    assistantState.textContent = text;
+    assistantState.classList.toggle("busy", Boolean(busy));
+  }
+
+  function showAssistantMeta(assistant) {
+    if (!assistant) return;
+    addBubble(t("assistantMeta", {
+      model: assistant.model || assistant.role,
+      seconds: ((assistant.elapsed_ms || 0) / 1000).toFixed(1),
+    }), "meta");
   }
 
   // ── Left panel: SKU list ────────────────────────────────────────────────
@@ -101,6 +116,11 @@
       activeChip.classList.add("hidden");
     }
     renderCard(sku);
+    if (sku && sku.pending_confirmation &&
+        !state.renderedIntakes.has(sku.pending_confirmation.intake_id)) {
+      state.renderedIntakes.add(sku.pending_confirmation.intake_id);
+      renderConfirmCard(sku.pending_confirmation);
+    }
   }
 
   function renderCard(sku) {
@@ -126,12 +146,13 @@
           `<li data-dp-id="${esc(dp.id)}"><span class="dp-code">${esc(dp.point_code)}</span> — ${esc(dp.label)}` +
           `<div class="dp-meta">${esc(bits.join(" · "))}</div>` +
           (dp.pass_criteria ? `<div class="dp-meta">${esc(dp.pass_criteria)}</div>` : "") +
+          `<details class="engineering-settings"><summary>${esc(t("engineering"))}</summary>` +
           `<button type="button" class="btn dp-regions-btn" data-dp-id="${esc(dp.id)}">` +
           (regionCount ? t("regions", { count: regionCount }) : t("addRegions")) +
           `</button>` +
           `<button type="button" class="btn dp-analysis-btn" data-dp-id="${esc(dp.id)}">` +
           ((dp.cv_config && (dp.cv_config.analyzers || []).length) ? t("editCvConfig") : t("addCvConfig")) +
-          `</button>` +
+          `</button></details>` +
           `<div class="region-editor-slot"></div>` +
           `</li>`
         );
@@ -143,12 +164,18 @@
       `<h3>${esc(sku.name)}</h3>` +
       `<div class="sku-sub">${esc(sku.item_number)}${sku.category ? " · " + esc(sku.category) : ""}</div>` +
       preview +
+      `<div class="standard-facts">` +
+      `<span><small>${esc(t("lifecycle"))}</small><strong>${esc(statusLabel(sku.status))}</strong></span>` +
+      `<span><small>${esc(t("revision"))}</small><strong>${esc(sku.active_revision_no || "—")}</strong></span>` +
+      `<span><small>${esc(t("confirmedPoints"))}</small><strong>${esc(sku.detection_point_count || 0)}</strong></span>` +
+      `</div>` +
       `<div><span class="status-badge status-${esc(sku.standard_status)}">${esc(standardStatusLabel(sku.standard_status))}</span></div>` +
       (dps ? `<ul class="dp-list">${dps}</ul>` : `<p class="muted" style="margin-top:12px">${esc(t("noDetectionPoints"))}</p>`) +
       `<div class="publish-row">` +
       `<button class="publish-btn" id="publish-btn" ${canPublish ? "" : "disabled"}>${esc(t("publish"))}</button>` +
       `<div class="bundle-note hidden" id="bundle-note"></div>` +
       `</div>` +
+      `<p class="install-next">${esc(t("installNext"))} <a href="/admin/workstations">${esc(t("installManage"))}</a></p>` +
       `<div id="probation-section" class="probation-section"></div>`;
 
     const pubBtn = $("#publish-btn");
@@ -293,6 +320,8 @@
           algorithm: b.signature_algorithm,
           hash: b.bundle_hash.slice(0, 16),
         });
+        if (data.sku) setActiveSku(data.sku);
+        loadSkus();
         btn.textContent = t("publish");
         btn.disabled = false;
       })
@@ -470,22 +499,31 @@
   // ── Chat send ───────────────────────────────────────────────────────────
   function sendChat(text) {
     addBubble(text, "user");
+    setAssistantState(t("textThinking"), true);
+    const pending = addBubble(t("textThinking"), "pending");
     return api("/admin/studio/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tenant_id: tenant, message: text, sku_id: state.skuId }),
     })
       .then((res) => {
+        pending.remove();
         if (res.reply) addBubble(res.reply, "system");
+        showAssistantMeta(res.assistant);
         if (res.sku) setActiveSku(res.sku);
         if (res.action === "created_sku" || res.action === "selected_sku") loadSkus();
         if (res.confirmation_card) renderConfirmCard(res.confirmation_card);
       })
-      .catch((err) => addBubble(t("error", { message: err.message }), "system"));
+      .catch((err) => {
+        pending.remove();
+        addBubble(t("error", { message: err.message }), "system");
+      })
+      .finally(() => setAssistantState(t("assistantReady"), false));
   }
 
   // ── Confirmation card (§5.5) ────────────────────────────────────────────
   function renderConfirmCard(card) {
+    state.renderedIntakes.add(card.intake_id);
     const tpl = $("#confirm-card-template").content.cloneNode(true);
     const root = tpl.querySelector(".confirm-card");
     const body = tpl.querySelector(".confirm-body");
@@ -536,7 +574,6 @@
         body: JSON.stringify({
           tenant_id: tenant,
           intake_id: card.intake_id,
-          confirmed_by: "qc_supervisor",
           checkpoints: checkpoints,
         }),
       })
@@ -582,12 +619,28 @@
     fd.append("tenant_id", tenant);
     fd.append("image", file);
     addBubble(t("uploadingPhoto"), "user");
+    setAssistantState(t("visionThinking"), true);
+    const pending = addBubble(t("visionThinking"), "pending");
     api("/admin/studio/upload", { method: "POST", body: fd })
       .then((res) => {
+        pending.remove();
         addBubble(t("photoUploaded"), "system", res.url);
-        if (res.sku) setActiveSku(res.sku);
+        if (res.analysis_error) {
+          addBubble(t("visionFailed", { message: res.analysis_error }), "system");
+        } else if (res.analysis) {
+          if (res.analysis.reply) addBubble(res.analysis.reply, "system");
+          showAssistantMeta(res.analysis.assistant);
+          if (res.analysis.confirmation_card) renderConfirmCard(res.analysis.confirmation_card);
+        }
+        if (res.analysis && res.analysis.sku) setActiveSku(res.analysis.sku);
+        else if (res.sku) setActiveSku(res.sku);
+        loadSkus();
       })
-      .catch((err) => addBubble(t("uploadFailed", { message: err.message }), "system"));
+      .catch((err) => {
+        pending.remove();
+        addBubble(t("uploadFailed", { message: err.message }), "system");
+      })
+      .finally(() => setAssistantState(t("assistantReady"), false));
   }
 
   // ── Voice toggle (§5.3) — must not crash ────────────────────────────────
@@ -624,6 +677,18 @@
   });
   $("#sku-status-filter").addEventListener("change", loadSkus);
 
-  addBubble(t("welcome"), "system");
+  api("/admin/studio/conversation")
+    .then((history) => {
+      const messages = history.messages || [];
+      if (!messages.length) addBubble(t("welcome"), "system");
+      else messages.forEach((item) => addBubble(item.text, item.role === "user" ? "user" : "system"));
+    })
+    .catch(() => addBubble(t("welcome"), "system"));
+  api("/admin/studio/assistants")
+    .then((status) => {
+      const ready = status.text && status.text.configured && status.vision && status.vision.configured;
+      setAssistantState(ready ? t("assistantReady") : t("assistantUnavailable"), false);
+    })
+    .catch(() => setAssistantState(t("assistantUnavailable"), false));
   loadSkus();
 })();

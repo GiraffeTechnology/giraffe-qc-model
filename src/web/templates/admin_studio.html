@@ -4,20 +4,37 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ t('studio.page.title') }}</title>
-  <link rel="stylesheet" href="/static/admin_studio.css">
+  <link rel="stylesheet" href="/static/admin_studio.css?v=stage2-live-ai-2">
 </head>
 <body data-tenant="{{ tenant_id }}">
   <header class="studio-header">
-    <a href="/admin/samples" class="brand">{{ t('app.title') }}</a>
+    <a href="/admin" class="brand">{{ t('app.title') }}</a>
     <span class="studio-title">{{ t('studio.header.title') }}</span>
     <nav class="studio-nav">
-      <a href="/admin/qc-model">{{ t('studio.nav.qc_model') }}</a>
-      <a href="/admin/samples">{{ t('studio.nav.samples') }}</a>
+      <a href="/admin">{{ t('studio.nav.home') }}</a>
+      <a href="/admin/workstations">{{ t('studio.nav.workstations') }}</a>
+      <a href="/admin/bundles">{{ t('studio.nav.bundles') }}</a>
+      <a href="/admin/results">{{ t('studio.nav.results') }}</a>
     </nav>
     <div class="studio-header__actions">
       {% include "_language_switch.html" %}
     </div>
   </header>
+
+  <section class="workflow-bar" aria-label="{{ t('studio.workflow.label') }}">
+    <div class="workflow-copy">
+      <strong>{{ t('studio.workflow.title') }}</strong>
+      <span>{{ t('studio.workflow.subtitle') }}</span>
+    </div>
+    <ol class="workflow-steps">
+      <li>{{ t('studio.workflow.sku') }}</li>
+      <li>{{ t('studio.workflow.photo') }}</li>
+      <li>{{ t('studio.workflow.requirements') }}</li>
+      <li>{{ t('studio.workflow.review') }}</li>
+      <li>{{ t('studio.workflow.publish') }}</li>
+      <li>{{ t('studio.workflow.install') }}</li>
+    </ol>
+  </section>
 
   <div class="studio-layout">
     <!-- LEFT: SKU list / search / status filter -->
@@ -41,6 +58,7 @@
     <section class="panel panel-center">
       <div class="panel-head">
         <h2>{{ t('studio.center.title') }}</h2>
+        <span id="assistant-state" class="assistant-state" aria-live="polite">{{ t('studio.assistant.checking') }}</span>
         <span id="active-sku-chip" class="chip hidden"></span>
       </div>
       <div id="conversation" class="conversation" aria-live="polite"></div>
@@ -54,12 +72,14 @@
         <input type="text" id="chat-text" placeholder="{{ t('studio.chat.placeholder') }}" autocomplete="off">
         <button type="submit" class="send-btn">{{ t('studio.send') }}</button>
       </form>
+      <div class="human-gate-note">{{ t('studio.human_gate') }}</div>
     </section>
 
     <!-- RIGHT: SKU card + standard preview + detection points + status -->
     <aside class="panel panel-right">
       <div class="panel-head">
         <h2>{{ t('studio.right.title') }}</h2>
+        <a href="/admin/workstations" class="panel-link">{{ t('studio.install.manage') }}</a>
       </div>
       <div id="sku-card" class="sku-card empty">
         <p class="muted">{{ t('studio.empty.standard') }}</p>
@@ -155,6 +175,19 @@
       primary: {{ t('studio.js.primary') | tojson }},
       remove: {{ t('studio.js.remove') | tojson }},
       regionsSaved: {{ t('studio.js.regions_saved') | tojson }},
+      assistantChecking: {{ t('studio.assistant.checking') | tojson }},
+      assistantReady: {{ t('studio.assistant.ready') | tojson }},
+      assistantUnavailable: {{ t('studio.assistant.unavailable') | tojson }},
+      textThinking: {{ t('studio.assistant.text_thinking') | tojson }},
+      visionThinking: {{ t('studio.assistant.vision_thinking') | tojson }},
+      assistantMeta: {{ t('studio.assistant.meta') | tojson }},
+      visionFailed: {{ t('studio.js.vision_failed') | tojson }},
+      lifecycle: {{ t('studio.lifecycle') | tojson }},
+      revision: {{ t('studio.revision') | tojson }},
+      confirmedPoints: {{ t('studio.confirmed_points') | tojson }},
+      installNext: {{ t('studio.install.next') | tojson }},
+      installManage: {{ t('studio.install.manage') | tojson }},
+      engineering: {{ t('studio.engineering') | tojson }},
       statusLabels: {
         {% for state in sku_lifecycle_states %}
         {{ state | tojson }}: {{ t('studio.status.' + state) | tojson }}{{ "," if not loop.last }}
@@ -167,6 +200,6 @@
       }
     };
   </script>
-  <script src="/static/admin_studio.js"></script>
+  <script src="/static/admin_studio.js?v=stage2-live-ai-2"></script>
 </body>
 </html>
