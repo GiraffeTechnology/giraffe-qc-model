@@ -1,19 +1,19 @@
 <!DOCTYPE html>
-<html lang="{{ current_language() }}">
+<html lang="{{ current_language() if current_language is defined else 'en' }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}{{ t('sample.admin.title') }}{% endblock %}</title>
+  <title>{% block title %}{{ t('sample.admin.title') if t is defined else 'QC Sample Admin' }}{% endblock %}</title>
   <link rel="stylesheet" href="/static/sample_admin.css">
   <link rel="stylesheet" href="/static/shell.css">
 </head>
 <body>
   <header>
     <nav>
-      <a href="/admin/samples" class="nav-brand">{{ t('sample.admin.title') }}</a>
-      <a href="/admin/studio" class="btn">{{ t('sample.nav.studio') }}</a>
-      <a href="/admin/qc-model" class="btn">{{ t('sample.nav.visual_model') }}</a>
-      <a href="/admin/samples/new" class="btn btn-primary">{{ t('sample.nav.new') }}</a>
+      <a href="/admin/samples" class="nav-brand">{{ t('sample.admin.title') if t is defined else 'QC Sample Admin' }}</a>
+      <a href="/admin/studio" class="btn">{{ t('sample.nav.studio') if t is defined else 'Admin Studio' }}</a>
+      <a href="/admin/qc-model" class="btn">{{ t('sample.nav.visual_model') if t is defined else 'Visual QC Model' }}</a>
+      <a href="/admin/samples/new" class="btn btn-primary">{{ t('sample.nav.new') if t is defined else '+ New Sample' }}</a>
       {% if current_language is defined %}
       <span class="nav-lang">{% include "_language_switch.html" %}</span>
       {% endif %}
