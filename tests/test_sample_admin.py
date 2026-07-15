@@ -14,6 +14,7 @@ import src.db.qc_models  # noqa: F401
 import src.db.sku_models  # noqa: F401
 from src.api.main import app
 from src.api.deps import get_db_dep
+from src.web.i18n import LANGUAGE_COOKIE, translate
 
 TENANT = "default"
 
@@ -163,6 +164,49 @@ class TestAdminDetailPage:
     def test_detail_shows_item_number(self, client):
         resp = client.get(f"/admin/samples/{self.sku_id}?tenant_id={TENANT}")
         assert "ADMIN-DETAIL-001" in resp.text
+
+
+class TestAdminSampleI18n:
+    def test_sample_workspace_renders_and_switches_to_chinese(self, client):
+        sku_id = _make_sku(client, "ADMIN-I18N-001", "Admin I18n Test")
+        client.cookies.set(LANGUAGE_COOKIE, "zh-CN")
+        try:
+            list_body = client.get(f"/admin/samples?tenant_id={TENANT}").text
+            new_body = client.get(f"/admin/samples/new?tenant_id={TENANT}").text
+            detail_body = client.get(
+                f"/admin/samples/{sku_id}?tenant_id={TENANT}"
+            ).text
+
+            for body in (list_body, new_body, detail_body):
+                assert '<html lang="zh-CN">' in body
+                assert translate("sample.admin.title", "zh-CN") in body
+                assert translate("sample.nav.studio", "zh-CN") in body
+                assert "Admin Studio" not in body
+
+            assert translate("sample.list.subtitle", "zh-CN") in list_body
+            assert translate("sample.new.title", "zh-CN") in new_body
+            assert translate("sample.detail.standard_photos", "zh-CN") in detail_body
+            assert translate("sample.detail.inspection_requirements", "zh-CN") in detail_body
+            assert translate("sample.detail.detection_points", "zh-CN") in detail_body
+        finally:
+            client.cookies.delete(LANGUAGE_COOKIE)
+
+    def test_duplicate_error_uses_selected_language(self, client):
+        _make_sku(client, "ADMIN-I18N-DUP-001", "Admin I18n Duplicate")
+        client.cookies.set(LANGUAGE_COOKIE, "zh-CN")
+        try:
+            resp = client.post(
+                "/admin/samples",
+                data={
+                    "tenant_id": TENANT,
+                    "item_number": "ADMIN-I18N-DUP-001",
+                    "name": "Duplicate",
+                },
+            )
+            assert resp.status_code == 409
+            assert "物料编号“ADMIN-I18N-DUP-001”已存在。" in resp.text
+        finally:
+            client.cookies.delete(LANGUAGE_COOKIE)
 
 
 # ─── Photo upload / registration ────────────────────────────────────────────────

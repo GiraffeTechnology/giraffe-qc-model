@@ -24,7 +24,7 @@ from src.storage.upload_validation import (
     UploadValidationError,
     read_and_validate_upload,
 )
-from src.web.i18n import install_i18n
+from src.web.i18n import install_i18n, resolve_language, translate
 from src.db.sku_models import (
     QCDetectionPoint,
     QCInspectionRequirement,
@@ -54,6 +54,12 @@ def _primary_photo(sku: QCSkuItem) -> Optional[QCStandardPhoto]:
         if p.is_primary:
             return p
     return sku.photos[0] if sku.photos else None
+
+
+def _duplicate_item_error(request: Request, item_number: str) -> str:
+    return translate("sample.error.duplicate", resolve_language(request)).format(
+        item_number=item_number
+    )
 
 
 # GET /admin/samples
@@ -108,7 +114,7 @@ def create_sample(
             "sample_new.html",
             context={
                 "tenant_id": tenant_id,
-                "error": f"Item number '{item_number}' already exists.",
+                "error": _duplicate_item_error(request, item_number),
                 "item_number": item_number,
                 "name": name,
                 "category": category,
@@ -139,7 +145,7 @@ def create_sample(
             "sample_new.html",
             context={
                 "tenant_id": tenant_id,
-                "error": f"Item number '{item_number}' already exists.",
+                "error": _duplicate_item_error(request, item_number),
                 "item_number": item_number,
                 "name": name,
                 "category": category,
