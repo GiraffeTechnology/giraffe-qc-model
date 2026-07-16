@@ -300,9 +300,11 @@ def author_image(*, image_path: Path, mime_type: str, language: str, current_sku
     }
     prompt = (
         "You are the vision assistant for Giraffe QC standard authoring. Analyze this reference photo only. "
-        "Propose visible, independently testable inspection checkpoints. Do not infer hidden material properties, "
+        "Propose at most 3 high-value, visible, independently testable inspection checkpoints. "
+        "Keep every label, description, pass criterion, and question concise. Do not infer hidden material properties, "
         "exact dimensions, tolerances, counts obscured by the view, or business rules. Ask for any missing facts. "
-        "This is only a candidate draft and must never be described as confirmed. Return one JSON object only: "
+        "Use only method_hint values listed in the schema. This is only a candidate draft and must never be described "
+        "as confirmed. Return one complete, valid JSON object only, with no markdown or trailing text: "
         + json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
         + "\nCurrent SKU: "
         + json.dumps(current_sku, ensure_ascii=False, separators=(",", ":"))
@@ -314,7 +316,7 @@ def author_image(*, image_path: Path, mime_type: str, language: str, current_sku
             {"type": "text", "text": prompt},
         ]}],
         "temperature": 0,
-        "max_tokens": 1600,
+        "max_tokens": 768,
         "response_format": {"type": "json_object"},
         "chat_template_kwargs": {"enable_thinking": False},
     }

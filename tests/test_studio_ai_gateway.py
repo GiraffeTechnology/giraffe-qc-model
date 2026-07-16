@@ -86,9 +86,11 @@ def test_vision_assistant_sends_image_to_openai_compatible_route(monkeypatch, tm
     )
 
     assert captured["path"] == "/v1/chat/completions"
+    assert captured["payload"]["max_tokens"] == 768
     content = captured["payload"]["messages"][0]["content"]
     assert content[0]["type"] == "image_url"
     assert content[0]["image_url"]["url"].startswith("data:image/png;base64,")
+    assert "at most 3 high-value" in content[1]["text"]
     assert result["assistant"]["role"] == "vision"
 
 
