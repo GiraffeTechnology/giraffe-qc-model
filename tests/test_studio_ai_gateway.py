@@ -125,3 +125,19 @@ def test_explicit_bound_is_normalized_without_guessing():
         "pass_criteria": "Must be within the approved tolerance",
     })
     assert unknown["expected_value"] is None
+
+
+def test_clean_json_accepts_complete_object_with_model_suffix():
+    value = ai_gateway._clean_json(
+        '```json\n{"intent":"help","reply":"ready"}\n```}'
+    )
+    assert value == {"intent": "help", "reply": "ready"}
+
+
+def test_clean_json_still_rejects_truncated_object():
+    try:
+        ai_gateway._clean_json('{"intent":"help","reply":"ready"')
+    except ai_gateway.StudioAIError as exc:
+        assert str(exc) == "assistant_response_invalid_json"
+    else:
+        raise AssertionError("truncated assistant JSON must fail closed")

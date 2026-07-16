@@ -75,11 +75,16 @@ def _clean_json(raw: str) -> dict[str, Any]:
     text = (raw or "").strip()
     text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\s*```$", "", text)
-    start, end = text.find("{"), text.rfind("}")
-    if start < 0 or end <= start:
+    start = text.find("{")
+    if start < 0:
         raise StudioAIError("assistant_response_not_json")
     try:
-        value = json.loads(text[start : end + 1])
+        # Decode the first complete object.  Small local VLMs sometimes emit
+        # an otherwise valid object followed by one redundant brace or a
+        # short acknowledgement.  Accepting that suffix is safe because the
+        # decoded object is still validated field by field below; incomplete
+        # or internally malformed JSON continues to fail closed.
+        value, _ = json.JSONDecoder().raw_decode(text[start:])
     except json.JSONDecodeError as exc:
         raise StudioAIError("assistant_response_invalid_json") from exc
     if not isinstance(value, dict):
