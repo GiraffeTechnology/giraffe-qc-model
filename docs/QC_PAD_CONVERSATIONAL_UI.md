@@ -65,7 +65,14 @@ Service layer writes to DB
 | POST | `/api/v1/pad/confirm_standard` | Explicit operator confirmation |
 | POST | `/api/v1/pad/create_inspection_job` | Create inspection job |
 
-## Demo Operators
+## Demo Operators (test/dev only)
+
+The weak demo accounts below (password == username) are **never created in
+production**. They are seeded only under `APP_ENV=test`, or when a deployment
+explicitly opts in with `QC_SEED_DEMO_OPERATORS=true`. Real accounts are
+provisioned with `scripts/create_operator.py`, which enforces a minimum
+password length and reads the password from `QC_OPERATOR_PASSWORD` or an
+interactive prompt.
 
 | Username | Password | Language | Role |
 |----------|----------|----------|------|

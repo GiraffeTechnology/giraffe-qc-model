@@ -12,14 +12,20 @@ Protected path prefixes (admin-only):
 * ``/admin``    — the server-rendered admin console (Studio, Samples, Bundles,
                   Workstations, Results). Browser session auth; unauthenticated
                   GETs redirect to the login page.
-* ``/api/qc``   — the QC management JSON APIs (SKUs, intake, bundles,
-                  workstations, results, …). Bearer-token / API-key auth; 401.
+* ``/api/qc``   — the QC management JSON APIs (bundles, workstations, results,
+                  jetson, …). Bearer-token / API-key auth; 401.
+* ``/api/qc-model`` — the QC model lifecycle / runtime-profile APIs.
+* ``/api/v1/sku``   — the SKU catalog API.
+* ``/api/v1/qc``    — the v1 QC APIs (legacy standards/captures/inspect,
+                  intakes, inspection-jobs). Machine clients present a static
+                  API key (``QC_API_KEYS``) or a signed bearer token.
 
 Explicitly public within those prefixes: the login/logout routes and the
 language switch (which must render on the login page itself).
 
 The Pad operator surface (``/api/v1/pad``, ``/pad``) has its own operator login
-and is intentionally out of scope here.
+and is intentionally out of scope here, as is the Edge CV surface
+(``/api/edge-cv``, ``/api/cv``) which enforces signed device tokens in-router.
 
 Tenant enforcement:
 
@@ -53,7 +59,7 @@ from src.api.auth import (
 from src.api.admin_auth import ADMIN_ROLES
 
 # Path prefixes that require an authenticated admin principal.
-_PROTECTED_PREFIXES = ("/admin", "/api/qc")
+_PROTECTED_PREFIXES = ("/admin", "/api/qc", "/api/qc-model", "/api/v1/sku", "/api/v1/qc")
 
 # Public routes inside the protected prefixes (auth entry points + i18n).
 _PUBLIC_PATHS = frozenset({

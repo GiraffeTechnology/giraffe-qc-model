@@ -1,6 +1,22 @@
 # QC API Contract
 
-All endpoints are prefixed with `/api/v1`. All requests require `X-Tenant-ID` header or `tenant_id` query parameter. Cross-tenant access returns HTTP 404.
+All endpoints are prefixed with `/api/v1`. Cross-tenant access returns HTTP 404.
+
+## Authentication
+
+Every `/api/v1/sku` and `/api/v1/qc` request must be authenticated (the same
+gate that protects `/admin` and `/api/qc`). Two credential shapes are accepted:
+
+- **Signed bearer token** — `Authorization: Bearer <token>` minted by
+  `src.api.auth.mint_token`.
+- **Static API key** — `X-API-Key: <key>` provisioned through the
+  `QC_API_KEYS` environment map (`key -> {"tenant_id": ..., "admin": bool}`)
+  for machine clients (Pad, Jetson runner) that cannot mint signed tokens.
+
+The effective tenant is always the authenticated principal's tenant. A
+caller-supplied `tenant_id` query parameter or JSON body field is overwritten
+by the gate and never trusted. Unauthenticated requests receive HTTP 401;
+non-admin principals receive HTTP 403.
 
 ## Product Standards
 
@@ -58,6 +74,8 @@ All endpoints are prefixed with `/api/v1`. All requests require `X-Tenant-ID` he
 | 200  | Success                                        |
 | 201  | Created                                        |
 | 400  | Bad request (validation failure)               |
+| 401  | Missing or invalid credential                  |
+| 403  | Authenticated but not authorized (non-admin)   |
 | 404  | Not found or cross-tenant access denied        |
 | 422  | Unprocessable entity (schema error)            |
 | 500  | Internal server error                          |

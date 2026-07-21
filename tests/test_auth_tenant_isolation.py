@@ -215,6 +215,39 @@ def test_api_key_principal(client, monkeypatch):
     auth._static_api_keys_cache.cache_clear()
 
 
+# ── v1 REST + qc-model surfaces are inside the auth gate ─────────────────────
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/v1/sku/search?q=x&tenant_id=t1",
+        "/api/v1/qc/intakes/some-id?tenant_id=t1",
+        "/api/v1/qc/inspection-jobs/some-id?tenant_id=t1",
+        "/api/qc-model/lifecycle?tenant_id=t1",
+    ],
+)
+def test_unauthenticated_v1_api_is_401(client, monkeypatch, path):
+    monkeypatch.setenv("APP_ENV", "production")
+    r = client.get(path)
+    assert r.status_code == 401
+
+
+def test_v1_sku_create_pins_tenant_over_json_body(client):
+    """A tenant_a token creates the SKU under tenant_a even if the body claims tenant_b."""
+    r = client.post(
+        "/api/v1/sku",
+        json={"tenant_id": "tenant_b", "item_number": "V1-001", "name": "Widget"},
+        headers=_admin_token("tenant_a"),
+    )
+    assert r.status_code == 201, r.text
+
+    a = client.get("/api/v1/sku/search?q=V1-001", headers=_admin_token("tenant_a")).json()
+    assert any(i["item_number"] == "V1-001" for i in a["items"])
+    b = client.get("/api/v1/sku/search?q=V1-001", headers=_admin_token("tenant_b")).json()
+    assert not any(i["item_number"] == "V1-001" for i in b["items"])
+
+
 # ── SESSION_SECRET guard ──────────────────────────────────────────────────────
 
 
