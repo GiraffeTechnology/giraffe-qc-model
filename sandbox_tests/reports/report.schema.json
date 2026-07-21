@@ -15,13 +15,40 @@
     "cases"
   ],
   "properties": {
-    "schema_version": {"const": "sandbox-qc-report-v1"},
-    "stage": {"type": "integer", "minimum": 1, "maximum": 4},
-    "status": {"enum": ["passed", "failed", "blocked"]},
-    "environment_declaration": {"type": "string", "minLength": 1},
-    "model_delta_note": {"type": "string", "minLength": 1},
-    "summary": {"type": "object"},
-    "acceptance": {"type": "object", "additionalProperties": {"type": "boolean"}},
+    "schema_version": {
+      "const": "sandbox-qc-report-v1"
+    },
+    "stage": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4
+    },
+    "status": {
+      "enum": [
+        "passed",
+        "failed",
+        "blocked",
+        "superseded_acceptance_stopped",
+        "historical_fixture_suite_only"
+      ]
+    },
+    "environment_declaration": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model_delta_note": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "object"
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
     "cases": {
       "type": "array",
       "items": {
@@ -40,20 +67,60 @@
           "mock_flags"
         ],
         "properties": {
-          "case_id": {"type": "string"},
-          "category": {"enum": ["visual_defect", "physical_measurement", "rule_verification", "subjective_judgment"]},
-          "input_ref": {"type": "string"},
-          "raw_model_output": {"type": "string"},
-          "parsed_result": {"type": "object"},
-          "verdict": {"enum": ["pass", "reject"]},
+          "case_id": {
+            "type": "string"
+          },
+          "category": {
+            "enum": [
+              "visual_defect",
+              "physical_measurement",
+              "rule_verification",
+              "subjective_judgment"
+            ]
+          },
+          "input_ref": {
+            "type": "string"
+          },
+          "raw_model_output": {
+            "type": "string"
+          },
+          "parsed_result": {
+            "type": "object"
+          },
+          "verdict": {
+            "enum": [
+              "pass",
+              "reject"
+            ]
+          },
           "timing_ms": {
             "type": "object",
-            "required": ["cv", "inference", "parse", "total"],
-            "additionalProperties": {"type": "number", "minimum": 0}
+            "required": [
+              "cv",
+              "inference",
+              "parse",
+              "total"
+            ],
+            "additionalProperties": {
+              "type": "number",
+              "minimum": 0
+            }
           },
-          "passed": {"type": "boolean"},
-          "anomaly_notes": {"type": "array", "items": {"type": "string"}},
-          "mock_flags": {"type": "array", "items": {"type": "string"}}
+          "passed": {
+            "type": "boolean"
+          },
+          "anomaly_notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mock_flags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       }
     }
