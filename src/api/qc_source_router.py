@@ -7,6 +7,7 @@ draft fragment.
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -21,12 +22,18 @@ from src.api.authz import effective_tenant
 from src.api.deps import get_db_dep
 from src.api.uploads import validate_safe_id
 from src.qc_model.ingestion import service
-from src.qc_model.ingestion.process_card import REAL_TEXT_EXTRACTION_EXTENSIONS
+from src.qc_model.ingestion.process_card import (
+    IMAGE_EXTENSIONS,
+    REAL_TEXT_EXTRACTION_EXTENSIONS,
+    extract_process_card_text,
+)
+from src.qc_model.studio import ai_gateway
 from src.qc_model.ingestion.types import FragmentType, QCSourceType, is_valid_source_type
 from src.storage.upload_validation import (
     UploadValidationError,
     read_and_validate_document_upload,
 )
+from src.web.i18n import resolve_language
 
 router = APIRouter(tags=["qc-source-ingestion"])
 
@@ -75,6 +82,7 @@ def _source_view(doc) -> dict:
         "file_ref": doc.file_ref,
         "mime_type": doc.mime_type,
         "status": doc.status,
+        "metadata": doc.metadata_json or {},
     }
 
 
@@ -352,14 +360,46 @@ async def ui_upload_process_card(
     dest_path.write_bytes(validated.content)
 
     text_content = None
+    ingestion_metadata: dict = {
+        "status": "stored_unextracted",
+        "extension": validated.extension,
+    }
     if validated.extension in REAL_TEXT_EXTRACTION_EXTENSIONS:
-        try:
-            text_content = validated.content.decode("utf-8")
-        except UnicodeDecodeError:
-            # Extension claimed plain text but the bytes aren't valid UTF-8 --
-            # leave text_content unset rather than store mojibake; extraction
-            # will honestly report no usable text was recovered.
-            text_content = None
+        text_content = await asyncio.to_thread(extract_process_card_text, dest_path)
+        ingestion_metadata["status"] = (
+            "embedded_text_extracted" if text_content else "embedded_text_unreadable"
+        )
+        ingestion_metadata["path"] = "direct_text"
+    elif validated.extension in IMAGE_EXTENSIONS:
+        config = ai_gateway.vision_config()
+        if config.configured:
+            try:
+                ocr = await asyncio.to_thread(
+                    ai_gateway.extract_image_text,
+                    image_path=dest_path,
+                    mime_type=file.content_type or "",
+                    language=resolve_language(request),
+                )
+            except ai_gateway.StudioAIError as exc:
+                ingestion_metadata.update({
+                    "status": "vision_ocr_failed",
+                    "path": "vision_ocr",
+                    "error": str(exc),
+                })
+            else:
+                text_content = ocr["text"]
+                ingestion_metadata.update({
+                    "status": "vision_ocr_extracted",
+                    "path": "vision_ocr",
+                    "language": ocr["language"],
+                    "layout_notes": ocr["layout_notes"],
+                    "assistant": ocr["assistant"],
+                })
+        else:
+            ingestion_metadata.update({
+                "status": "vision_ocr_not_configured",
+                "path": "vision_ocr",
+            })
 
     try:
         service.create_source_document(
@@ -371,6 +411,7 @@ async def ui_upload_process_card(
             text_content=text_content,
             file_ref=str(dest_path),
             mime_type=file.content_type,
+            metadata_json={"ingestion": ingestion_metadata},
         )
     except service.CrossTenantTrainingPack:
         pass

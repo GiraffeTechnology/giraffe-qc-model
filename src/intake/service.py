@@ -14,6 +14,7 @@ from src.inspection.service import (
     confirm_standard_revision,
     create_standard_revision,
 )
+from src.qc_model.studio.analysis_config import normalize_analysis_config
 
 _PARSER_VERSION = "deterministic-v1"
 
@@ -342,6 +343,14 @@ def confirm_standard_intake(
         point_code = cp.get("point_code", "").strip().upper()
         if not point_code:
             raise ValueError(f"Checkpoint at index {i} has no point_code.")
+        try:
+            expected_features, cv_config = normalize_analysis_config(
+                cp.get("expected_features"), cp.get("cv_config"),
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"Checkpoint {point_code!r} has invalid CV analysis config: {exc}"
+            ) from exc
         dp = QCDetectionPoint(
             id=_uid(),
             tenant_id=tid,
@@ -354,6 +363,8 @@ def confirm_standard_intake(
             severity=cp.get("severity", "major"),
             expected_value=cp.get("expected_value"),
             pass_criteria=cp.get("pass_criteria"),
+            expected_features_json=expected_features,
+            cv_config_json=cv_config,
             sort_order=i + 1,
             is_active=True,
         )

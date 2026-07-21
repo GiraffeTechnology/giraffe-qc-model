@@ -227,22 +227,21 @@ def extract(source_type: str, text_content: str | None, file_ref: str | None) ->
                 )
             return output
         if plan.path.value == "direct_text":
-            # process_card.py classified this as a native-text format (e.g. PDF/
-            # DOCX), but no text_content was actually extracted -- this
-            # environment has no parser wired for those binary formats. Do not
-            # silently guess at their contents; say so explicitly.
+            # A supported parser ran upstream but recovered no usable text
+            # (corrupt, encrypted, image-only, or empty document). Do not
+            # silently guess at its contents; say so explicitly.
             output.fragments.append(
                 ExtractedFragment(
                     fragment_type=FragmentType.REQUIRES_SUPERVISOR_REVIEW.value,
                     candidate_label=CandidateLabel.REVIEW.value,
                     text=(
                         f"Process card ({filename or file_ref or 'unknown file'}) is a native-text "
-                        "format, but no document parser for it is wired in this environment "
-                        f"(real support today: {sorted(REAL_TEXT_EXTRACTION_EXTENSIONS)}). "
-                        "Needs a real parser (e.g. PDF/DOCX extraction) before this can be "
-                        "auto-extracted -- not guessed."
+                        "format, but the configured parser recovered no readable embedded text "
+                        f"(supported extensions: {sorted(REAL_TEXT_EXTRACTION_EXTENSIONS)}). "
+                        "The file may be corrupt, encrypted, empty, or image-only; manual review "
+                        "or OCR is required -- content was not guessed."
                     ),
-                    rationale="ELECTRONIC_TEXT format classified DIRECT_TEXT-eligible but no parser is available.",
+                    rationale="Configured electronic-text extraction returned no readable text.",
                     source_excerpt=(file_ref or "")[:280],
                     confidence=0.2,
                 )

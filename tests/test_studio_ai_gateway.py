@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 
 from src.qc_model.studio import ai_gateway
@@ -54,6 +55,7 @@ def test_vision_assistant_sends_image_to_openai_compatible_route(monkeypatch, tm
     monkeypatch.setenv("STUDIO_VISION_PROVIDER", "openai_compatible")
     monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://vision.invalid")
     monkeypatch.setenv("STUDIO_VISION_MODEL", "replaceable-vision-default")
+    monkeypatch.setenv("STUDIO_VISION_AUTHOR_SELF_REVIEW", "false")
     image = tmp_path / "reference.png"
     image.write_bytes(b"not-decoded-by-the-gateway")
     captured = {}
@@ -86,11 +88,12 @@ def test_vision_assistant_sends_image_to_openai_compatible_route(monkeypatch, tm
     )
 
     assert captured["path"] == "/v1/chat/completions"
-    assert captured["payload"]["max_tokens"] == 768
+    assert captured["payload"]["max_tokens"] == 1100
     content = captured["payload"]["messages"][0]["content"]
     assert content[0]["type"] == "image_url"
     assert content[0]["image_url"]["url"].startswith("data:image/png;base64,")
-    assert "at most 3 high-value" in content[1]["text"]
+    assert "comprehensive but concise set" in content[1]["text"]
+    assert "do not wait for the administrator" in content[1]["text"]
     assert result["assistant"]["role"] == "vision"
 
 
@@ -98,6 +101,8 @@ def test_live_vision_inspection_is_checkpoint_scoped_and_fails_closed(monkeypatc
     monkeypatch.setenv("STUDIO_VISION_PROVIDER", "openai_compatible")
     monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://vision.invalid")
     monkeypatch.setenv("STUDIO_VISION_MODEL", "replaceable-vision-default")
+    monkeypatch.delenv("STUDIO_VISION_FALLBACK_BASE_URL", raising=False)
+    monkeypatch.delenv("STUDIO_VISION_FALLBACK_MODEL", raising=False)
     image = tmp_path / "capture.png"
     image.write_bytes(b"camera-frame")
     captured = {}
@@ -147,10 +152,13 @@ def test_status_never_exposes_internal_endpoint(monkeypatch):
     monkeypatch.setenv("STUDIO_TEXT_MODEL", "text-default")
     monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://internal-vision:8080")
     monkeypatch.setenv("STUDIO_VISION_MODEL", "vision-default")
+    monkeypatch.setenv("STUDIO_VISION_FALLBACK_BASE_URL", "http://secret-fallback:18081")
+    monkeypatch.setenv("STUDIO_VISION_FALLBACK_MODEL", "vision-fallback")
 
     serialized = json.dumps(ai_gateway.assistant_status())
     assert "internal-text" not in serialized
     assert "internal-vision" not in serialized
+    assert "secret-fallback" not in serialized
     assert '"configured": true' in serialized
 
 
@@ -189,3 +197,258 @@ def test_clean_json_still_rejects_truncated_object():
         assert str(exc) == "assistant_response_invalid_json"
     else:
         raise AssertionError("truncated assistant JSON must fail closed")
+
+
+def test_author_image_runs_primary_self_review_and_keeps_all_visible_points(monkeypatch, tmp_path):
+    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
+    monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
+    monkeypatch.setenv("STUDIO_VISION_AUTHOR_SELF_REVIEW", "true")
+    monkeypatch.delenv("STUDIO_VISION_FALLBACK_BASE_URL", raising=False)
+    monkeypatch.delenv("STUDIO_VISION_FALLBACK_MODEL", raising=False)
+    image = tmp_path / "reference.png"
+    image.write_bytes(b"reference")
+    prompts = []
+
+    def fake_post(config, payload, path):
+        prompt = payload["messages"][0]["content"][1]["text"]
+        prompts.append(prompt)
+        points = [{
+            "point_code": "PETAL_SHAPE", "label": "Petal shape",
+            "method_hint": "shape_compare", "severity": "major",
+            "pass_criteria": "Visible petals are symmetric",
+        }]
+        if "first-pass candidate" in prompt:
+            points.append({
+                "point_code": "CENTER_ALIGNMENT", "label": "Center alignment",
+                "method_hint": "alignment", "severity": "major",
+                "pass_criteria": "The center is visually centered",
+                "cv_config": {"analyzers": [{"name": "pistil_localization", "params": {}}]},
+            })
+        value = {
+            "intent": "define_requirements", "reply": "Candidate draft", "sku": {},
+            "checkpoints": points, "questions": [],
+            "coverage_review": {
+                "complete": True,
+                "checked_dimensions": ["alignment/centering/symmetry", "shape"],
+                "omissions": [],
+            },
+        }
+        return {"choices": [{"message": {"content": json.dumps(value)}}]}, 100
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    result = ai_gateway.author_image(
+        image_path=image, mime_type="image/png", language="en",
+        current_sku={"item_number": "FLOWER-1"},
+    )
+
+    assert len(prompts) == 2
+    assert {point["point_code"] for point in result["checkpoints"]} == {
+        "PETAL_SHAPE", "CENTER_ALIGNMENT",
+    }
+    center = next(p for p in result["checkpoints"] if p["point_code"] == "CENTER_ALIGNMENT")
+    assert center["cv_config"]["analyzers"][0]["name"] == "pistil_localization"
+    assert result["assistant"]["primary_model"] == "local-4b"
+    assert result["assistant"]["passes"] == 2
+    assert result["coverage_review"]["complete"] is True
+    assert "alignment/centering/symmetry" in result["coverage_review"]["checked_dimensions"]
+
+
+def test_inspection_injects_cv_and_escalates_low_confidence_to_fallback(monkeypatch, tmp_path):
+    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
+    monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
+    monkeypatch.setenv("STUDIO_VISION_FALLBACK_BASE_URL", "http://fallback.invalid")
+    monkeypatch.setenv("STUDIO_VISION_FALLBACK_MODEL", "cloud-30b")
+    monkeypatch.setenv("STUDIO_VISION_ESCALATION_CONFIDENCE", "0.8")
+    image = tmp_path / "capture.png"
+    image.write_bytes(b"capture")
+    calls = []
+
+    def fake_post(config, payload, path):
+        prompt = payload["messages"][0]["content"][1]["text"]
+        calls.append((config.model, prompt))
+        low = config.model == "local-4b"
+        value = {
+            "summary": "review",
+            "checkpoint_results": [{
+                "point_code": "CENTER_ALIGNMENT",
+                "result": "low_confidence" if low else "pass",
+                "confidence": 0.55 if low else 0.94,
+                "observed_value": "center visible",
+                "notes": "evidence",
+            }],
+        }
+        return {"choices": [{"message": {"content": json.dumps(value)}}]}, 120
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    result = ai_gateway.inspect_image(
+        image_path=image, mime_type="image/png", language="en",
+        checkpoints=[{"point_code": "CENTER_ALIGNMENT", "label": "Center alignment"}],
+        cv_context={
+            "schema_version": "1.0",
+            "points": [{"point_code": "CENTER_ALIGNMENT", "analysis": {"analyzers": []}}],
+        },
+    )
+
+    assert [model for model, _ in calls] == ["local-4b", "cloud-30b"]
+    assert "<CV_PREANALYSIS_JSON>" in calls[0][1]
+    assert result["checkpoint_results"][0]["result"] == "pass"
+    assert result["assistant"]["fallback_used"] is True
+    assert result["assistant"]["route"] == "fallback"
+    assert "CENTER_ALIGNMENT:low_confidence" in result["assistant"]["escalation_reasons"]
+    assert result["routing"]["primary"][0]["result"] == "low_confidence"
+
+
+def test_inspection_fallback_receives_only_authorized_checkpoint_crop(monkeypatch, tmp_path):
+    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
+    monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
+    monkeypatch.setenv("STUDIO_VISION_FALLBACK_BASE_URL", "http://fallback.invalid")
+    monkeypatch.setenv("STUDIO_VISION_FALLBACK_MODEL", "cloud-30b")
+    full_image = tmp_path / "full-frame.png"
+    crop = tmp_path / "center-crop.jpg"
+    full_image.write_bytes(b"full-frame-must-not-reach-fallback")
+    crop.write_bytes(b"authorized-checkpoint-crop")
+    calls = []
+
+    def fake_post(config, payload, path):
+        content = payload["messages"][0]["content"]
+        calls.append((config.model, content))
+        low = config.model == "local-4b"
+        value = {
+            "summary": "review",
+            "checkpoint_results": [{
+                "point_code": "CENTER_ALIGNMENT",
+                "result": "low_confidence" if low else "pass",
+                "confidence": 0.45 if low else 0.96,
+                "observed_value": "center visible",
+                "notes": "evidence",
+            }],
+        }
+        return {"choices": [{"message": {"content": json.dumps(value)}}]}, 100
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    result = ai_gateway.inspect_image(
+        image_path=full_image, mime_type="image/png", language="en",
+        checkpoints=[{"point_code": "CENTER_ALIGNMENT", "label": "Center alignment"}],
+        fallback_crops={"CENTER_ALIGNMENT": [crop]},
+    )
+
+    assert [model for model, _ in calls] == ["local-4b", "cloud-30b"]
+    fallback_images = [item["image_url"]["url"] for item in calls[1][1] if item["type"] == "image_url"]
+    assert len(fallback_images) == 1
+    assert base64.b64encode(crop.read_bytes()).decode("ascii") in fallback_images[0]
+    assert base64.b64encode(full_image.read_bytes()).decode("ascii") not in fallback_images[0]
+    assert result["routing"]["fallback_payload"] == "checkpoint_crops"
+    assert result["routing"]["crop_manifest"] == [
+        {"image_index": 1, "point_code": "CENTER_ALIGNMENT"},
+    ]
+
+
+def test_inspection_does_not_send_full_frame_when_checkpoint_has_no_crop(monkeypatch, tmp_path):
+    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
+    monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
+    monkeypatch.setenv("STUDIO_VISION_FALLBACK_BASE_URL", "http://fallback.invalid")
+    monkeypatch.setenv("STUDIO_VISION_FALLBACK_MODEL", "cloud-30b")
+    image = tmp_path / "full-frame.png"
+    image.write_bytes(b"full-frame")
+    calls = []
+
+    def fake_post(config, payload, path):
+        calls.append(config.model)
+        value = {
+            "summary": "review",
+            "checkpoint_results": [{
+                "point_code": "CENTER_ALIGNMENT", "result": "not_visible",
+                "confidence": 0.2, "observed_value": None, "notes": "unclear",
+            }],
+        }
+        return {"choices": [{"message": {"content": json.dumps(value)}}]}, 100
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    result = ai_gateway.inspect_image(
+        image_path=image, mime_type="image/png", language="en",
+        checkpoints=[{"point_code": "CENTER_ALIGNMENT", "label": "Center alignment"}],
+        fallback_crops={},
+    )
+
+    assert calls == ["local-4b"]
+    assert result["assistant"]["fallback_used"] is False
+    assert "CENTER_ALIGNMENT:no_fallback_crop" in result["assistant"]["escalation_reasons"]
+    assert result["routing"]["fallback"] is None
+
+
+def test_process_card_image_ocr_preserves_numbers_units_and_audit(monkeypatch, tmp_path):
+    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
+    monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
+    monkeypatch.delenv("STUDIO_VISION_FALLBACK_BASE_URL", raising=False)
+    monkeypatch.delenv("STUDIO_VISION_FALLBACK_MODEL", raising=False)
+    image = tmp_path / "card.png"
+    image.write_bytes(b"card")
+    captured = {}
+
+    def fake_post(config, payload, path):
+        captured.update(payload=payload, path=path)
+        value = {
+            "text": "Rivet diameter 5.0 mm ± 0.2 mm",
+            "language": "en",
+            "layout_notes": "one table row",
+        }
+        return {"choices": [{"message": {"content": json.dumps(value)}}]}, 88
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    result = ai_gateway.extract_image_text(
+        image_path=image, mime_type="image/png", language="en",
+    )
+
+    assert result["text"] == "Rivet diameter 5.0 mm ± 0.2 mm"
+    assert result["assistant"]["model"] == "local-4b"
+    prompt = captured["payload"]["messages"][0]["content"][1]["text"]
+    assert "Preserve numbers, units, tolerances" in prompt
+
+
+def test_author_image_escalates_incomplete_primary_coverage_to_30b(monkeypatch, tmp_path):
+    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
+    monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
+    monkeypatch.setenv("STUDIO_VISION_FALLBACK_BASE_URL", "http://fallback.invalid")
+    monkeypatch.setenv("STUDIO_VISION_FALLBACK_MODEL", "cloud-30b")
+    monkeypatch.setenv("STUDIO_VISION_AUTHOR_SELF_REVIEW", "false")
+    monkeypatch.setenv("STUDIO_VISION_AUTHOR_COVERAGE_FALLBACK", "true")
+    image = tmp_path / "reference.png"
+    image.write_bytes(b"reference")
+    calls = []
+
+    def fake_post(config, payload, path):
+        calls.append(config.model)
+        points = [{
+            "point_code": "PETAL_SHAPE", "label": "Petal shape",
+            "method_hint": "shape_compare", "severity": "major",
+            "pass_criteria": "Petals are symmetric",
+        }]
+        complete = config.model == "cloud-30b"
+        if complete:
+            points.append({
+                "point_code": "CENTER_ALIGNMENT", "label": "Center alignment",
+                "method_hint": "alignment", "severity": "major",
+                "pass_criteria": "Center is visually centered",
+            })
+        value = {
+            "intent": "define_requirements", "reply": "Candidate", "sku": {},
+            "checkpoints": points, "questions": [],
+            "coverage_review": {
+                "complete": complete, "checked_dimensions": ["shape", "alignment"],
+                "omissions": [] if complete else ["alignment needs review"],
+            },
+        }
+        return {"choices": [{"message": {"content": json.dumps(value)}}]}, 100
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    result = ai_gateway.author_image(
+        image_path=image, mime_type="image/png", language="en", current_sku={},
+    )
+
+    assert calls == ["local-4b", "cloud-30b"]
+    assert result["coverage_review"]["complete"] is True
+    assert {p["point_code"] for p in result["checkpoints"]} == {
+        "PETAL_SHAPE", "CENTER_ALIGNMENT",
+    }
+    assert result["assistant"]["fallback_used"] is True
+    assert "primary_coverage_incomplete" in result["assistant"]["escalation_reasons"]

@@ -899,7 +899,10 @@
   },
   "schema_version": "sandbox-qc-report-v1",
   "stage": 2,
-  "status": "passed",
+  "status": "historical_fixture_suite_only",
+  "product_acceptance": false,
+  "stage3_allowed": false,
+  "superseded_note": "Zero-model-call fixture evidence only; revised Stage 2 requires a fresh camera, model, UI and server-finalization acceptance run.",
   "summary": {
     "arm64_guest_verified": true,
     "case_count": 14,

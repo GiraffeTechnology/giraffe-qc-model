@@ -456,6 +456,120 @@ _STRINGS = {
         LANG_ZH: "上传标准照片",
         LANG_JA: "標準写真をアップロード",
     },
+    "studio.album.title": {
+        LANG_EN: "Choose standard sample from photo library",
+        LANG_ZH: "从相册选择标准样本",
+        LANG_JA: "写真ライブラリから標準サンプルを選択",
+    },
+    "studio.album.permission": {
+        LANG_EN: "The system photo picker will request access. Only the photo you select can be read.",
+        LANG_ZH: "即将打开系统相册并申请读取权限；应用只能读取你明确选择的照片。",
+        LANG_JA: "システム写真選択画面でアクセスを確認します。選択した写真だけを読み取ります。",
+    },
+    "studio.album.unavailable": {
+        LANG_EN: "Photo-library reading is unavailable in this browser.",
+        LANG_ZH: "当前浏览器不支持读取相册照片。",
+        LANG_JA: "このブラウザでは写真ライブラリを読み取れません。",
+    },
+    "studio.album.reading": {
+        LANG_EN: "Checking whether the selected photo is readable…",
+        LANG_ZH: "正在检查所选相册照片是否可读…",
+        LANG_JA: "選択した写真を読み取れるか確認中…",
+    },
+    "studio.album.readable": {
+        LANG_EN: "The selected photo is readable. Uploading the confirmed selection…",
+        LANG_ZH: "所选照片可读，正在上传已确认的照片…",
+        LANG_JA: "選択した写真を読み取れました。確認済み写真をアップロード中…",
+    },
+    "studio.album.unreadable": {
+        LANG_EN: "The selected photo cannot be read and was not uploaded.",
+        LANG_ZH: "所选照片不可读，未执行上传。",
+        LANG_JA: "選択した写真を読み取れないため、アップロードしませんでした。",
+    },
+    "studio.file.title": {
+        LANG_EN: "Upload standard sample from device folder",
+        LANG_ZH: "从当前设备文件夹上传标准样本",
+        LANG_JA: "端末フォルダから標準サンプルをアップロード",
+    },
+    "studio.file.unavailable": {
+        LANG_EN: "Device-file reading is unavailable in this browser.",
+        LANG_ZH: "当前浏览器不支持读取设备文件。",
+        LANG_JA: "このブラウザでは端末ファイルを読み取れません。",
+    },
+    "studio.file.opening": {
+        LANG_EN: "Opening this device's file folder. Select one image to upload.",
+        LANG_ZH: "正在打开当前设备的文件夹，请选择一张图片上传。",
+        LANG_JA: "この端末のフォルダを開きます。アップロードする画像を1枚選択してください。",
+    },
+    "studio.file.reading": {
+        LANG_EN: "Checking whether the selected device file is readable…",
+        LANG_ZH: "正在检查所选设备文件是否可读…",
+        LANG_JA: "選択した端末ファイルを読み取れるか確認中…",
+    },
+    "studio.file.readable": {
+        LANG_EN: "The selected device file is readable. Uploading…",
+        LANG_ZH: "所选设备文件可读，正在上传…",
+        LANG_JA: "選択した端末ファイルを読み取れました。アップロード中…",
+    },
+    "studio.file.unreadable": {
+        LANG_EN: "The selected device file cannot be read and was not uploaded.",
+        LANG_ZH: "所选设备文件不可读，未执行上传。",
+        LANG_JA: "選択した端末ファイルを読み取れないため、アップロードしませんでした。",
+    },
+    "studio.camera.toggle": {
+        LANG_EN: "Capture standard sample with USB camera",
+        LANG_ZH: "使用 USB 摄像头采集标准样本",
+        LANG_JA: "USB カメラで標準サンプルを撮影",
+    },
+    "studio.camera.heading": {
+        LANG_EN: "Capture standard sample",
+        LANG_ZH: "采集标准样本",
+        LANG_JA: "標準サンプルを撮影",
+    },
+    "studio.camera.close": {LANG_EN: "Close camera", LANG_ZH: "关闭摄像头", LANG_JA: "カメラを閉じる"},
+    "studio.camera.source": {LANG_EN: "Camera source", LANG_ZH: "摄像头来源", LANG_JA: "カメラソース"},
+    "studio.camera.default": {LANG_EN: "System default camera", LANG_ZH: "系统默认摄像头", LANG_JA: "システム既定のカメラ"},
+    "studio.camera.start": {LANG_EN: "Start USB camera", LANG_ZH: "启动 USB 摄像头", LANG_JA: "USB カメラを開始"},
+    "studio.camera.capture": {LANG_EN: "Capture standard sample", LANG_ZH: "拍摄标准样本", LANG_JA: "標準サンプルを撮影"},
+    "studio.camera.stop": {LANG_EN: "Stop camera", LANG_ZH: "停止摄像头", LANG_JA: "カメラを停止"},
+    "studio.camera.ready": {LANG_EN: "USB camera ready", LANG_ZH: "USB 摄像头已就绪", LANG_JA: "USB カメラ準備完了"},
+    "studio.camera.denied": {
+        LANG_EN: "Camera unavailable or permission denied:",
+        LANG_ZH: "摄像头不可用或权限被拒绝：",
+        LANG_JA: "カメラを利用できないか、権限が拒否されました:",
+    },
+    "studio.camera.timeout": {
+        LANG_EN: "Camera permission timed out. Allow camera access and retry.",
+        LANG_ZH: "摄像头授权超时，请允许摄像头访问后重试。",
+        LANG_JA: "カメラ権限がタイムアウトしました。アクセスを許可して再試行してください。",
+    },
+    "studio.camera.required": {
+        LANG_EN: "Connect and start a USB camera first.",
+        LANG_ZH: "请先连接并启动 USB 摄像头。",
+        LANG_JA: "先に USB カメラを接続して開始してください。",
+    },
+    "studio.camera.captured": {
+        LANG_EN: "Standard sample captured. Review the still image before uploading.",
+        LANG_ZH: "标准样本已拍摄，请检查定格画面后再决定是否上传。",
+        LANG_JA: "標準サンプルを撮影しました。アップロード前に静止画を確認してください。",
+    },
+    "studio.camera.capture_failed": {
+        LANG_EN: "Standard-sample capture failed:",
+        LANG_ZH: "标准样本采集失败：",
+        LANG_JA: "標準サンプルの撮影に失敗しました:",
+    },
+    "studio.camera.confirm": {
+        LANG_EN: "Upload this standard-sample photo?",
+        LANG_ZH: "是否上传这张标准样本照片？",
+        LANG_JA: "この標準サンプル写真をアップロードしますか？",
+    },
+    "studio.camera.upload_yes": {LANG_EN: "Yes, upload", LANG_ZH: "是，上传", LANG_JA: "はい、アップロード"},
+    "studio.camera.retake": {LANG_EN: "Retake", LANG_ZH: "重拍", LANG_JA: "撮り直す"},
+    "studio.camera.uploading": {
+        LANG_EN: "Uploading the confirmed standard sample for live visual analysis…",
+        LANG_ZH: "正在上传已确认的标准样本并进行实时视觉分析…",
+        LANG_JA: "確認済み標準サンプルをアップロードし、ライブ画像分析を実行中…",
+    },
     "studio.chat.placeholder": {
         LANG_EN: "Create a SKU or describe QC requirements...",
         LANG_ZH: "创建 SKU 或描述质检要求...",
@@ -588,6 +702,22 @@ _STRINGS = {
         LANG_EN: "Saved {count} detection point(s) to revision {revision}. You can now publish to Pad.",
         LANG_ZH: "已将 {count} 个检测点保存到修订 {revision}。现在可以发布到 Pad。",
         LANG_JA: "{count} 件の検査ポイントをリビジョン {revision} に保存しました。Pad に公開できます。",
+    },
+    "studio.js.coverage_complete": {
+        LANG_EN: "AI coverage self-review complete — verify the candidate list before confirmation.",
+        LANG_ZH: "AI 已完成覆盖自审 — 确认前请审核候选列表。",
+        LANG_JA: "AI の網羅性セルフレビューが完了しました — 確定前に候補一覧を確認してください。",
+    },
+    "studio.js.coverage_incomplete": {
+        LANG_EN: "AI coverage self-review found unresolved visibility or standard gaps.",
+        LANG_ZH: "AI 覆盖自审发现尚未解决的可见性或标准缺口。",
+        LANG_JA: "AI の網羅性セルフレビューで未解決の視認性または基準の不足が見つかりました。",
+    },
+    "studio.js.coverage_checked": {
+        LANG_EN: "Checked: {dimensions}", LANG_ZH: "已检查：{dimensions}", LANG_JA: "確認済み：{dimensions}",
+    },
+    "studio.js.coverage_omissions": {
+        LANG_EN: "Needs clarification: {omissions}", LANG_ZH: "需要澄清：{omissions}", LANG_JA: "要確認：{omissions}",
     },
     "studio.js.rejected": {
         LANG_EN: "Rejected.",

@@ -445,6 +445,7 @@ def process_structured_ai_turn(
         "sku_id": sku.id,
         "checkpoints": checkpoints,
         "questions": questions,
+        "coverage_review": ai_result.get("coverage_review"),
     }
     return StudioChatResult(
         reply=ai_result["reply"],

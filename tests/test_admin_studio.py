@@ -222,6 +222,14 @@ def test_confirm_persists_all_semantic_fields(client, db_session_factory):
             "sku_id": sku_id,
         },
     ).json()["confirmation_card"]
+    cv_checkpoint = next(
+        cp for cp in card["checkpoints"] if cp.get("method_hint") != "counting"
+    )
+    cv_checkpoint["expected_features"] = {"pistil_localization.found": True}
+    cv_checkpoint["cv_config"] = {
+        "analyzers": [{"name": "pistil_localization", "params": {}}],
+    }
+    cv_point_code = cv_checkpoint["point_code"]
 
     resp = client.post(
         "/admin/studio/confirm",
@@ -254,6 +262,12 @@ def test_confirm_persists_all_semantic_fields(client, db_session_factory):
     assert rhinestone.expected_value == "8"
     assert rhinestone.pass_criteria
 
+    cv_point = dps[cv_point_code]
+    assert cv_point.expected_features_json == {"pistil_localization.found": True}
+    assert cv_point.cv_config_json == {
+        "analyzers": [{"name": "pistil_localization", "params": {}}],
+    }
+
 
 # ── §5.3 Upload validated + displayed ─────────────────────────────────────────
 
@@ -275,6 +289,40 @@ def test_upload_valid_png_displayed(client):
     assert "tenant_id=default" in photo_url
     served = client.get(photo_url)
     assert served.status_code == 200
+
+
+def test_admin_studio_assets_capture_usb_standard_sample_through_upload_contract():
+    """Stage 2 starts with a live standard-sample capture, not job evidence."""
+    root = __import__("pathlib").Path(__file__).resolve().parent.parent
+    html = (root / "src/web/templates/admin_studio.html").read_text()
+    javascript = (root / "src/web/static/admin_studio.js").read_text()
+
+    assert 'id="standard-camera-toggle"' in html
+    assert 'id="standard-camera-preview"' in html
+    assert 'id="standard-camera-capture"' in html
+    assert 'id="standard-camera-upload-confirm"' in html
+    assert 'id="standard-camera-retake"' in html
+    assert 'id="photo-album-toggle"' in html
+    assert 'id="photo-file-toggle"' in html
+    assert 'id="photo-file-input"' in html
+    assert "navigator.mediaDevices.getUserMedia" in javascript
+    assert "navigator.mediaDevices.enumerateDevices" in javascript
+    assert '.drawImage(' in javascript
+    assert ".toBlob(" in javascript
+    assert "mac-usb-standard-sample.jpg" in javascript
+    assert "pendingStandardSampleBlob" in javascript
+    assert "uploadCapturedStandardSample" in javascript
+    assert "retakeStandardSample" in javascript
+    assert "requestAlbumPhoto" in javascript
+    assert "readAlbumPhoto" in javascript
+    assert "FileReader" in javascript
+    assert "readAsArrayBuffer" in javascript
+    assert "requestDeviceFile" in javascript
+    assert "readDeviceFile" in javascript
+    assert 'api("/admin/studio/upload"' in javascript
+    assert "card.coverage_review" in javascript
+    assert "coverageComplete" in html
+    assert "coverageIncomplete" in html
 
 
 def test_upload_rejects_non_image(client):

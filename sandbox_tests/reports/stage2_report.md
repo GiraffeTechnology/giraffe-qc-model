@@ -4,7 +4,12 @@
 
 > Model delta: Stage 2 CV/UI simulation requires no real LLM/VLM call. Sandbox and production model selections remain replaceable configured defaults, not Giraffe product identity or ecosystem dependencies. Qwen is one configured default, not a required product ecosystem. This report contains no model-quality evidence.
 
-**Status:** `passed`
+**Status:** `historical_fixture_suite_only` — not Stage 2 product acceptance
+
+This generated fixture report has zero real model calls and predates the
+revised Stage 2 product acceptance flow. Its individual simulation cases remain
+useful regression evidence, but it cannot authorize Stage 3 or replace a fresh
+camera/model/UI acceptance run.
 
 ## Summary
 

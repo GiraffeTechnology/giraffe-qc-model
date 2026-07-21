@@ -28,12 +28,45 @@ def _load_image(image: str | Path | np.ndarray) -> np.ndarray:
     return value
 
 
-def _parameters(config: dict[str, Any], analyzer: str) -> dict[str, Any]:
+def _parameters(
+    config: dict[str, Any], analyzer: str, authored_params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if authored_params is not None:
+        if not isinstance(authored_params, dict):
+            raise PreanalysisError(f"cv_config params for {analyzer} must be an object")
+        return dict(authored_params)
     parameters = config.get("parameters") or {}
     if not isinstance(parameters, dict):
         raise PreanalysisError("cv_config.parameters must be an object")
     nested = parameters.get(analyzer)
     return dict(nested) if isinstance(nested, dict) else dict(parameters)
+
+
+def _analyzer_specs(config: dict[str, Any]) -> list[tuple[str, dict[str, Any] | None]]:
+    """Accept both the runtime and authoring schemas without losing parameters.
+
+    The original WS8 runtime contract used ``["analyzer_name"]`` while the
+    Studio authoring contract stores ``[{"name": ..., "params": {...}}]``.
+    Supporting both here gives every caller one canonical execution path.
+    """
+    analyzers = config.get("analyzers")
+    if not isinstance(analyzers, list) or not analyzers:
+        raise PreanalysisError("cv_config.analyzers must be a non-empty array")
+    specs: list[tuple[str, dict[str, Any] | None]] = []
+    for index, item in enumerate(analyzers):
+        if isinstance(item, str) and item:
+            specs.append((item, None))
+            continue
+        if isinstance(item, dict) and isinstance(item.get("name"), str) and item["name"]:
+            params = item.get("params", {})
+            if not isinstance(params, dict):
+                raise PreanalysisError(f"cv_config.analyzers[{index}].params must be an object")
+            specs.append((item["name"], params))
+            continue
+        raise PreanalysisError(
+            "cv_config.analyzers entries must be names or {name, params} objects"
+        )
+    return specs
 
 
 def _deviations(results: list[dict[str, Any]], expected: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -71,14 +104,14 @@ def run_preanalysis(
     """Run configured analyzers deterministically; never create a verdict."""
     if not isinstance(cv_config, dict):
         raise PreanalysisError("cv_config must be an object")
-    names = cv_config.get("analyzers")
-    if not isinstance(names, list) or not names or not all(isinstance(name, str) for name in names):
-        raise PreanalysisError("cv_config.analyzers must be a non-empty string array")
+    specs = _analyzer_specs(cv_config)
     value = _load_image(image)
     results: list[dict[str, Any]] = []
     try:
-        for name in names:
-            results.append(get_analyzer(name)(value, _parameters(cv_config, name)))
+        for name, authored_params in specs:
+            results.append(
+                get_analyzer(name)(value, _parameters(cv_config, name, authored_params))
+            )
     except (ValueError, TypeError, cv2.error) as exc:
         raise PreanalysisError(str(exc)) from exc
     return {

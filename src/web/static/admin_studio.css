@@ -122,10 +122,37 @@ body {
 .send-btn:hover { background: #333; }
 .human-gate-note { padding: 0 14px 10px; text-align: center; color: var(--muted); font-size: 10px; }
 
+/* Standard-sample USB camera ------------------------------------------------ */
+.standard-camera-panel {
+  margin: 0 12px 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fffdf8;
+}
+.standard-camera-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.standard-camera-head strong { color: #173f35; font-size: 14px; }
+.camera-close { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 22px; line-height: 1; }
+.standard-camera-grid { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(210px, .6fr); gap: 12px; }
+.standard-camera-preview { width: 100%; min-height: 220px; max-height: 360px; border-radius: 8px; background: #0f172a; object-fit: contain; }
+.standard-camera-actions { display: flex; flex-direction: column; gap: 8px; }
+.standard-camera-actions label { color: var(--muted); font-size: 12px; }
+.standard-camera-actions select { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+.standard-camera-status { min-height: 34px; margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.standard-camera-status.is-error { color: var(--danger); }
+.standard-camera-status.is-success { color: var(--ok); }
+.standard-camera-confirm { padding: 9px; border: 1px solid #d5c58f; border-radius: 8px; background: #fff9e8; }
+.standard-camera-confirm strong { display: block; margin-bottom: 8px; color: #6b4f00; font-size: 12px; }
+.standard-camera-confirm > div { display: flex; gap: 8px; }
+.standard-camera-confirm .btn { flex: 1; }
+
 /* Confirmation card inside conversation */
 .confirm-card { align-self: flex-start; max-width: 92%; background: #fff; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 .confirm-head { padding: 8px 12px; background: #f3f4f6; font-weight: 600; font-size: 13px; }
 .confirm-body { padding: 4px 12px; }
+.cp-coverage { margin: 8px 0; padding: 10px 12px; border-radius: 8px; font-size: 12px; line-height: 1.45; }
+.cp-coverage.is-complete { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+.cp-coverage.needs-review { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
 .cp-row { padding: 8px 0; border-bottom: 1px solid #f0f1f3; font-size: 13px; }
 .cp-row:last-child { border-bottom: none; }
 .cp-code { font-weight: 600; }
@@ -209,4 +236,5 @@ body {
   .panel { min-height: 420px; }
   .workflow-steps { grid-template-columns: repeat(3, 1fr); row-gap: 2px; }
   .studio-nav { display: none; }
+  .standard-camera-grid { grid-template-columns: 1fr; }
 }

@@ -14,18 +14,22 @@ standard-authoring input. It arrives in whatever format the shop floor has:
   out) — and that toolchain must be *verified before being claimed as
   supported*. This module never pretends a CAD file was parsed.
 
-This module only *classifies and routes*; it does not itself run OCR or CAD
-rendering (no such toolchain is wired yet). It returns an honest plan so the
-caller either (a) feeds extractable text into the deterministic extractor, or
-(b) surfaces a "needs vision OCR / needs CAD render" requirement instead of
-silently guessing — consistent with the no-hallucination rule (Supplement §3).
+This module classifies and routes, and performs deterministic embedded-text
+extraction for the minimum supported electronic formats. Image OCR is handled
+by the provider-neutral Studio vision gateway; CAD rendering remains explicitly
+unsupported until a verified renderer is deployed.
 """
 from __future__ import annotations
 
 import os
+import subprocess
+import zipfile
+from io import BytesIO
+from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
+from xml.etree import ElementTree
 
 
 class ProcessCardFormat(str, Enum):
@@ -63,14 +67,11 @@ IMAGE_EXTENSIONS = frozenset(_IMAGE_EXT)
 CAD_EXTENSIONS = frozenset(_CAD_EXT)
 ALL_PROCESS_CARD_EXTENSIONS = ELECTRONIC_TEXT_EXTENSIONS | IMAGE_EXTENSIONS | CAD_EXTENSIONS
 
-# Of ELECTRONIC_TEXT_EXTENSIONS, only these are genuinely decodable as plain
-# text with what this environment has available (no PDF/DOCX/XLS parser is a
-# dependency of this project -- see JETSON_NX_RUNTIME_FEASIBILITY.md-style
-# honesty: don't claim a format is "text_ready" just because process_card.py's
-# format-level routing groups it with ELECTRONIC_TEXT). Extraction-time code
-# must check membership here before trusting a plan's text_ready=True for a
-# real (non-inline-text) upload.
-REAL_TEXT_EXTRACTION_EXTENSIONS = frozenset({".txt", ".md", ".csv"})
+# Formats with a real extraction implementation below. Legacy binary Word/Excel
+# files remain accepted for storage but are not presented as parsed.
+REAL_TEXT_EXTRACTION_EXTENSIONS = frozenset({
+    ".txt", ".md", ".csv", ".pdf", ".docx", ".xlsx",
+})
 
 _ELECTRONIC_TEXT_MIME_PREFIXES = (
     "application/pdf",
@@ -164,12 +165,18 @@ def plan_process_card_ingestion(
 
     fmt = classify_process_card(filename=filename, mime_type=mime_type)
     if fmt is ProcessCardFormat.ELECTRONIC_TEXT:
+        ext = _ext(filename)
+        supported = ext in REAL_TEXT_EXTRACTION_EXTENSIONS
         return ProcessCardPlan(
             fmt=fmt,
             path=IngestPath.DIRECT_TEXT,
-            text_ready=True,
-            best_effort=False,
-            reason="Native electronic document — extract embedded text, no OCR needed.",
+            text_ready=supported,
+            best_effort=not supported,
+            reason=(
+                "Native electronic document — embedded text extraction is available."
+                if supported else
+                "Electronic format is stored, but no verified embedded-text parser is available."
+            ),
         )
     if fmt is ProcessCardFormat.SCANNED_IMAGE:
         return ProcessCardPlan(
@@ -201,10 +208,113 @@ def plan_process_card_ingestion(
     )
 
 
+def _clean_text(value: str) -> str | None:
+    lines = [" ".join(line.split()) for line in value.replace("\x00", "").splitlines()]
+    text = "\n".join(line for line in lines if line).strip()
+    return text[:2_000_000] or None
+
+
+def _decode_plain(content: bytes) -> str | None:
+    for encoding in ("utf-8-sig", "utf-16", "gb18030"):
+        try:
+            return _clean_text(content.decode(encoding))
+        except UnicodeDecodeError:
+            continue
+    return None
+
+
+def _docx_text(content: bytes) -> str | None:
+    try:
+        with zipfile.ZipFile(BytesIO(content)) as archive:
+            root = ElementTree.fromstring(archive.read("word/document.xml"))
+    except (KeyError, OSError, ValueError, zipfile.BadZipFile, ElementTree.ParseError):
+        return None
+    paragraphs: list[str] = []
+    for paragraph in root.iter():
+        if not paragraph.tag.endswith("}p"):
+            continue
+        text = "".join(
+            node.text or "" for node in paragraph.iter() if node.tag.endswith("}t")
+        ).strip()
+        if text:
+            paragraphs.append(text)
+    return _clean_text("\n".join(paragraphs))
+
+
+def _xlsx_text(content: bytes) -> str | None:
+    try:
+        with zipfile.ZipFile(BytesIO(content)) as archive:
+            names = set(archive.namelist())
+            shared: list[str] = []
+            if "xl/sharedStrings.xml" in names:
+                root = ElementTree.fromstring(archive.read("xl/sharedStrings.xml"))
+                for item in root.iter():
+                    if item.tag.endswith("}si"):
+                        shared.append("".join(
+                            node.text or "" for node in item.iter() if node.tag.endswith("}t")
+                        ))
+            rows: list[str] = []
+            for name in sorted(n for n in names if n.startswith("xl/worksheets/sheet") and n.endswith(".xml")):
+                root = ElementTree.fromstring(archive.read(name))
+                for row in (node for node in root.iter() if node.tag.endswith("}row")):
+                    values: list[str] = []
+                    for cell in (node for node in row if node.tag.endswith("}c")):
+                        cell_type = cell.attrib.get("t")
+                        inline = "".join(
+                            node.text or "" for node in cell.iter() if node.tag.endswith("}t")
+                        )
+                        raw = next(
+                            (node.text or "" for node in cell.iter() if node.tag.endswith("}v")), ""
+                        )
+                        if cell_type == "s" and raw.isdigit() and int(raw) < len(shared):
+                            values.append(shared[int(raw)])
+                        elif inline:
+                            values.append(inline)
+                        elif raw:
+                            values.append(raw)
+                    if values:
+                        rows.append("\t".join(values))
+    except (OSError, ValueError, zipfile.BadZipFile, ElementTree.ParseError):
+        return None
+    return _clean_text("\n".join(rows))
+
+
+def extract_process_card_text(path: str | Path) -> str | None:
+    """Extract real embedded text, returning None on unreadable/empty input."""
+    source = Path(path)
+    extension = source.suffix.lower()
+    try:
+        content = source.read_bytes()
+    except OSError:
+        return None
+    if extension in {".txt", ".md", ".csv"}:
+        return _decode_plain(content)
+    if extension == ".docx":
+        return _docx_text(content)
+    if extension == ".xlsx":
+        return _xlsx_text(content)
+    if extension == ".pdf":
+        try:
+            completed = subprocess.run(
+                ["pdftotext", "-layout", str(source), "-"],
+                capture_output=True,
+                check=False,
+                timeout=20,
+            )
+        except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+            return None
+        if completed.returncode != 0:
+            return None
+        return _decode_plain(completed.stdout)
+    return None
+
+
 __all__ = [
     "ProcessCardFormat",
     "IngestPath",
     "ProcessCardPlan",
     "classify_process_card",
     "plan_process_card_ingestion",
+    "extract_process_card_text",
+    "REAL_TEXT_EXTRACTION_EXTENSIONS",
 ]

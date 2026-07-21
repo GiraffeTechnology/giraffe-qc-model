@@ -70,7 +70,7 @@ def test_process_card_plain_text_with_content_is_really_extracted():
     assert out.fragments[1].fragment_type == FragmentType.POSSIBLE_PHYSICAL_MEASUREMENT.value
 
 
-def test_process_card_pdf_without_text_content_is_honest_not_guessed():
+def test_process_card_unreadable_pdf_without_text_content_is_honest_not_guessed():
     """process_card.py classifies .pdf as DIRECT_TEXT-eligible, but this
     environment has no PDF parser -- extraction must say so, not fabricate
     a review fragment that looks like real extraction happened."""
@@ -78,7 +78,7 @@ def test_process_card_pdf_without_text_content_is_honest_not_guessed():
     assert len(out.fragments) == 1
     frag = out.fragments[0]
     assert frag.fragment_type == FragmentType.REQUIRES_SUPERVISOR_REVIEW.value
-    assert "no document parser" in frag.text
+    assert "no readable embedded text" in frag.text
     assert "abc123.pdf" in frag.text
 
 

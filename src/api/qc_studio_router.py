@@ -436,6 +436,8 @@ class ConfirmCheckpoint(BaseModel):
     severity: str = "major"
     expected_value: Optional[str] = None
     pass_criteria: Optional[str] = None
+    expected_features: Dict[str, Any] = {}
+    cv_config: Dict[str, Any] = {}
 
 
 class ConfirmRequest(BaseModel):

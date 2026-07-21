@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
@@ -37,6 +38,95 @@ def _require_operator(request: Request) -> int:
     if not operator_id:
         return None
     return int(operator_id)
+
+
+def _fallback_crop_boxes(point, cv_record: dict[str, Any]) -> list[dict[str, float]]:
+    """Use authored ROIs first, then deterministic CV geometry."""
+    boxes: list[dict[str, float]] = []
+    for region in point.regions_json or []:
+        if all(key in region for key in ("x", "y", "w", "h")):
+            boxes.append({key: float(region[key]) for key in ("x", "y", "w", "h")})
+    if boxes:
+        return boxes
+    analysis = cv_record.get("analysis") or {}
+    for result in analysis.get("analyzers") or []:
+        candidates = list(result.get("boxes") or [])
+        if result.get("box"):
+            candidates.append(result["box"])
+        for polygon in result.get("polygons") or []:
+            if not polygon:
+                continue
+            xs = [float(p["x"]) for p in polygon]
+            ys = [float(p["y"]) for p in polygon]
+            candidates.append({
+                "x": min(xs), "y": min(ys),
+                "w": max(xs) - min(xs), "h": max(ys) - min(ys),
+            })
+        for box in candidates:
+            if isinstance(box, dict) and all(key in box for key in ("x", "y", "w", "h")):
+                boxes.append({key: float(box[key]) for key in ("x", "y", "w", "h")})
+    return boxes
+
+
+def _write_fallback_crops(
+    image_path: Path,
+    *,
+    job_id: str,
+    points: list,
+    cv_records: list[dict[str, Any]],
+) -> tuple[dict[str, list[Path]], list[dict[str, Any]]]:
+    """Persist ≤200 KB per-point JPEG crops for any cloud escalation."""
+    import cv2
+
+    image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+    if image is None or image.size == 0:
+        return {}, []
+    height, width = image.shape[:2]
+    records_by_code = {item["point_code"]: item for item in cv_records}
+    crop_dir = image_path.parent / "fallback-crops" / job_id
+    crop_dir.mkdir(parents=True, exist_ok=True)
+    by_code: dict[str, list[Path]] = {}
+    metadata: list[dict[str, Any]] = []
+    for point in points:
+        cv_record = records_by_code.get(point.point_code, {})
+        for index, box in enumerate(_fallback_crop_boxes(point, cv_record), start=1):
+            x1 = max(0, min(width - 1, int(round(box["x"] * width))))
+            y1 = max(0, min(height - 1, int(round(box["y"] * height))))
+            x2 = max(x1 + 1, min(width, int(round((box["x"] + box["w"]) * width))))
+            y2 = max(y1 + 1, min(height, int(round((box["y"] + box["h"]) * height))))
+            crop = image[y1:y2, x1:x2]
+            if crop.size == 0:
+                continue
+            crop_height, crop_width = crop.shape[:2]
+            longest = max(crop_height, crop_width)
+            if longest > 768:
+                scale = 768 / longest
+                crop = cv2.resize(
+                    crop,
+                    (max(1, int(round(crop_width * scale))), max(1, int(round(crop_height * scale)))),
+                    interpolation=cv2.INTER_AREA,
+                )
+            encoded = None
+            quality_used = None
+            for quality in (88, 76, 64, 52, 40):
+                ok, candidate = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, quality])
+                if ok and candidate.nbytes <= 200 * 1024:
+                    encoded = candidate.tobytes()
+                    quality_used = quality
+                    break
+            if encoded is None:
+                continue
+            target = crop_dir / f"{point.point_code}-{index}.jpg"
+            target.write_bytes(encoded)
+            by_code.setdefault(point.point_code, []).append(target)
+            metadata.append({
+                "point_code": point.point_code,
+                "path": str(target),
+                "size_bytes": len(encoded),
+                "jpeg_quality": quality_used,
+                "source_box": box,
+            })
+    return by_code, metadata
 
 
 # ---------------------------------------------------------------------------
@@ -509,6 +599,7 @@ async def pad_run_vision_analysis(
         return JSONResponse({"error": "inspection job already finalized"}, status_code=409)
 
     from src.db.execution_models import QCInspectionMedia, QCModelResult
+    from src.cv_preanalysis import PreanalysisError, run_preanalysis, write_evidence
     from src.inspection.service import get_active_detection_points_for_job
     from src.qc_model.studio import ai_gateway
 
@@ -533,15 +624,80 @@ async def pad_run_vision_analysis(
             "method_hint": point.method_hint,
             "expected_value": point.expected_value,
             "pass_criteria": point.pass_criteria,
+            "expected_features": point.expected_features_json or {},
+            "cv_config": point.cv_config_json or {},
         }
         for point in points
     ]
+
+    cv_started = time.monotonic()
+    cv_records: list[dict[str, Any]] = []
+    cv_prompt_points: list[dict[str, Any]] = []
+    evidence_root = image_path.parent / "cv-evidence"
+    for point in points:
+        config = point.cv_config_json or {}
+        if not config:
+            cv_records.append({
+                "point_code": point.point_code,
+                "cv_status": "not_configured",
+                "analysis": None,
+                "evidence_path": None,
+            })
+            continue
+        try:
+            analysis = run_preanalysis(
+                image_path,
+                config,
+                point.expected_features_json or {},
+            )
+            evidence_path = write_evidence(
+                evidence_root,
+                request_id=job.id,
+                point_code=point.point_code,
+                analysis=analysis,
+            )
+        except PreanalysisError as exc:
+            # WS8 failure semantics: CV is evidence, never the final judge.
+            # Record the failure and continue to the VLM without this point's
+            # CV context; operator review remains mandatory downstream.
+            cv_records.append({
+                "point_code": point.point_code,
+                "cv_status": "failed",
+                "error": str(exc)[:500],
+                "analysis": None,
+                "evidence_path": None,
+            })
+            continue
+        record = {
+            "point_code": point.point_code,
+            "cv_status": "completed",
+            "analysis": analysis,
+            "evidence_path": evidence_path,
+        }
+        cv_records.append(record)
+        cv_prompt_points.append({
+            "point_code": point.point_code,
+            "analysis": analysis,
+        })
+    cv_context = None
+    if cv_prompt_points:
+        cv_context = {
+            "schema_version": "1.0",
+            "points": cv_prompt_points,
+            "verdict_effect": "informational_only",
+        }
+    fallback_crops, crop_metadata = _write_fallback_crops(
+        image_path, job_id=job.id, points=points, cv_records=cv_records,
+    )
+    cv_elapsed_ms = int((time.monotonic() - cv_started) * 1000)
     try:
         result = ai_gateway.inspect_image(
             image_path=image_path,
             mime_type=media.mime_type or "",
             language=resolve_language(request),
             checkpoints=checkpoint_contract,
+            cv_context=cv_context,
+            fallback_crops=fallback_crops,
         )
     except ai_gateway.StudioAIError as exc:
         return JSONResponse({"error": str(exc)}, status_code=502)
@@ -556,6 +712,14 @@ async def pad_run_vision_analysis(
         "checkpoint_results": result["checkpoint_results"],
         "incidental_findings": [],
         "mode": "operator_review_suggestions",
+        "cv_preanalysis": cv_records,
+        "fallback_crops": crop_metadata,
+        "routing": result.get("routing"),
+        "assistant": result["assistant"],
+        "timings_ms": {
+            "cv": cv_elapsed_ms,
+            "vision_total": result["assistant"]["elapsed_ms"],
+        },
     }
     from uuid import uuid4
     model_result = QCModelResult(
@@ -577,6 +741,9 @@ async def pad_run_vision_analysis(
         "summary": result["summary"],
         "checkpoint_results": suggestions,
         "assistant": result["assistant"],
+        "cv_preanalysis": cv_records,
+        "fallback_crops": crop_metadata,
+        "timings_ms": raw_output["timings_ms"],
         "operator_review_required": True,
     })
 

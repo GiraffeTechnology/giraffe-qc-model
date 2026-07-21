@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ t('studio.page.title') }}</title>
-  <link rel="stylesheet" href="/static/admin_studio.css?v=stage2-live-ai-2">
+  <link rel="stylesheet" href="/static/admin_studio.css?v=stage2-cv4b-routing-1">
 </head>
 <body data-tenant="{{ tenant_id }}">
   <header class="studio-header">
@@ -63,12 +63,41 @@
       </div>
       <div id="conversation" class="conversation" aria-live="polite"></div>
 
+      <section id="standard-camera-panel" class="standard-camera-panel hidden" aria-labelledby="standard-camera-heading">
+        <div class="standard-camera-head">
+          <strong id="standard-camera-heading">{{ t('studio.camera.heading') }}</strong>
+          <button type="button" id="standard-camera-close" class="camera-close" aria-label="{{ t('studio.camera.close') }}">×</button>
+        </div>
+        <div class="standard-camera-grid">
+          <video id="standard-camera-preview" class="standard-camera-preview" autoplay playsinline muted></video>
+          <canvas id="standard-camera-canvas" class="standard-camera-preview hidden"></canvas>
+          <div class="standard-camera-actions">
+            <label for="standard-camera-device">{{ t('studio.camera.source') }}</label>
+            <select id="standard-camera-device">
+              <option value="">{{ t('studio.camera.default') }}</option>
+            </select>
+            <button type="button" id="standard-camera-start" class="btn">{{ t('studio.camera.start') }}</button>
+            <button type="button" id="standard-camera-capture" class="btn btn-primary" disabled>{{ t('studio.camera.capture') }}</button>
+            <button type="button" id="standard-camera-stop" class="btn" disabled>{{ t('studio.camera.stop') }}</button>
+            <p id="standard-camera-status" class="standard-camera-status" aria-live="polite"></p>
+            <div id="standard-camera-confirm" class="standard-camera-confirm hidden" role="group" aria-label="{{ t('studio.camera.confirm') }}">
+              <strong>{{ t('studio.camera.confirm') }}</strong>
+              <div>
+                <button type="button" id="standard-camera-upload-confirm" class="btn btn-primary">{{ t('studio.camera.upload_yes') }}</button>
+                <button type="button" id="standard-camera-retake" class="btn">{{ t('studio.camera.retake') }}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <form id="chat-form" class="chat-input">
         <button type="button" id="voice-toggle" class="icon-btn" title="{{ t('studio.voice.title') }}">🎤</button>
-        <label class="icon-btn" title="{{ t('studio.upload.title') }}">
-          📎
-          <input type="file" id="photo-input" accept="image/*" hidden>
-        </label>
+        <button type="button" id="standard-camera-toggle" class="icon-btn" title="{{ t('studio.camera.toggle') }}">📷</button>
+        <button type="button" id="photo-album-toggle" class="icon-btn" title="{{ t('studio.album.title') }}">🖼️</button>
+        <input type="file" id="photo-input" accept="image/*" hidden>
+        <button type="button" id="photo-file-toggle" class="icon-btn" title="{{ t('studio.file.title') }}">📁</button>
+        <input type="file" id="photo-file-input" accept="image/*" hidden>
         <input type="text" id="chat-text" placeholder="{{ t('studio.chat.placeholder') }}" autocomplete="off">
         <button type="submit" class="send-btn">{{ t('studio.send') }}</button>
       </form>
@@ -140,6 +169,10 @@
       provideCounts: {{ t('studio.js.provide_counts') | tojson }},
       confirmedRevision: {{ t('studio.js.confirmed_revision') | tojson }},
       savedPoints: {{ t('studio.js.saved_points') | tojson }},
+      coverageComplete: {{ t('studio.js.coverage_complete') | tojson }},
+      coverageIncomplete: {{ t('studio.js.coverage_incomplete') | tojson }},
+      coverageChecked: {{ t('studio.js.coverage_checked') | tojson }},
+      coverageOmissions: {{ t('studio.js.coverage_omissions') | tojson }},
       rejected: {{ t('studio.js.rejected') | tojson }},
       selectBeforeUpload: {{ t('studio.js.select_before_upload') | tojson }},
       uploadingPhoto: {{ t('studio.js.uploading_photo') | tojson }},
@@ -182,6 +215,25 @@
       visionThinking: {{ t('studio.assistant.vision_thinking') | tojson }},
       assistantMeta: {{ t('studio.assistant.meta') | tojson }},
       visionFailed: {{ t('studio.js.vision_failed') | tojson }},
+      cameraDefault: {{ t('studio.camera.default') | tojson }},
+      cameraReady: {{ t('studio.camera.ready') | tojson }},
+      cameraDenied: {{ t('studio.camera.denied') | tojson }},
+      cameraTimeout: {{ t('studio.camera.timeout') | tojson }},
+      cameraRequired: {{ t('studio.camera.required') | tojson }},
+      cameraCaptured: {{ t('studio.camera.captured') | tojson }},
+      cameraCaptureFailed: {{ t('studio.camera.capture_failed') | tojson }},
+      cameraConfirm: {{ t('studio.camera.confirm') | tojson }},
+      cameraUploading: {{ t('studio.camera.uploading') | tojson }},
+      albumPermission: {{ t('studio.album.permission') | tojson }},
+      albumUnavailable: {{ t('studio.album.unavailable') | tojson }},
+      albumReading: {{ t('studio.album.reading') | tojson }},
+      albumReadable: {{ t('studio.album.readable') | tojson }},
+      albumUnreadable: {{ t('studio.album.unreadable') | tojson }},
+      fileUnavailable: {{ t('studio.file.unavailable') | tojson }},
+      fileOpening: {{ t('studio.file.opening') | tojson }},
+      fileReading: {{ t('studio.file.reading') | tojson }},
+      fileReadable: {{ t('studio.file.readable') | tojson }},
+      fileUnreadable: {{ t('studio.file.unreadable') | tojson }},
       lifecycle: {{ t('studio.lifecycle') | tojson }},
       revision: {{ t('studio.revision') | tojson }},
       confirmedPoints: {{ t('studio.confirmed_points') | tojson }},
@@ -200,6 +252,6 @@
       }
     };
   </script>
-  <script src="/static/admin_studio.js?v=stage2-live-ai-2"></script>
+  <script src="/static/admin_studio.js?v=stage2-cv4b-routing-1"></script>
 </body>
 </html>

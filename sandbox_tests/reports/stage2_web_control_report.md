@@ -9,7 +9,15 @@
 > this sandbox. Giraffe QC remains provider-neutral; it is not a Qwen ecosystem
 > product and no product contract depends on a Qwen-specific model name.
 
-**Status:** passed_for_stage3_entry
+**Status:** superseded — acceptance stopped; Stage 3 entry withdrawn
+
+**Superseded on:** 2026-07-22 (Asia/Hong_Kong)
+
+This report records a historical smoke run only. It does not satisfy the
+revised PRD because the standard-sample authoring flow, comprehensive
+checkpoint coverage, CV-first routing, conditional 30B escalation and current
+capture confirmation flow were not validated together. A fresh Stage 2
+acceptance run is required after P0 remediation.
 
 **Acceptance time:** 2026-07-21 (Asia/Hong_Kong)
 
@@ -46,11 +54,12 @@ topology and must be removed from the path when Jetson is online.
   all four not_visible checkpoints.
 - Full repository regression: 1,171 passed, 6 skipped, 0 failed.
 
-## Stage 3 entry decision
+## Stage 3 entry decision (withdrawn)
 
-Stage 2 acceptance is complete for the software, UI, camera and configured
-remote-model control path. Stage 3 real-Jetson A/B testing may start. This is
-permission to begin real-device validation, not production readiness.
+Stage 3 entry is not allowed from this report. The earlier decision was based
+on an obsolete flow and is explicitly withdrawn. Stage 2 must be re-run from
+standard-sample acquisition through server-side finalization after the P0
+remediation is deployed.
 
 ## Stage 3 focus
 

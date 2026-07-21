@@ -12,6 +12,19 @@
   const activeChip = $("#active-sku-chip");
   const assistantState = $("#assistant-state");
   const strings = window.GIRAFFE_STUDIO_I18N || {};
+  const standardCameraPanel = $("#standard-camera-panel");
+  const standardCameraVideo = $("#standard-camera-preview");
+  const standardCameraCanvas = $("#standard-camera-canvas");
+  const standardCameraDevice = $("#standard-camera-device");
+  const standardCameraStart = $("#standard-camera-start");
+  const standardCameraCapture = $("#standard-camera-capture");
+  const standardCameraStop = $("#standard-camera-stop");
+  const standardCameraStatus = $("#standard-camera-status");
+  const standardCameraConfirm = $("#standard-camera-confirm");
+  const standardCameraUploadConfirm = $("#standard-camera-upload-confirm");
+  const standardCameraRetake = $("#standard-camera-retake");
+  let standardCameraStream = null;
+  let pendingStandardSampleBlob = null;
 
   function t(key, vars) {
     let text = strings[key] || key;
@@ -529,6 +542,20 @@
     const body = tpl.querySelector(".confirm-body");
 
     const inputs = {};
+    if (card.coverage_review) {
+      const coverage = card.coverage_review;
+      const review = document.createElement("div");
+      review.className = "cp-coverage " + (coverage.complete ? "is-complete" : "needs-review");
+      let html = `<strong>${esc(coverage.complete ? t("coverageComplete") : t("coverageIncomplete"))}</strong>`;
+      if ((coverage.checked_dimensions || []).length) {
+        html += `<div>${esc(t("coverageChecked", { dimensions: coverage.checked_dimensions.join(", ") }))}</div>`;
+      }
+      if ((coverage.omissions || []).length) {
+        html += `<div>${esc(t("coverageOmissions", { omissions: coverage.omissions.join("; ") }))}</div>`;
+      }
+      review.innerHTML = html;
+      body.appendChild(review);
+    }
     card.checkpoints.forEach((cp, i) => {
       const row = document.createElement("div");
       row.className = "cp-row";
@@ -612,7 +639,7 @@
   function uploadPhoto(file) {
     if (!state.skuId) {
       addBubble(t("selectBeforeUpload"), "system");
-      return;
+      return Promise.resolve(false);
     }
     const fd = new FormData();
     fd.append("sku_id", state.skuId);
@@ -621,7 +648,7 @@
     addBubble(t("uploadingPhoto"), "user");
     setAssistantState(t("visionThinking"), true);
     const pending = addBubble(t("visionThinking"), "pending");
-    api("/admin/studio/upload", { method: "POST", body: fd })
+    return api("/admin/studio/upload", { method: "POST", body: fd })
       .then((res) => {
         pending.remove();
         addBubble(t("photoUploaded"), "system", res.url);
@@ -635,12 +662,252 @@
         if (res.analysis && res.analysis.sku) setActiveSku(res.analysis.sku);
         else if (res.sku) setActiveSku(res.sku);
         loadSkus();
+        return true;
       })
       .catch((err) => {
         pending.remove();
         addBubble(t("uploadFailed", { message: err.message }), "system");
+        return false;
       })
       .finally(() => setAssistantState(t("assistantReady"), false));
+  }
+
+  // ── Photo-library permission + readability gate ───────────────────────
+  function requestAlbumPhoto() {
+    if (!state.skuId) {
+      addBubble(t("selectBeforeUpload"), "system");
+      return;
+    }
+    if (!window.File || !window.FileReader || !("files" in $("#photo-input"))) {
+      addBubble(t("albumUnavailable"), "system");
+      return;
+    }
+    addBubble(t("albumPermission"), "system");
+    $("#photo-input").click();
+  }
+
+  function readAlbumPhoto(file) {
+    if (!file || !String(file.type || "").startsWith("image/")) {
+      addBubble(t("albumUnreadable"), "system");
+      return;
+    }
+    addBubble(t("albumReading"), "system");
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (!reader.result || !reader.result.byteLength) {
+        addBubble(t("albumUnreadable"), "system");
+        return;
+      }
+      addBubble(t("albumReadable"), "system");
+      uploadPhoto(file);
+    };
+    reader.onerror = () => addBubble(t("albumUnreadable"), "system");
+    reader.readAsArrayBuffer(file.slice(0, 32));
+  }
+
+  // A separate file-folder entry keeps "photo library" and "device file"
+  // authorization explicit even when a desktop OS renders similar pickers.
+  function requestDeviceFile() {
+    if (!state.skuId) {
+      addBubble(t("selectBeforeUpload"), "system");
+      return;
+    }
+    if (!window.File || !window.FileReader || !("files" in $("#photo-file-input"))) {
+      addBubble(t("fileUnavailable"), "system");
+      return;
+    }
+    addBubble(t("fileOpening"), "system");
+    $("#photo-file-input").click();
+  }
+
+  function readDeviceFile(file) {
+    if (!file || !String(file.type || "").startsWith("image/")) {
+      addBubble(t("fileUnreadable"), "system");
+      return;
+    }
+    addBubble(t("fileReading"), "system");
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (!reader.result || !reader.result.byteLength) {
+        addBubble(t("fileUnreadable"), "system");
+        return;
+      }
+      addBubble(t("fileReadable"), "system");
+      uploadPhoto(file);
+    };
+    reader.onerror = () => addBubble(t("fileUnreadable"), "system");
+    reader.readAsArrayBuffer(file.slice(0, 32));
+  }
+
+  // ── USB standard-sample capture (Stage 2) ──────────────────────────────
+  function cameraOption(value, label, selected) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    option.selected = Boolean(selected);
+    return option;
+  }
+
+  function setStandardCameraStatus(text, kind) {
+    standardCameraStatus.textContent = text || "";
+    standardCameraStatus.className = "standard-camera-status" + (kind ? " is-" + kind : "");
+  }
+
+  function stopStandardCamera() {
+    if (standardCameraStream) {
+      standardCameraStream.getTracks().forEach((track) => track.stop());
+    }
+    standardCameraStream = null;
+    standardCameraVideo.srcObject = null;
+    pendingStandardSampleBlob = null;
+    standardCameraCanvas.classList.add("hidden");
+    standardCameraVideo.classList.remove("hidden");
+    standardCameraConfirm.classList.add("hidden");
+    standardCameraUploadConfirm.disabled = false;
+    standardCameraRetake.disabled = false;
+    standardCameraCapture.disabled = true;
+    standardCameraStop.disabled = true;
+    standardCameraStart.disabled = false;
+  }
+
+  function populateStandardCameraDevices() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return Promise.resolve();
+    return navigator.mediaDevices.enumerateDevices().then((devices) => {
+      const activeTrack = standardCameraStream && standardCameraStream.getVideoTracks()[0];
+      const activeDeviceId = activeTrack && activeTrack.getSettings ? activeTrack.getSettings().deviceId : "";
+      const prior = standardCameraDevice.value || activeDeviceId;
+      standardCameraDevice.innerHTML = "";
+      standardCameraDevice.appendChild(cameraOption("", t("cameraDefault"), !prior));
+      devices.filter((device) => device.kind === "videoinput").forEach((device, index) => {
+        const label = device.label || (t("cameraDefault") + " " + (index + 1));
+        standardCameraDevice.appendChild(cameraOption(device.deviceId, label, device.deviceId === prior));
+      });
+    });
+  }
+
+  function requestStandardCamera(constraints) {
+    return new Promise((resolve, reject) => {
+      let finished = false;
+      const timer = window.setTimeout(() => {
+        finished = true;
+        reject(new Error(t("cameraTimeout")));
+      }, 12000);
+      navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
+        if (finished) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        finished = true;
+        window.clearTimeout(timer);
+        resolve(stream);
+      }).catch((error) => {
+        if (finished) return;
+        finished = true;
+        window.clearTimeout(timer);
+        reject(error);
+      });
+    });
+  }
+
+  function startStandardCamera() {
+    if (!state.skuId) {
+      addBubble(t("selectBeforeUpload"), "system");
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStandardCameraStatus(t("cameraDenied") + " getUserMedia unavailable", "error");
+      return;
+    }
+    stopStandardCamera();
+    standardCameraStart.disabled = true;
+    const deviceId = standardCameraDevice.value;
+    const video = deviceId
+      ? { deviceId: { exact: deviceId } }
+      : { width: { ideal: 1280 }, height: { ideal: 720 } };
+    requestStandardCamera({ video: video, audio: false })
+      .then((stream) => {
+        standardCameraStream = stream;
+        standardCameraVideo.srcObject = stream;
+        standardCameraCapture.disabled = false;
+        standardCameraStop.disabled = false;
+        const track = stream.getVideoTracks()[0];
+        const label = track && track.label ? track.label : t("cameraDefault");
+        setStandardCameraStatus(t("cameraReady") + ": " + label, "success");
+        return populateStandardCameraDevices();
+      })
+      .catch((error) => {
+        standardCameraStart.disabled = false;
+        setStandardCameraStatus(t("cameraDenied") + " " + error.message, "error");
+      });
+  }
+
+  function openStandardCamera() {
+    if (!state.skuId) {
+      addBubble(t("selectBeforeUpload"), "system");
+      return;
+    }
+    standardCameraPanel.classList.remove("hidden");
+    startStandardCamera();
+  }
+
+  function closeStandardCamera() {
+    stopStandardCamera();
+    standardCameraPanel.classList.add("hidden");
+  }
+
+  function captureStandardSample() {
+    if (!standardCameraStream || !standardCameraVideo.videoWidth || !standardCameraVideo.videoHeight) {
+      setStandardCameraStatus(t("cameraRequired"), "error");
+      return;
+    }
+    standardCameraCanvas.width = standardCameraVideo.videoWidth;
+    standardCameraCanvas.height = standardCameraVideo.videoHeight;
+    standardCameraCanvas.getContext("2d").drawImage(
+      standardCameraVideo, 0, 0, standardCameraCanvas.width, standardCameraCanvas.height
+    );
+    standardCameraCanvas.toBlob((blob) => {
+      if (!blob) {
+        setStandardCameraStatus(t("cameraCaptureFailed") + " encoding failed", "error");
+        return;
+      }
+      pendingStandardSampleBlob = blob;
+      standardCameraVideo.pause();
+      standardCameraVideo.classList.add("hidden");
+      standardCameraCanvas.classList.remove("hidden");
+      standardCameraCapture.disabled = true;
+      standardCameraConfirm.classList.remove("hidden");
+      setStandardCameraStatus(t("cameraCaptured"), "success");
+    }, "image/jpeg", 0.92);
+  }
+
+  function uploadCapturedStandardSample() {
+    if (!pendingStandardSampleBlob) {
+      setStandardCameraStatus(t("cameraCaptureFailed") + " no pending capture", "error");
+      return;
+    }
+    const file = new File(
+      [pendingStandardSampleBlob], "mac-usb-standard-sample.jpg", { type: "image/jpeg" }
+    );
+    standardCameraUploadConfirm.disabled = true;
+    standardCameraRetake.disabled = true;
+    setStandardCameraStatus(t("cameraUploading"));
+    uploadPhoto(file).then((uploaded) => {
+      if (uploaded) closeStandardCamera();
+      else {
+        standardCameraUploadConfirm.disabled = false;
+        standardCameraRetake.disabled = false;
+      }
+    });
+  }
+
+  function retakeStandardSample() {
+    pendingStandardSampleBlob = null;
+    standardCameraCanvas.classList.add("hidden");
+    standardCameraVideo.classList.remove("hidden");
+    standardCameraConfirm.classList.add("hidden");
+    standardCameraCapture.disabled = !standardCameraStream;
+    if (standardCameraStream) standardCameraVideo.play();
+    setStandardCameraStatus(t("cameraReady"), "success");
   }
 
   // ── Voice toggle (§5.3) — must not crash ────────────────────────────────
@@ -666,9 +933,26 @@
     sendChat(text);
   });
   $("#photo-input").addEventListener("change", (e) => {
-    if (e.target.files && e.target.files[0]) uploadPhoto(e.target.files[0]);
+    if (e.target.files && e.target.files[0]) readAlbumPhoto(e.target.files[0]);
     e.target.value = "";
   });
+  $("#photo-album-toggle").addEventListener("click", requestAlbumPhoto);
+  $("#photo-file-input").addEventListener("change", (e) => {
+    if (e.target.files && e.target.files[0]) readDeviceFile(e.target.files[0]);
+    e.target.value = "";
+  });
+  $("#photo-file-toggle").addEventListener("click", requestDeviceFile);
+  $("#standard-camera-toggle").addEventListener("click", openStandardCamera);
+  $("#standard-camera-close").addEventListener("click", closeStandardCamera);
+  standardCameraStart.addEventListener("click", startStandardCamera);
+  standardCameraCapture.addEventListener("click", captureStandardSample);
+  standardCameraUploadConfirm.addEventListener("click", uploadCapturedStandardSample);
+  standardCameraRetake.addEventListener("click", retakeStandardSample);
+  standardCameraStop.addEventListener("click", stopStandardCamera);
+  standardCameraDevice.addEventListener("change", () => {
+    if (standardCameraStream) startStandardCamera();
+  });
+  window.addEventListener("pagehide", stopStandardCamera);
   $("#voice-toggle").addEventListener("click", voiceToggle);
   let searchTimer;
   $("#sku-search").addEventListener("input", () => {
