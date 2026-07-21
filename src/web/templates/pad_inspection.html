@@ -46,6 +46,7 @@
             </div>
         </section>
         <section class="inspection-actions">
+            <button class="btn-primary qc-action-btn" id="run-vision-btn" disabled>{{ t('pad.inspection.vision_run') }}</button>
             <button class="btn-primary qc-action-btn" id="submit-results-btn">{{ t('pad.inspection.submit') }}</button>
             <a href="/pad/inspections/{{ job_id }}/report" class="btn-secondary">{{ t('pad.inspection.view_report') }}</a>
         </section>
@@ -73,6 +74,11 @@
           fail: {{ t('pad.inspection.result.fail') | tojson }},
           notVisible: {{ t('pad.inspection.result.not_visible') | tojson }},
           lowConfidence: {{ t('pad.inspection.result.low_confidence') | tojson }},
+          visionRun: {{ t('pad.inspection.vision_run') | tojson }},
+          visionAnalyzing: {{ t('pad.inspection.vision_analyzing') | tojson }},
+          visionReady: {{ t('pad.inspection.vision_ready') | tojson }},
+          visionSuggestion: {{ t('pad.inspection.vision_suggestion') | tojson }},
+          visionFailed: {{ t('pad.inspection.vision_failed') | tojson }},
           incomplete: {{ t('pad.inspection.incomplete') | tojson }},
           finalizing: {{ t('pad.inspection.finalizing') | tojson }},
           finalized: {{ t('pad.inspection.finalized') | tojson }},
@@ -80,7 +86,7 @@
         }
       };
     </script>
-    <script src="/static/pad_inspection.js"></script>
+    <script src="/static/pad_inspection.js?v=stage2-live-vision-1"></script>
     <script src="/static/pad_orientation.js"></script>
 </body>
 </html>

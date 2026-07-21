@@ -8,6 +8,7 @@
   var status = document.getElementById('inspection-status');
   var mediaStatus = document.getElementById('media-status');
   var submitButton = document.getElementById('submit-results-btn');
+  var runVisionButton = document.getElementById('run-vision-btn');
   var fixtureUpload = document.getElementById('fixture-upload');
   var video = document.getElementById('camera-preview');
   var canvas = document.getElementById('camera-canvas');
@@ -55,6 +56,7 @@
       var card = document.createElement('article');
       card.className = 'checkpoint-card';
       card.dataset.pointId = point.id;
+      card.dataset.pointCode = point.point_code;
       var header = document.createElement('header');
       var title = document.createElement('strong');
       title.textContent = point.point_code + ' · ' + point.label;
@@ -81,6 +83,8 @@
       list.appendChild(card);
     });
     mediaStatus.textContent = job.media_count > 0 ? (s.mediaAttached + ' (' + job.media_count + ')') : s.noMedia;
+    runVisionButton.disabled = !job.media_count || Boolean(job.final_report) ||
+      job.checkpoints.some(function (point) { return Boolean(point.submitted_result); });
     if (job.final_report) {
       submitButton.disabled = true;
       setStatus((s.finalized || 'Final verdict:') + ' ' + job.final_report.overall_result + '\n' + (job.final_report.summary_text || ''), 'success');
@@ -200,6 +204,50 @@
     }, 'image/jpeg', 0.9);
   }
 
+  function runVisionAnalysis() {
+    runVisionButton.disabled = true;
+    setStatus(s.visionAnalyzing || 'Running live vision inspection…');
+    fetchJson('/api/v1/pad/inspection-jobs/' + encodeURIComponent(jobId) + '/vision-analyze', {
+      method: 'POST',
+    }).then(function (data) {
+      var byCode = {};
+      (data.checkpoint_results || []).forEach(function (item) { byCode[item.point_code] = item; });
+      Array.from(document.querySelectorAll('.checkpoint-card')).forEach(function (card) {
+        var suggestion = byCode[card.dataset.pointCode];
+        if (!suggestion) return;
+        var select = card.querySelector('.checkpoint-result');
+        select.value = suggestion.result;
+        var prior = card.querySelector('.model-suggestion');
+        if (prior) prior.remove();
+        var note = document.createElement('p');
+        note.className = 'model-suggestion';
+        var resultLabels = {
+          pass: s.pass || 'Pass',
+          fail: s.fail || 'Fail',
+          not_visible: s.notVisible || 'Not visible',
+          low_confidence: s.lowConfidence || 'Low confidence',
+        };
+        note.textContent =
+          (s.visionSuggestion || 'Live model suggestion') + ': ' +
+          (resultLabels[suggestion.result] || suggestion.result) + ' · ' +
+          Math.round((suggestion.confidence || 0) * 100) + '%' +
+          (suggestion.notes ? ' · ' + suggestion.notes : '');
+        card.appendChild(note);
+      });
+      var assistant = data.assistant || {};
+      setStatus(
+        (s.visionReady || 'Live vision suggestions ready; review every checkpoint before submitting.') +
+        ' · ' + (assistant.model || 'vision') + ' · ' +
+        (((assistant.elapsed_ms || 0) / 1000).toFixed(1)) + 's',
+        'success'
+      );
+    }).catch(function (error) {
+      setStatus((s.visionFailed || 'Vision inspection failed closed:') + ' ' + error.message, 'error');
+    }).finally(function () {
+      if (!currentJob || !currentJob.final_report) runVisionButton.disabled = false;
+    });
+  }
+
   function submitAndFinalize() {
     var cards = Array.from(document.querySelectorAll('.checkpoint-card'));
     var results = cards.map(function (card) {
@@ -235,6 +283,7 @@
   captureButton.addEventListener('click', captureCamera);
   stopButton.addEventListener('click', stopCamera);
   deviceSelect.addEventListener('change', function () { if (cameraStream) startCamera(); });
+  runVisionButton.addEventListener('click', runVisionAnalysis);
   submitButton.addEventListener('click', submitAndFinalize);
   window.addEventListener('beforeunload', stopCamera);
   loadJob();

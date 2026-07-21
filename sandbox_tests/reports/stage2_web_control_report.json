@@ -1,24 +1,48 @@
 {
   "schema_version": "1.0",
   "environment": "SANDBOX",
-  "status": "software_passed_usb_capture_pending",
-  "model_call_count": 0,
+  "status": "passed_for_stage3_entry",
+  "accepted_at": "2026-07-21T22:55:51+08:00",
+  "browser_scope": "temporary_stage2_qc_model_device_only",
+  "model_call_count": 2,
+  "provider_neutral_product": true,
+  "configured_defaults_are_not_product_identity": true,
   "database_backend": "configured_ctyun_mysql",
   "verified": {
     "administrator_operator_entry": true,
     "english_chinese_switching": true,
-    "real_qc_model_job_created_from_chrome": true,
-    "validated_camera_media_api": true,
+    "real_qc_model_job_created_from_in_app_browser": true,
+    "mac_usb_camera_connected": true,
+    "usb_device_label": "USB 2.0 Camera (1c45:6200)",
+    "live_camera_preview": true,
+    "actual_camera_frame_persisted": true,
+    "camera_capture_source": "mac_usb_camera",
+    "camera_to_report_ui_flow": true,
+    "live_text_model": "qwen3.5:9b",
+    "live_text_elapsed_ms": 19500,
+    "live_vision_model": "qwen3-vl-4b-mnn",
+    "live_vision_provider": "openai_compatible",
+    "live_vision_elapsed_ms": 23431,
+    "model_result_linked_to_camera_media": true,
     "missing_evidence_fail_closed": true,
     "atomic_checkpoint_submission": true,
-    "persisted_final_report": true,
-    "targeted_test_count": 112
+    "persisted_final_report": "review_required",
+    "inspection_job_id": "75999489cb5d42209449951a09668640",
+    "checkpoint_results": [
+      "not_visible",
+      "not_visible",
+      "not_visible",
+      "not_visible"
+    ],
+    "full_test_passed": 1171,
+    "full_test_skipped": 6,
+    "full_test_failed": 0
   },
-  "pending": {
-    "mac_usb_camera_connected": false,
-    "chrome_live_preview": false,
-    "actual_camera_frame_persisted": false,
-    "camera_to_report_ui_flow": false
+  "limitations": {
+    "production_ready": false,
+    "jetson_hardware_tested": false,
+    "positive_visual_accuracy_established": false,
+    "captured_frame_matched_selected_carton_standard": false
   },
-  "stage3_allowed": false
+  "stage3_allowed": true
 }

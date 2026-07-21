@@ -333,6 +333,110 @@ def author_image(*, image_path: Path, mime_type: str, language: str, current_sku
     return _normalize_result(_clean_json(str(raw)), config, elapsed, language)
 
 
+def inspect_image(
+    *,
+    image_path: Path,
+    mime_type: str,
+    language: str,
+    checkpoints: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Run provider-neutral visual inspection against an exact checkpoint set.
+
+    The model may propose checkpoint-level observations only. It cannot
+    finalize a job, and a missing checkpoint is normalized to not_visible
+    so incomplete model output can never silently pass.
+    """
+    if not checkpoints:
+        raise StudioAIError("vision_inspection_has_no_checkpoints")
+    config = vision_config()
+    mime = mime_type or mimetypes.guess_type(image_path.name)[0] or "image/jpeg"
+    data_url = f"data:{mime};base64,{base64.b64encode(image_path.read_bytes()).decode('ascii')}"
+    checkpoint_contract = [
+        {
+            "point_code": str(item.get("point_code") or ""),
+            "label": str(item.get("label") or ""),
+            "description": item.get("description"),
+            "method_hint": item.get("method_hint"),
+            "expected_value": item.get("expected_value"),
+            "pass_criteria": item.get("pass_criteria"),
+        }
+        for item in checkpoints
+    ]
+    schema = {
+        "summary": f"short evidence summary in {_locale_name(language)}",
+        "checkpoint_results": [{
+            "point_code": "one exact code from the supplied list",
+            "result": "pass|fail|not_visible|low_confidence",
+            "confidence": "number from 0 to 1",
+            "observed_value": "visible observation or null",
+            "notes": "brief evidence explanation",
+        }],
+    }
+    prompt = (
+        "You are the vision inspection assistant for Giraffe QC. Inspect only the supplied image "
+        "against every supplied checkpoint. Return exactly one result for every point_code and do "
+        "not add new point codes. Never guess hidden properties, dimensions, tolerances, barcode "
+        "content, or evidence outside the image. If a checkpoint is not clearly visible, use "
+        "not_visible; if evidence is ambiguous, use low_confidence. This is a checkpoint suggestion "
+        "for operator review, not a final verdict. Return one valid JSON object only, no markdown: "
+        + json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
+        + "\nCheckpoints: "
+        + json.dumps(checkpoint_contract, ensure_ascii=False, separators=(",", ":"))
+    )
+    payload = {
+        "model": config.model,
+        "messages": [{"role": "user", "content": [
+            {"type": "image_url", "image_url": {"url": data_url}},
+            {"type": "text", "text": prompt},
+        ]}],
+        "temperature": 0,
+        "max_tokens": 1024,
+        "response_format": {"type": "json_object"},
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+    body, elapsed = _post(config, payload, "/v1/chat/completions")
+    try:
+        raw = _content_text(body["choices"][0]["message"]["content"])
+    except (KeyError, IndexError, TypeError) as exc:
+        raise StudioAIError("vision_inspection_envelope_invalid") from exc
+    value = _clean_json(str(raw))
+    expected_codes = [item["point_code"] for item in checkpoint_contract]
+    returned: dict[str, dict[str, Any]] = {}
+    for item in value.get("checkpoint_results") or []:
+        if not isinstance(item, dict):
+            raise StudioAIError("vision_inspection_result_not_object")
+        code = str(item.get("point_code") or "").strip()
+        if code not in expected_codes or code in returned:
+            raise StudioAIError("vision_inspection_checkpoint_mismatch")
+        result = str(item.get("result") or "").strip()
+        if result not in {"pass", "fail", "not_visible", "low_confidence"}:
+            raise StudioAIError("vision_inspection_result_invalid")
+        try:
+            confidence = max(0.0, min(1.0, float(item.get("confidence", 0.0))))
+        except (TypeError, ValueError):
+            confidence = 0.0
+        returned[code] = {
+            "point_code": code, "result": result, "confidence": confidence,
+            "observed_value": str(item.get("observed_value") or "").strip()[:256] or None,
+            "notes": str(item.get("notes") or "").strip()[:2000] or None,
+        }
+    results = [
+        returned.get(code) or {
+            "point_code": code, "result": "not_visible", "confidence": 0.0,
+            "observed_value": None, "notes": None,
+        }
+        for code in expected_codes
+    ]
+    return {
+        "summary": str(value.get("summary") or "").strip()[:4000],
+        "checkpoint_results": results,
+        "assistant": {
+            "role": "vision", "provider": config.provider, "model": config.model,
+            "elapsed_ms": elapsed, "mode": "live",
+        },
+    }
+
+
 def assistant_status() -> dict[str, Any]:
     """Return configuration state without exposing internal endpoints."""
     def view(config: AssistantConfig) -> dict[str, Any]:

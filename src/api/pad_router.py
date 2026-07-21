@@ -491,6 +491,96 @@ async def pad_attach_inspection_media(
     )
 
 
+@router.post("/api/v1/pad/inspection-jobs/{job_id}/vision-analyze")
+async def pad_run_vision_analysis(
+    request: Request,
+    job_id: str,
+    db: Session = Depends(get_db_dep),
+):
+    """Run the configured live vision assistant and return reviewable suggestions."""
+    operator_id = _require_operator(request)
+    if operator_id is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    tenant_id = request.session.get("tenant_id", "demo")
+    job = _pad_job(db, job_id, tenant_id)
+    if job is None:
+        return JSONResponse({"error": "inspection job not found"}, status_code=404)
+    if job.final_report is not None:
+        return JSONResponse({"error": "inspection job already finalized"}, status_code=409)
+
+    from src.db.execution_models import QCInspectionMedia, QCModelResult
+    from src.inspection.service import get_active_detection_points_for_job
+    from src.qc_model.studio import ai_gateway
+
+    media = (
+        db.query(QCInspectionMedia)
+        .filter_by(job_id=job.id, tenant_id=tenant_id)
+        .order_by(QCInspectionMedia.created_at.desc())
+        .first()
+    )
+    if media is None or not media.local_path:
+        return JSONResponse({"error": "inspection job has no local image evidence"}, status_code=400)
+    image_path = Path(media.local_path)
+    if not image_path.is_file():
+        return JSONResponse({"error": "inspection image evidence is unavailable"}, status_code=409)
+
+    points = get_active_detection_points_for_job(db, job.id, tenant_id=tenant_id)
+    checkpoint_contract = [
+        {
+            "point_code": point.point_code,
+            "label": point.label,
+            "description": point.description,
+            "method_hint": point.method_hint,
+            "expected_value": point.expected_value,
+            "pass_criteria": point.pass_criteria,
+        }
+        for point in points
+    ]
+    try:
+        result = ai_gateway.inspect_image(
+            image_path=image_path,
+            mime_type=media.mime_type or "",
+            language=resolve_language(request),
+            checkpoints=checkpoint_contract,
+        )
+    except ai_gateway.StudioAIError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=502)
+
+    point_ids = {point.point_code: point.id for point in points}
+    suggestions = [
+        {**item, "detection_point_id": point_ids[item["point_code"]]}
+        for item in result["checkpoint_results"]
+    ]
+    raw_output = {
+        "summary": result["summary"],
+        "checkpoint_results": result["checkpoint_results"],
+        "incidental_findings": [],
+        "mode": "operator_review_suggestions",
+    }
+    from uuid import uuid4
+    model_result = QCModelResult(
+        id=uuid4().hex,
+        job_id=job.id,
+        tenant_id=tenant_id,
+        media_id=media.id,
+        provider=result["assistant"]["provider"],
+        model_name=result["assistant"]["model"],
+        http_status=200,
+        elapsed_ms=result["assistant"]["elapsed_ms"],
+        raw_output=raw_output,
+    )
+    db.add(model_result)
+    db.commit()
+    return JSONResponse({
+        "status": "vision_suggestions_ready",
+        "model_result_id": model_result.id,
+        "summary": result["summary"],
+        "checkpoint_results": suggestions,
+        "assistant": result["assistant"],
+        "operator_review_required": True,
+    })
+
+
 @router.post("/api/v1/pad/inspection-jobs/{job_id}/checkpoint-results")
 async def pad_submit_checkpoint_batch(
     request: Request,

@@ -94,6 +94,54 @@ def test_vision_assistant_sends_image_to_openai_compatible_route(monkeypatch, tm
     assert result["assistant"]["role"] == "vision"
 
 
+def test_live_vision_inspection_is_checkpoint_scoped_and_fails_closed(monkeypatch, tmp_path):
+    monkeypatch.setenv("STUDIO_VISION_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://vision.invalid")
+    monkeypatch.setenv("STUDIO_VISION_MODEL", "replaceable-vision-default")
+    image = tmp_path / "capture.png"
+    image.write_bytes(b"camera-frame")
+    captured = {}
+
+    def fake_post(config, payload, path):
+        captured.update(payload=payload, path=path)
+        content = {
+            "summary": "The barcode is visible but the seal is outside the frame.",
+            "checkpoint_results": [{
+                "point_code": "BARCODE_PRESENT",
+                "result": "pass",
+                "confidence": 0.91,
+                "observed_value": "barcode label visible",
+                "notes": "label is visible in the center",
+            }],
+        }
+        return {"choices": [{"message": {"content": json.dumps(content)}}]}, 420
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    result = ai_gateway.inspect_image(
+        image_path=image,
+        mime_type="image/png",
+        language="en",
+        checkpoints=[
+            {"point_code": "BARCODE_PRESENT", "label": "Barcode present"},
+            {"point_code": "SEAL_INTEGRITY", "label": "Seal integrity"},
+        ],
+    )
+
+    assert captured["path"] == "/v1/chat/completions"
+    prompt = captured["payload"]["messages"][0]["content"][1]["text"]
+    assert "every supplied checkpoint" in prompt
+    assert "not a final verdict" in prompt
+    assert result["checkpoint_results"][0]["result"] == "pass"
+    assert result["checkpoint_results"][1] == {
+        "point_code": "SEAL_INTEGRITY",
+        "result": "not_visible",
+        "confidence": 0.0,
+        "observed_value": None,
+        "notes": None,
+    }
+    assert result["assistant"]["model"] == "replaceable-vision-default"
+
+
 def test_status_never_exposes_internal_endpoint(monkeypatch):
     monkeypatch.setenv("STUDIO_TEXT_BASE_URL", "http://internal-text:11434")
     monkeypatch.setenv("STUDIO_TEXT_MODEL", "text-default")
