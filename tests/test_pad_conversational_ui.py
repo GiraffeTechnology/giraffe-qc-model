@@ -1043,3 +1043,166 @@ def test_portrait_overlay_blocks_standard_confirmation_button():
     assert "qc-action-btn" in chat_js, (
         "pad_chat.js must assign qc-action-btn class to confirm button"
     )
+
+
+def test_stage2_web_control_runs_real_job_to_final_report(
+    auth_client, db_session, seeded_sku, tmp_path, monkeypatch
+):
+    """The browser-facing flow persists evidence, checkpoint rows and verdict."""
+    monkeypatch.setenv("QC_STORAGE_ROOT", str(tmp_path))
+
+    search = auth_client.get("/api/v1/pad/skus", params={"q": seeded_sku.item_number})
+    assert search.status_code == 200
+    assert any(item["id"] == seeded_sku.id for item in search.json()["items"])
+
+    created = auth_client.post(
+        "/api/v1/pad/create_inspection_job", json={"sku_id": seeded_sku.id}
+    )
+    assert created.status_code == 200
+    job_id = created.json()["job_id"]
+
+    no_evidence = auth_client.post(
+        f"/api/v1/pad/inspection-jobs/{job_id}/checkpoint-results",
+        json={"results": []},
+    )
+    assert no_evidence.status_code == 400
+    assert "no attached evidence" in no_evidence.json()["error"]
+
+    fixture = Path(__file__).parent / "fixtures" / "qc" / "capture_red_square_pass.png"
+    attached = auth_client.post(
+        f"/api/v1/pad/inspection-jobs/{job_id}/media",
+        data={"capture_source": "mac_usb_camera"},
+        files={"image": ("mac-usb-camera.png", fixture.read_bytes(), "image/png")},
+    )
+    assert attached.status_code == 201
+    assert attached.json()["source"] == "mac_usb_camera"
+    assert Path(
+        db_session.query(src.db.execution_models.QCInspectionMedia)
+        .filter_by(job_id=job_id)
+        .one()
+        .local_path
+    ).exists()
+
+    state = auth_client.get(f"/api/v1/pad/inspection-jobs/{job_id}").json()
+    assert state["media_count"] == 1
+    results = [
+        {"detection_point_id": point["id"], "result": "pass", "confidence": 1.0}
+        for point in state["checkpoints"]
+    ]
+    submitted = auth_client.post(
+        f"/api/v1/pad/inspection-jobs/{job_id}/checkpoint-results",
+        json={"results": results},
+    )
+    assert submitted.status_code == 200
+    assert submitted.json()["count"] == len(results)
+
+    finalized = auth_client.post(f"/api/v1/pad/inspection-jobs/{job_id}/finalize")
+    assert finalized.status_code == 200
+    assert finalized.json()["overall_result"] == "pass"
+
+    final_state = auth_client.get(f"/api/v1/pad/inspection-jobs/{job_id}").json()
+    assert final_state["status"] == "pass"
+    assert final_state["final_report"]["overall_result"] == "pass"
+    assert all(point["submitted_result"] == "pass" for point in final_state["checkpoints"])
+
+
+def test_stage2_live_vision_endpoint_records_suggestions_without_auto_finalizing(
+    auth_client, db_session, seeded_sku, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("QC_STORAGE_ROOT", str(tmp_path))
+    created = auth_client.post(
+        "/api/v1/pad/create_inspection_job", json={"sku_id": seeded_sku.id}
+    )
+    job_id = created.json()["job_id"]
+    fixture = Path(__file__).parent / "fixtures" / "qc" / "capture_red_square_pass.png"
+    attached = auth_client.post(
+        f"/api/v1/pad/inspection-jobs/{job_id}/media",
+        data={"capture_source": "mac_usb_camera"},
+        files={"image": ("mac-usb-camera.png", fixture.read_bytes(), "image/png")},
+    )
+    assert attached.status_code == 201
+
+    from src.qc_model.studio import ai_gateway
+    state = auth_client.get(f"/api/v1/pad/inspection-jobs/{job_id}").json()
+    from src.db.sku_models import QCDetectionPoint
+    configured_point = db_session.query(QCDetectionPoint).filter_by(
+        id=state["checkpoints"][0]["id"]
+    ).one()
+    configured_point.cv_config_json = {
+        "analyzers": [{"name": "pistil_localization", "params": {}}],
+    }
+    configured_point.expected_features_json = {}
+    configured_point.regions_json = [{"x": 0.1, "y": 0.1, "w": 0.5, "h": 0.5}]
+    db_session.commit()
+    fake_results = [
+        {
+            "point_code": point["point_code"],
+            "result": "not_visible",
+            "confidence": 0.25,
+            "observed_value": None,
+            "notes": "fixture does not establish this checkpoint",
+        }
+        for point in state["checkpoints"]
+    ]
+    captured = {}
+
+    def fake_inspect(**kwargs):
+        captured.update(kwargs)
+        return {
+            "summary": "Operator review required.",
+            "checkpoint_results": fake_results,
+            "assistant": {
+                "role": "vision",
+                "provider": "openai_compatible",
+                "model": "replaceable-vision-default",
+                "elapsed_ms": 321,
+                "mode": "live",
+            },
+        }
+
+    monkeypatch.setattr(ai_gateway, "inspect_image", fake_inspect)
+    response = auth_client.post(
+        f"/api/v1/pad/inspection-jobs/{job_id}/vision-analyze"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["operator_review_required"] is True
+    assert len(data["checkpoint_results"]) == len(state["checkpoints"])
+    assert all(item["result"] == "not_visible" for item in data["checkpoint_results"])
+    assert captured["cv_context"]["verdict_effect"] == "informational_only"
+    assert captured["cv_context"]["points"][0]["point_code"] == configured_point.point_code
+    assert configured_point.point_code in captured["fallback_crops"]
+    crop_path = captured["fallback_crops"][configured_point.point_code][0]
+    assert crop_path.is_file()
+    assert crop_path.stat().st_size <= 200 * 1024
+    cv_by_code = {item["point_code"]: item for item in data["cv_preanalysis"]}
+    assert cv_by_code[configured_point.point_code]["cv_status"] == "completed"
+    assert data["timings_ms"]["cv"] >= 0
+    assert data["fallback_crops"][0]["point_code"] == configured_point.point_code
+    assert data["fallback_crops"][0]["size_bytes"] <= 200 * 1024
+
+    from src.db.execution_models import QCCheckpointResult, QCModelResult
+    model_row = db_session.query(QCModelResult).filter_by(job_id=job_id).one()
+    assert model_row.model_name == "replaceable-vision-default"
+    assert model_row.media_id == attached.json()["media_id"]
+    stored_cv = {item["point_code"]: item for item in model_row.raw_output["cv_preanalysis"]}
+    assert stored_cv[configured_point.point_code]["cv_status"] == "completed"
+    assert model_row.raw_output["fallback_crops"][0]["size_bytes"] <= 200 * 1024
+    assert db_session.query(QCCheckpointResult).filter_by(job_id=job_id).count() == 0
+    unchanged = auth_client.get(f"/api/v1/pad/inspection-jobs/{job_id}").json()
+    assert unchanged["status"] == "pending"
+    assert unchanged["final_report"] is None
+
+
+def test_stage2_control_assets_include_camera_and_real_report():
+    static_dir = Path(__file__).resolve().parent.parent / "src" / "web" / "static"
+    inspection_js = (static_dir / "pad_inspection.js").read_text()
+    report_js = (static_dir / "pad_report.js").read_text()
+
+    assert "navigator.mediaDevices.getUserMedia" in inspection_js
+    assert "mac_usb_camera" in inspection_js
+    assert "run-vision-btn" in inspection_js
+    assert "/vision-analyze" in inspection_js
+    assert "/checkpoint-results" in inspection_js
+    assert "/finalize" in inspection_js
+    assert "/api/v1/pad/inspection-jobs/" in report_js

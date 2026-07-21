@@ -14,6 +14,7 @@ from src.inspection.service import (
     confirm_standard_revision,
     create_standard_revision,
 )
+from src.qc_model.studio.analysis_config import normalize_analysis_config
 
 _PARSER_VERSION = "deterministic-v1"
 
@@ -136,6 +137,40 @@ def extract_standard_draft(
     intake.confirmation_payload_json = confirmation_payload
     intake.status = "pending_confirmation"
     intake.parser_version = _PARSER_VERSION
+    intake.confidence_score = _score(extracted)
+    db.commit()
+    db.refresh(intake)
+    return intake
+
+
+def persist_structured_draft(
+    db: Session,
+    intake_id: str,
+    *,
+    checkpoints: list[dict],
+    questions: list[dict],
+    parser_version: str,
+) -> QCStandardIntake:
+    """Persist a model-produced draft for explicit human confirmation.
+
+    This is intentionally separate from the deterministic test adapter.  It
+    never creates a standard revision and therefore cannot bypass the Admin
+    Studio confirmation gate.
+    """
+    intake = db.query(QCStandardIntake).filter_by(id=intake_id).one()
+    extracted = {
+        "sku_id": intake.sku_id,
+        "checkpoints": checkpoints,
+        "questions_for_operator": questions,
+    }
+    intake.extracted_json = extracted
+    intake.confirmation_payload_json = {
+        "sku_id": intake.sku_id,
+        "checkpoints": checkpoints,
+        "questions_for_operator": questions,
+    }
+    intake.status = "pending_confirmation"
+    intake.parser_version = parser_version[:64]
     intake.confidence_score = _score(extracted)
     db.commit()
     db.refresh(intake)
@@ -308,6 +343,14 @@ def confirm_standard_intake(
         point_code = cp.get("point_code", "").strip().upper()
         if not point_code:
             raise ValueError(f"Checkpoint at index {i} has no point_code.")
+        try:
+            expected_features, cv_config = normalize_analysis_config(
+                cp.get("expected_features"), cp.get("cv_config"),
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"Checkpoint {point_code!r} has invalid CV analysis config: {exc}"
+            ) from exc
         dp = QCDetectionPoint(
             id=_uid(),
             tenant_id=tid,
@@ -320,6 +363,8 @@ def confirm_standard_intake(
             severity=cp.get("severity", "major"),
             expected_value=cp.get("expected_value"),
             pass_criteria=cp.get("pass_criteria"),
+            expected_features_json=expected_features,
+            cv_config_json=cv_config,
             sort_order=i + 1,
             is_active=True,
         )

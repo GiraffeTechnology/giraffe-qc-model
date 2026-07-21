@@ -1,0 +1,17 @@
+{
+  "bytes_on_disk": 67108864,
+  "generated_at": "2026-07-14T19:23:14.717133Z",
+  "performance_claim": false,
+  "probe_file": "evidence/rw-probe-64MiB.bin",
+  "probe_size_bytes": 67108864,
+  "read_back_completed": true,
+  "read_elapsed_seconds": 0.457242,
+  "schema_version": "stage2-drive-probe-v1",
+  "sha256": "281e519df3077b557c6b03f5da83c4e8d397219259615dd7c3308f89cae8f2a6",
+  "sha256_matches": true,
+  "stage2_root": "giraffe-stage2",
+  "timing_note": "Bounded sandbox observation only; cache state is uncontrolled and these timings are not device throughput or production-performance evidence.",
+  "volume_name": "N1_WORK",
+  "write_elapsed_seconds": 1.766075,
+  "write_fsync_completed": true
+}

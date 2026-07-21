@@ -1,0 +1,6 @@
+07-15 04:16:16.124 I Stage2Evidence: state=simulator-ready inference_calls=0 result_count=0 fail_closed=false
+07-15 04:16:23.314 I Stage2Evidence: state=simulated-capture inference_calls=0 result_count=0 fail_closed=false
+07-15 04:16:30.391 I Stage2Evidence: state=cv-success inference_calls=0 result_count=1 fail_closed=false
+07-15 04:16:40.518 I Stage2Evidence: state=cv-anomaly inference_calls=0 result_count=0 fail_closed=true
+07-15 04:16:51.664 I Stage2Evidence: state=simulator-unavailable inference_calls=0 result_count=0 fail_closed=true
+07-15 04:17:03.371 I Stage2Evidence: state=refresh-retry inference_calls=0 result_count=1 fail_closed=false

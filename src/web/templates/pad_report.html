@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ t('pad.report.title') }}</title>
-    <link rel="manifest" href="/static/pad_manifest.json">
+    <link rel="manifest" href="/static/pad_manifest.json?v=2">
     <link rel="stylesheet" href="/static/pad_ui.css">
     <style>
         .verdict-pass { color: #16a34a; font-weight: bold; }
@@ -24,6 +24,7 @@
         {% include "_language_switch.html" %}
     </header>
     <main class="report-main">
+        <div class="stage2-mock-banner">{{ t('pad.inspection.mock_banner') }}</div>
         <section class="report-summary">
             <h3>{{ t('pad.report.summary') }}</h3>
             <div id="report-content">
@@ -36,6 +37,24 @@
             <span class="verdict-review_required">{{ t('pad.report.legend.review') }}</span>
         </div>
     </main>
+    <script>
+      window.GIRAFFE_PAD_REPORT = {
+        jobId: {{ job_id | tojson }},
+        strings: {
+          notReady: {{ t('pad.report.not_ready') | tojson }},
+          verdict: {{ t('pad.report.verdict') | tojson }},
+          jobStatus: {{ t('pad.report.job_status') | tojson }},
+          evidenceCount: {{ t('pad.report.evidence_count') | tojson }},
+          checkpoints: {{ t('pad.report.checkpoints') | tojson }},
+          error: {{ t('pad.report.error') | tojson }},
+          pass: {{ t('pad.inspection.result.pass') | tojson }},
+          fail: {{ t('pad.inspection.result.fail') | tojson }},
+          notVisible: {{ t('pad.inspection.result.not_visible') | tojson }},
+          lowConfidence: {{ t('pad.inspection.result.low_confidence') | tojson }}
+        }
+      };
+    </script>
+    <script src="/static/pad_report.js"></script>
     <script src="/static/pad_orientation.js"></script>
 </body>
 </html>

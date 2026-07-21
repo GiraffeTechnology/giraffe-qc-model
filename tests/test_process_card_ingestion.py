@@ -8,6 +8,10 @@
 """
 from __future__ import annotations
 
+import subprocess
+import zipfile
+from io import BytesIO
+
 import pytest
 
 from src.qc_model.ingestion.types import QCSourceType, is_valid_source_type
@@ -15,6 +19,7 @@ from src.qc_model.ingestion.process_card import (
     IngestPath,
     ProcessCardFormat,
     classify_process_card,
+    extract_process_card_text,
     plan_process_card_ingestion,
 )
 
@@ -73,3 +78,55 @@ def test_mime_type_fallback_when_no_extension():
 def test_extension_wins_over_mime():
     # Filename extension is the more reliable signal on the shop floor.
     assert classify_process_card(filename="x.dwg", mime_type="image/png") is ProcessCardFormat.CAD
+
+
+def test_docx_embedded_text_is_really_extracted(tmp_path):
+    target = tmp_path / "card.docx"
+    payload = BytesIO()
+    with zipfile.ZipFile(payload, "w") as archive:
+        archive.writestr(
+            "word/document.xml",
+            '<?xml version="1.0"?><w:document xmlns:w="urn:w"><w:body>'
+            '<w:p><w:r><w:t>The stamen must be centered.</w:t></w:r></w:p>'
+            '<w:p><w:r><w:t>Rivet tolerance is 0.2 mm.</w:t></w:r></w:p>'
+            '</w:body></w:document>',
+        )
+    target.write_bytes(payload.getvalue())
+    assert extract_process_card_text(target) == (
+        "The stamen must be centered.\nRivet tolerance is 0.2 mm."
+    )
+
+
+def test_xlsx_shared_string_and_number_are_really_extracted(tmp_path):
+    target = tmp_path / "card.xlsx"
+    payload = BytesIO()
+    with zipfile.ZipFile(payload, "w") as archive:
+        archive.writestr(
+            "xl/sharedStrings.xml",
+            '<?xml version="1.0"?><sst xmlns="urn:x"><si><t>Expected count</t></si></sst>',
+        )
+        archive.writestr(
+            "xl/worksheets/sheet1.xml",
+            '<?xml version="1.0"?><worksheet xmlns="urn:x"><sheetData><row>'
+            '<c t="s"><v>0</v></c><c><v>8</v></c>'
+            '</row></sheetData></worksheet>',
+        )
+    target.write_bytes(payload.getvalue())
+    assert extract_process_card_text(target) == "Expected count 8"
+
+
+def test_pdf_uses_real_pdftotext_output_and_fails_closed(monkeypatch, tmp_path):
+    target = tmp_path / "card.pdf"
+    target.write_bytes(b"%PDF-1.4")
+
+    def success(*args, **kwargs):
+        return subprocess.CompletedProcess(args[0], 0, stdout=b"Center aligned\n", stderr=b"")
+
+    monkeypatch.setattr(subprocess, "run", success)
+    assert extract_process_card_text(target) == "Center aligned"
+
+    def failure(*args, **kwargs):
+        return subprocess.CompletedProcess(args[0], 1, stdout=b"", stderr=b"bad")
+
+    monkeypatch.setattr(subprocess, "run", failure)
+    assert extract_process_card_text(target) is None

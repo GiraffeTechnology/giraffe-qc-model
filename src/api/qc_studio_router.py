@@ -19,6 +19,9 @@ hardened modules — this router only wires them to the chat surface.
 """
 from __future__ import annotations
 
+import asyncio
+import json
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,9 +36,11 @@ from sqlalchemy.orm import Session
 
 from src.api.deps import get_db_dep
 from src.db.sku_models import QCDetectionPoint, QCSkuItem, QCStandardPhoto, SKU_LIFECYCLE_STATES
+from src.db.pad_models import QCConversationMessage
 from src.db.studio_models import QCPublishBundle
 from src.intake.service import confirm_standard_intake, reject_standard_intake
 from src.qc_model.studio import service as studio
+from src.qc_model.studio import ai_gateway
 from src.qc_model.studio.regions import InvalidRegion, set_detection_point_regions
 from src.qc_model.studio.analysis_config import (
     InvalidAnalysisConfig,
@@ -45,9 +50,11 @@ from src.storage.upload_validation import (
     UploadValidationError,
     read_and_validate_upload,
 )
-from src.api.authz import effective_tenant
+from src.api.authz import effective_actor, effective_tenant
+from src.api.admin_auth import current_admin
 from src.api.uploads import validate_safe_id
-from src.web.i18n import install_i18n
+from src.pad.session_service import get_or_create_conversation_session
+from src.web.i18n import install_i18n, resolve_language
 
 router = APIRouter(tags=["admin-studio"])
 
@@ -65,6 +72,42 @@ def _uid() -> str:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _conversation_session(request: Request, db: Session):
+    admin = current_admin(request)
+    if admin is None:
+        return None
+    return get_or_create_conversation_session(
+        db, admin.operator_id, admin.tenant_id, resolve_language(request)
+    )
+
+
+def _record_message(
+    request: Request,
+    db: Session,
+    *,
+    role: str,
+    text: str,
+    intent: Optional[str] = None,
+    action: Optional[Dict[str, Any]] = None,
+) -> None:
+    conversation = _conversation_session(request, db)
+    if conversation is None:
+        return
+    db.add(QCConversationMessage(
+        tenant_id=conversation.tenant_id,
+        session_id=conversation.id,
+        operator_id=conversation.operator_id,
+        role=role,
+        source_language=resolve_language(request),
+        preferred_language=resolve_language(request),
+        raw_text_original=text,
+        translated_output_text=text if role == "assistant" else None,
+        intent=intent,
+        action_json=json.dumps(action or {}, ensure_ascii=False, separators=(",", ":")),
+    ))
+    db.commit()
 
 
 # ── Page ──────────────────────────────────────────────────────────────────────
@@ -87,7 +130,34 @@ def studio_page(request: Request, tenant_id: str = "default"):
 @router.get("/admin/studio/config")
 def studio_config():
     """Shared Studio configuration consumed by web and Pad administrators."""
-    return {"sku_lifecycle_states": list(SKU_LIFECYCLE_STATES)}
+    return {
+        "sku_lifecycle_states": list(SKU_LIFECYCLE_STATES),
+        "assistants": ai_gateway.assistant_status(),
+    }
+
+
+@router.get("/admin/studio/assistants")
+def studio_assistants():
+    """Configured live assistants; endpoint addresses are intentionally hidden."""
+    return ai_gateway.assistant_status()
+
+
+@router.get("/admin/studio/conversation")
+def studio_conversation(request: Request, db: Session = Depends(get_db_dep)):
+    conversation = _conversation_session(request, db)
+    if conversation is None:
+        return {"messages": []}
+    messages = (
+        db.query(QCConversationMessage)
+        .filter_by(session_id=conversation.id, tenant_id=conversation.tenant_id)
+        .order_by(QCConversationMessage.created_at.desc())
+        .limit(80)
+        .all()
+    )
+    return {"messages": [
+        {"role": item.role, "text": item.translated_output_text or item.raw_text_original or ""}
+        for item in reversed(messages)
+    ]}
 
 
 class CreateStudioSkuRequest(BaseModel):
@@ -171,15 +241,55 @@ class ChatRequest(BaseModel):
 
 
 @router.post("/admin/studio/chat")
-def studio_chat(body: ChatRequest, db: Session = Depends(get_db_dep)):
-    result = studio.process_studio_chat(
+async def studio_chat(request: Request, body: ChatRequest, db: Session = Depends(get_db_dep)):
+    tenant_id = effective_tenant(request, body.tenant_id)
+    actor = effective_actor(request, body.operator_id)
+    _record_message(request, db, role="user", text=body.message)
+    config = ai_gateway.text_config()
+    if not config.configured:
+        # The deterministic parser is only a CI/test adapter. A deployed Studio
+        # must fail closed instead of pretending a model call occurred.
+        if os.getenv("APP_ENV", "production").lower() != "test":
+            raise HTTPException(status_code=503, detail="text assistant is not configured")
+        result = studio.process_studio_chat(
+            db,
+            tenant_id=tenant_id,
+            message=body.message,
+            current_sku_id=body.sku_id,
+            operator_id=actor,
+        )
+    else:
+        current = None
+        if body.sku_id:
+            sku = db.query(QCSkuItem).filter_by(id=body.sku_id, tenant_id=tenant_id).first()
+            current = studio.sku_summary(db, sku) if sku else None
+        try:
+            ai_result = await asyncio.to_thread(
+                ai_gateway.author_text,
+                message=body.message,
+                language=resolve_language(request),
+                current_sku=current,
+            )
+        except ai_gateway.StudioAIError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        result = studio.process_structured_ai_turn(
+            db,
+            tenant_id=tenant_id,
+            message=body.message,
+            ai_result=ai_result,
+            current_sku_id=body.sku_id,
+            operator_id=actor,
+        )
+    payload = result.to_dict()
+    _record_message(
+        request,
         db,
-        tenant_id=body.tenant_id,
-        message=body.message,
-        current_sku_id=body.sku_id,
-        operator_id=body.operator_id,
+        role="assistant",
+        text=result.reply,
+        intent=result.action,
+        action={"sku_id": result.sku.get("id") if result.sku else None},
     )
-    return result.to_dict()
+    return payload
 
 
 # ── Voice toggle (§5.3) — controlled not-enabled response, never crashes ──────
@@ -253,6 +363,40 @@ async def studio_upload(
     db.commit()
     db.refresh(photo)
 
+    analysis = None
+    analysis_error = None
+    config = ai_gateway.vision_config()
+    if config.configured:
+        try:
+            ai_result = await asyncio.to_thread(
+                ai_gateway.author_image,
+                image_path=dest_path,
+                mime_type=validated.mime_type,
+                language=resolve_language(request),
+                current_sku=studio.sku_summary(db, sku),
+            )
+            analysis = studio.process_structured_ai_turn(
+                db,
+                tenant_id=tenant_id,
+                message=f"Reference photo {photo.id} visual analysis",
+                ai_result=ai_result,
+                current_sku_id=sku.id,
+                operator_id=effective_actor(request),
+                source_channel="studio_image_live_ai",
+            ).to_dict()
+            _record_message(
+                request,
+                db,
+                role="assistant",
+                text=analysis["reply"],
+                intent=analysis["action"],
+                action={"sku_id": sku.id, "photo_id": photo.id},
+            )
+        except ai_gateway.StudioAIError as exc:
+            analysis_error = str(exc)
+    elif os.getenv("APP_ENV", "production").lower() != "test":
+        analysis_error = "vision assistant is not configured"
+
     return {
         "status": "uploaded",
         "photo_id": photo.id,
@@ -261,6 +405,8 @@ async def studio_upload(
         "size_bytes": validated.size_bytes,
         "sha256": validated.sha256,
         "sku": studio.sku_summary(db, sku),
+        "analysis": analysis,
+        "analysis_error": analysis_error,
     }
 
 
@@ -290,18 +436,22 @@ class ConfirmCheckpoint(BaseModel):
     severity: str = "major"
     expected_value: Optional[str] = None
     pass_criteria: Optional[str] = None
+    expected_features: Dict[str, Any] = {}
+    cv_config: Dict[str, Any] = {}
 
 
 class ConfirmRequest(BaseModel):
     tenant_id: str = "default"
     intake_id: str
-    confirmed_by: str = "qc_supervisor"
+    confirmed_by: Optional[str] = None
     checkpoints: List[ConfirmCheckpoint]
     operator_comment: Optional[str] = None
 
 
 @router.post("/admin/studio/confirm")
-def studio_confirm(body: ConfirmRequest, db: Session = Depends(get_db_dep)):
+def studio_confirm(request: Request, body: ConfirmRequest, db: Session = Depends(get_db_dep)):
+    tenant_id = effective_tenant(request, body.tenant_id)
+    actor = effective_actor(request, body.confirmed_by)
     checkpoints = [cp.model_dump() for cp in body.checkpoints]
 
     # Fail closed: a counting checkpoint with no expected value must not be
@@ -322,15 +472,19 @@ def studio_confirm(body: ConfirmRequest, db: Session = Depends(get_db_dep)):
         revision, conf = confirm_standard_intake(
             db,
             intake_id=body.intake_id,
-            confirmed_by=body.confirmed_by,
+            confirmed_by=actor,
             confirmed_checkpoints=checkpoints,
             operator_comment=body.operator_comment,
-            tenant_id=body.tenant_id,
+            tenant_id=tenant_id,
         )
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
 
-    sku = db.query(QCSkuItem).filter_by(id=revision.sku_id, tenant_id=body.tenant_id).first()
+    sku = db.query(QCSkuItem).filter_by(id=revision.sku_id, tenant_id=tenant_id).first()
+    if sku is not None:
+        sku.status = "confirmed"
+        sku.updated_at = _now()
+        db.commit()
     return {
         "status": "confirmed",
         "revision_id": revision.id,
@@ -344,19 +498,21 @@ def studio_confirm(body: ConfirmRequest, db: Session = Depends(get_db_dep)):
 class RejectRequest(BaseModel):
     tenant_id: str = "default"
     intake_id: str
-    rejected_by: str = "qc_supervisor"
+    rejected_by: Optional[str] = None
     reason: Optional[str] = None
 
 
 @router.post("/admin/studio/reject")
-def studio_reject(body: RejectRequest, db: Session = Depends(get_db_dep)):
+def studio_reject(request: Request, body: RejectRequest, db: Session = Depends(get_db_dep)):
+    tenant_id = effective_tenant(request, body.tenant_id)
+    actor = effective_actor(request, body.rejected_by)
     try:
         intake = reject_standard_intake(
             db,
             intake_id=body.intake_id,
-            rejected_by=body.rejected_by,
+            rejected_by=actor,
             reason=body.reason,
-            tenant_id=body.tenant_id,
+            tenant_id=tenant_id,
         )
     except Exception as exc:  # noqa: BLE001 - surface as 400
         return JSONResponse({"error": str(exc)}, status_code=400)
@@ -517,21 +673,32 @@ def studio_set_analysis_config(
 class PublishRequest(BaseModel):
     tenant_id: str = "default"
     sku_id: str
-    published_by: Optional[str] = "qc_supervisor"
+    published_by: Optional[str] = None
 
 
 @router.post("/admin/studio/publish")
-def studio_publish(body: PublishRequest, db: Session = Depends(get_db_dep)):
+def studio_publish(request: Request, body: PublishRequest, db: Session = Depends(get_db_dep)):
+    tenant_id = effective_tenant(request, body.tenant_id)
+    actor = effective_actor(request, body.published_by)
     try:
         bundle = studio.publish_bundle(
             db,
             sku_id=body.sku_id,
-            tenant_id=body.tenant_id,
-            published_by=body.published_by,
+            tenant_id=tenant_id,
+            published_by=actor,
         )
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
-    return {"status": "published", "bundle": studio.bundle_view(bundle)}
+    sku = db.query(QCSkuItem).filter_by(id=body.sku_id, tenant_id=tenant_id).first()
+    if sku is not None:
+        sku.status = "published"
+        sku.updated_at = _now()
+        db.commit()
+    return {
+        "status": "published",
+        "bundle": studio.bundle_view(bundle),
+        "sku": studio.sku_summary(db, sku) if sku else None,
+    }
 
 
 @router.get("/admin/studio/bundles/{bundle_id}/download")

@@ -38,9 +38,11 @@ from src.inspection.service import (
     create_inspection_job,
     get_active_detection_points_for_job,
     submit_checkpoint_result,
+    submit_checkpoint_results_batch,
     submit_incidental_finding,
     finalize_job,
 )
+from src.inspection.api_service import attach_inspection_media
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -608,3 +610,65 @@ def test_finalize_job_is_idempotent(db):
 
     assert report1.id == report2.id
     assert report2.overall_result == "pass"
+
+
+def _batch_job(db, item_number: str):
+    sku = _make_sku(db, item_number=item_number)
+    rev = create_standard_revision(db, sku.id, "t1")
+    first = _make_detection_point(db, sku.id, rev.id, "BATCH_FIRST")
+    second = _make_detection_point(db, sku.id, rev.id, "BATCH_SECOND")
+    confirm_standard_revision(db, rev.id, "alice", "t1")
+    return create_inspection_job(db, sku.id, "t1"), (first, second)
+
+
+def test_checkpoint_batch_requires_attached_evidence(db):
+    job, points = _batch_job(db, "BATCH-NO-EVIDENCE")
+    payload = [{"detection_point_id": point.id, "result": "pass"} for point in points]
+
+    with pytest.raises(ValueError, match="no attached evidence"):
+        submit_checkpoint_results_batch(db, job.id, payload, tenant_id="t1")
+
+
+def test_checkpoint_batch_is_atomic_and_exact(db):
+    from src.db.execution_models import QCCheckpointResult
+
+    job, points = _batch_job(db, "BATCH-ATOMIC")
+    attach_inspection_media(db, job.id, local_path="/simulated/capture.jpg", tenant_id="t1")
+
+    with pytest.raises(ValueError, match="exactly match"):
+        submit_checkpoint_results_batch(
+            db,
+            job.id,
+            [{"detection_point_id": points[0].id, "result": "pass"}],
+            tenant_id="t1",
+        )
+    assert db.query(QCCheckpointResult).filter_by(job_id=job.id).count() == 0
+
+    with pytest.raises(TypeError, match="must be an object"):
+        submit_checkpoint_results_batch(db, job.id, ["not-an-object"], tenant_id="t1")
+    assert db.query(QCCheckpointResult).filter_by(job_id=job.id).count() == 0
+
+    invalid_confidence = [
+        {"detection_point_id": point.id, "result": "pass", "confidence": "nan"}
+        for point in points
+    ]
+    with pytest.raises(ValueError, match="finite number"):
+        submit_checkpoint_results_batch(db, job.id, invalid_confidence, tenant_id="t1")
+    assert db.query(QCCheckpointResult).filter_by(job_id=job.id).count() == 0
+
+    rows = submit_checkpoint_results_batch(
+        db,
+        job.id,
+        [{"detection_point_id": point.id, "result": "pass"} for point in points],
+        tenant_id="t1",
+    )
+    assert len(rows) == 2
+    assert {row.result for row in rows} == {"pass"}
+
+    with pytest.raises(ValueError, match="already exist"):
+        submit_checkpoint_results_batch(
+            db,
+            job.id,
+            [{"detection_point_id": point.id, "result": "pass"} for point in points],
+            tenant_id="t1",
+        )

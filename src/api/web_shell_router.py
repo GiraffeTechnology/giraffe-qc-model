@@ -16,6 +16,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_db_dep
+from src.api.authz import effective_tenant
 from src.db.sku_models import QCSkuItem
 from src.web.i18n import (
     DEFAULT_LANGUAGE,
@@ -36,12 +37,15 @@ def _render(request: Request, template: str, **context) -> HTMLResponse:
     return templates.TemplateResponse(request, template, context=context)
 
 
-def _active_sample_count(db: Session) -> Optional[int]:
+def _active_sample_count(db: Session, tenant_id: str) -> Optional[int]:
     """Best-effort active-sample count for the home card; ``None`` if unavailable."""
     try:
         return (
             db.query(QCSkuItem)
-            .filter(QCSkuItem.tenant_id == "default", QCSkuItem.status == "active")
+            .filter(
+                QCSkuItem.tenant_id == tenant_id,
+                QCSkuItem.status.in_(("active", "confirmed", "published", "installed")),
+            )
             .count()
         )
     except Exception:
@@ -77,7 +81,7 @@ def admin_home(request: Request, db: Session = Depends(get_db_dep)):
             "icon": "🧩",
             "title_key": "admin.card.samples.title",
             "desc_key": "admin.card.samples.desc",
-            "count": _active_sample_count(db),
+            "count": _active_sample_count(db, effective_tenant(request, "default")),
             "count_label_key": "admin.card.samples.count_label",
         },
         {

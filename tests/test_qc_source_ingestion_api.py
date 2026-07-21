@@ -298,7 +298,7 @@ def test_upload_process_card_txt_is_really_extracted_end_to_end(client):
     assert "possible_physical_measurement" in types
 
 
-def test_upload_process_card_pdf_is_stored_but_honestly_unextracted(client):
+def test_upload_corrupt_process_card_pdf_is_stored_but_honestly_unextracted(client):
     """A .pdf upload is accepted (process_card.py can classify it), stored on
     disk, and registered -- but since no PDF parser exists in this
     environment, text_content must stay unset (no fabricated extraction),
@@ -322,7 +322,49 @@ def test_upload_process_card_pdf_is_stored_but_honestly_unextracted(client):
     frags = client.get(f"/api/qc/source-extraction-jobs/{job['job_id']}/fragments").json()["fragments"]
     assert len(frags) == 1
     assert frags[0]["fragment_type"] == "requires_supervisor_review"
-    assert "no document parser" in frags[0]["text"]
+    assert "no readable embedded text" in frags[0]["text"]
+    assert src["metadata"]["ingestion"]["status"] == "embedded_text_unreadable"
+
+
+def test_upload_process_card_image_uses_live_provider_neutral_ocr(client, monkeypatch):
+    from src.qc_model.studio import ai_gateway
+
+    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://vision.invalid")
+    monkeypatch.setenv("STUDIO_VISION_MODEL", "replaceable-4b")
+    monkeypatch.setattr(
+        ai_gateway,
+        "extract_image_text",
+        lambda **kwargs: {
+            "text": "The stamen must be centered and aligned.",
+            "language": "en",
+            "layout_notes": "single row",
+            "assistant": {
+                "role": "vision", "provider": "openai_compatible",
+                "model": "replaceable-4b", "elapsed_ms": 42, "mode": "live",
+                "route": "primary", "strategy": "cv_then_primary_then_conditional_fallback",
+                "primary_model": "replaceable-4b", "fallback_model": None,
+                "fallback_used": False, "escalation_reasons": [], "passes": 1,
+            },
+        },
+    )
+    fixture = Path(__file__).parent / "fixtures" / "qc" / "standard_red_square.png"
+    tp = "tp_upload_image_ocr"
+    response = client.post(
+        f"/admin/qc-model/training-packs/{tp}/sources/upload",
+        files={"file": ("card.png", fixture.read_bytes(), "image/png")},
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    src = client.get(f"/api/qc/training-packs/{tp}/sources").json()["sources"][0]
+    assert src["text_content"] == "The stamen must be centered and aligned."
+    assert src["metadata"]["ingestion"]["status"] == "vision_ocr_extracted"
+    assert src["metadata"]["ingestion"]["assistant"]["model"] == "replaceable-4b"
+
+    job = client.post(f"/api/qc/sources/{src['source_id']}/extract", json={}).json()
+    fragments = client.get(
+        f"/api/qc/source-extraction-jobs/{job['job_id']}/fragments"
+    ).json()["fragments"]
+    assert fragments[0]["fragment_type"] == "possible_detection_point"
 
 
 def test_upload_process_card_rejects_unrecognized_extension(client):

@@ -4,7 +4,7 @@ This module is a thin orchestration layer over the existing, already-hardened
 building blocks:
 
 * SKU catalog        — :mod:`src.db.sku_models`
-* standard intake    — :mod:`src.intake.service` (deterministic extraction,
+* standard intake    — :mod:`src.intake.service` (structured draft persistence,
                         confirmation into a standard revision)
 * signed L2 bundle   — :class:`src.db.studio_models.QCPublishBundle`
 
@@ -35,7 +35,12 @@ from src.db.sku_models import (
     QCStandardPhoto,
 )
 from src.db.studio_models import QCPublishBundle
-from src.intake.service import create_standard_intake, extract_standard_draft
+from src.db.intake_models import QCStandardIntake
+from src.intake.service import (
+    create_standard_intake,
+    extract_standard_draft,
+    persist_structured_draft,
+)
 from src.qc_model.bundle import ed25519 as _ed
 from src.qc_model.qualification import probation as _probation
 
@@ -70,6 +75,7 @@ class StudioChatResult:
     intake_id: Optional[str] = None
     confirmation_card: Optional[Dict[str, Any]] = None
     questions: List[Dict[str, str]] = field(default_factory=list)
+    assistant: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -79,6 +85,7 @@ class StudioChatResult:
             "intake_id": self.intake_id,
             "confirmation_card": self.confirmation_card,
             "questions": self.questions,
+            "assistant": self.assistant,
         }
 
 
@@ -233,6 +240,26 @@ def sku_summary(db: Session, sku: QCSkuItem) -> Dict[str, Any]:
     else:
         standard_status = "standard_empty"
 
+    pending = (
+        db.query(QCStandardIntake)
+        .filter_by(
+            sku_id=sku.id,
+            tenant_id=sku.tenant_id,
+            status="pending_confirmation",
+        )
+        .order_by(QCStandardIntake.created_at.desc())
+        .first()
+    )
+    pending_card = None
+    if pending is not None:
+        draft = pending.extracted_json or {}
+        pending_card = {
+            "intake_id": pending.id,
+            "sku_id": sku.id,
+            "checkpoints": draft.get("checkpoints") or [],
+            "questions": draft.get("questions_for_operator") or [],
+        }
+
     return {
         "id": sku.id,
         "item_number": sku.item_number,
@@ -247,6 +274,7 @@ def sku_summary(db: Session, sku: QCSkuItem) -> Dict[str, Any]:
         "photos": [_photo_view(p) for p in sku.photos],
         "detection_points": detection_points,
         "detection_point_count": len(detection_points),
+        "pending_confirmation": pending_card,
     }
 
 
@@ -299,7 +327,7 @@ def _create_sku(db: Session, tenant_id: str, item_number: str, name: str,
         item_number=item_number,
         name=name,
         category=category,
-        status="active",
+        status="draft",
         created_at=now,
         updated_at=now,
     )
@@ -307,6 +335,127 @@ def _create_sku(db: Session, tenant_id: str, item_number: str, name: str,
     db.commit()
     db.refresh(sku)
     return sku
+
+
+def process_structured_ai_turn(
+    db: Session,
+    *,
+    tenant_id: str,
+    message: str,
+    ai_result: Dict[str, Any],
+    current_sku_id: Optional[str] = None,
+    operator_id: Optional[str] = None,
+    source_channel: str = "studio_chat_live_ai",
+) -> StudioChatResult:
+    """Apply one validated live-assistant result without bypassing human gates."""
+    intent = ai_result["intent"]
+    assistant = ai_result.get("assistant")
+    sku_fields = ai_result.get("sku") or {}
+
+    if intent == "create_sku":
+        item_number = (sku_fields.get("item_number") or "").strip()
+        name = (sku_fields.get("name") or "").strip()
+        if not item_number or not name:
+            return StudioChatResult(
+                reply=ai_result["reply"], action="info",
+                questions=ai_result.get("questions") or [], assistant=assistant,
+            )
+        existing = db.query(QCSkuItem).filter_by(
+            tenant_id=tenant_id, item_number=item_number
+        ).first()
+        if existing is not None:
+            return StudioChatResult(
+                reply=ai_result["reply"], action="selected_sku",
+                sku=sku_summary(db, existing), assistant=assistant,
+            )
+        try:
+            sku = _create_sku(
+                db, tenant_id, item_number, name, sku_fields.get("category")
+            )
+        except IntegrityError:
+            db.rollback()
+            existing = db.query(QCSkuItem).filter_by(
+                tenant_id=tenant_id, item_number=item_number
+            ).first()
+            return StudioChatResult(
+                reply=ai_result["reply"], action="selected_sku",
+                sku=sku_summary(db, existing) if existing else None,
+                assistant=assistant,
+            )
+        return StudioChatResult(
+            reply=ai_result["reply"], action="created_sku",
+            sku=sku_summary(db, sku), assistant=assistant,
+        )
+
+    sku = None
+    if current_sku_id:
+        sku = db.query(QCSkuItem).filter_by(
+            id=current_sku_id, tenant_id=tenant_id
+        ).first()
+    if sku is None:
+        return StudioChatResult(
+            reply=ai_result["reply"], action="need_sku",
+            questions=ai_result.get("questions") or [], assistant=assistant,
+        )
+
+    checkpoints = ai_result.get("checkpoints") or []
+    questions = ai_result.get("questions") or []
+    if not checkpoints and not questions:
+        return StudioChatResult(
+            reply=ai_result["reply"], action="info",
+            sku=sku_summary(db, sku), assistant=assistant,
+        )
+
+    intake = create_standard_intake(
+        db,
+        sku_id=sku.id,
+        tenant_id=tenant_id,
+        raw_text=message,
+        source_type="admin_studio",
+        source_channel=source_channel,
+        operator_id=operator_id,
+    )
+    parser_version = "live:%s:%s" % (
+        (assistant or {}).get("provider", "assistant"),
+        (assistant or {}).get("model", "configured"),
+    )
+    intake = persist_structured_draft(
+        db,
+        intake.id,
+        checkpoints=checkpoints,
+        questions=questions,
+        parser_version=parser_version,
+    )
+
+    if not checkpoints:
+        if sku.status != "needs_information":
+            sku.status = "needs_information"
+            sku.updated_at = _now()
+            db.commit()
+        return StudioChatResult(
+            reply=ai_result["reply"], action="follow_up",
+            sku=sku_summary(db, sku), intake_id=intake.id,
+            questions=questions, assistant=assistant,
+        )
+    sku.status = "needs_information" if questions else "ready_for_review"
+    sku.updated_at = _now()
+    db.commit()
+    card = {
+        "intake_id": intake.id,
+        "sku_id": sku.id,
+        "checkpoints": checkpoints,
+        "questions": questions,
+        "coverage_review": ai_result.get("coverage_review"),
+    }
+    return StudioChatResult(
+        reply=ai_result["reply"],
+        action="follow_up" if questions else "extracted",
+        sku=sku_summary(db, sku),
+        intake_id=intake.id,
+        confirmation_card=card,
+        questions=questions,
+        assistant=assistant,
+    )
 
 
 # ── Chat orchestration ────────────────────────────────────────────────────────

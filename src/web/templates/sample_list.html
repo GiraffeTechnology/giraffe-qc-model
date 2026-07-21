@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Samples — QC Sample Admin{% endblock %}
+{% block title %}{{ t('sample.list.title') }} — {{ t('sample.admin.title') }}{% endblock %}
 {% block content %}
 <div class="page-header">
   <div>
-    <h1>QC Sample Admin</h1>
-    <p class="subtitle">Sample library shared by Pad and Server editions.</p>
+    <h1>{{ t('sample.admin.title') }}</h1>
+    <p class="subtitle">{{ t('sample.list.subtitle') }}</p>
   </div>
 </div>
 
@@ -12,12 +12,12 @@
 <table class="sample-table">
   <thead>
     <tr>
-      <th>Item Number</th>
-      <th>Name</th>
-      <th>Category</th>
-      <th>Photos</th>
-      <th>Requirements</th>
-      <th>Detection Points</th>
+      <th>{{ t('sample.field.item_number') }}</th>
+      <th>{{ t('sample.field.name') }}</th>
+      <th>{{ t('sample.field.category') }}</th>
+      <th>{{ t('sample.field.photos') }}</th>
+      <th>{{ t('sample.field.requirements') }}</th>
+      <th>{{ t('sample.field.detection_points') }}</th>
       <th></th>
     </tr>
   </thead>
@@ -31,7 +31,7 @@
       <td>{{ sku.inspection_requirements | length }}</td>
       <td>{{ sku.detection_points | length }}</td>
       <td>
-        <a href="/admin/samples/{{ sku.id }}?tenant_id={{ tenant_id }}" class="btn btn-sm">Edit</a>
+        <a href="/admin/samples/{{ sku.id }}?tenant_id={{ tenant_id }}" class="btn btn-sm">{{ t('sample.action.edit') }}</a>
       </td>
     </tr>
     {% endfor %}
@@ -39,8 +39,8 @@
 </table>
 {% else %}
 <div class="empty-state">
-  <p>No samples yet.</p>
-  <a href="/admin/samples/new" class="btn btn-primary">Create your first sample</a>
+  <p>{{ t('sample.list.empty') }}</p>
+  <a href="/admin/samples/new" class="btn btn-primary">{{ t('sample.action.create_first') }}</a>
 </div>
 {% endif %}
 {% endblock %}

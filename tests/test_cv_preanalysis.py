@@ -101,3 +101,32 @@ def test_bad_config_and_decode_are_explicit_failures():
         run_preanalysis(FIXTURE, {"analyzers": []})
     with pytest.raises(PreanalysisError, match="decoded"):
         run_preanalysis("/missing/image.jpg", {"analyzers": ["rhinestone_count"]})
+
+
+def test_studio_authored_analyzer_schema_runs_with_per_analyzer_params():
+    result = run_preanalysis(
+        FIXTURE,
+        {
+            "analyzers": [{
+                "name": "rhinestone_count",
+                "params": {
+                    "highlight_threshold": 220,
+                    "morphology_kernel_px": 1,
+                    "min_area_px": 3,
+                    "max_area_px": 20,
+                    "min_circularity": 0.2,
+                },
+            }],
+        },
+        {"rhinestone_count": 3},
+    )
+    assert result["analyzers"][0] == json.loads(EXPECTED.read_text())
+    assert result["deviations"][0]["actual"] == 2
+
+
+def test_studio_authored_analyzer_schema_rejects_bad_params():
+    with pytest.raises(PreanalysisError, match="params must be an object"):
+        run_preanalysis(
+            FIXTURE,
+            {"analyzers": [{"name": "rhinestone_count", "params": "bad"}]},
+        )

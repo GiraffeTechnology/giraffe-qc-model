@@ -1,4 +1,5 @@
 """Inspection lifecycle service — standard revisions and job execution."""
+import math
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -277,6 +278,100 @@ def submit_checkpoint_result(
     db.commit()
     db.refresh(cr)
     return cr
+
+
+def submit_checkpoint_results_batch(
+    db: Session,
+    job_id: str,
+    results: list[dict],
+    tenant_id: Optional[str] = None,
+) -> list[QCCheckpointResult]:
+    """Atomically record one operator result for every active checkpoint.
+
+    The Web Pad simulator uses this transaction so a partial browser request can
+    never leave a job with half of its submitted decisions persisted.  The set of
+    submitted detection points must exactly match the job's snapshotted active
+    revision; missing, unknown, duplicate, or previously submitted points fail
+    closed before any row is written.
+    """
+    job_filters = {"id": job_id}
+    if tenant_id is not None:
+        job_filters["tenant_id"] = tenant_id
+    job = db.query(QCInspectionJob).filter_by(**job_filters).one()
+    points = get_active_detection_points_for_job(db, job_id, tenant_id=job.tenant_id)
+    if not points:
+        raise ValueError("Inspection job has no active detection points; cannot submit a pass.")
+    if not job.media:
+        raise ValueError("Inspection job has no attached evidence; checkpoint submission blocked.")
+    if not all(isinstance(item, dict) for item in results):
+        raise TypeError("Each checkpoint result must be an object.")
+
+    point_by_id = {point.id: point for point in points}
+    submitted_ids = [str(item.get("detection_point_id", "")) for item in results]
+    if len(submitted_ids) != len(set(submitted_ids)):
+        raise ValueError("Duplicate detection_point_id in checkpoint result batch.")
+
+    expected_ids = set(point_by_id)
+    provided_ids = set(submitted_ids)
+    missing = sorted(expected_ids - provided_ids)
+    unknown = sorted(provided_ids - expected_ids)
+    if missing or unknown:
+        raise ValueError(
+            "Checkpoint batch must exactly match the active revision "
+            f"(missing={missing}, unknown={unknown})."
+        )
+
+    invalid = sorted(
+        {
+            str(item.get("result", ""))
+            for item in results
+            if str(item.get("result", "")) not in _VALID_CHECKPOINT_RESULTS
+        }
+    )
+    if invalid:
+        raise ValueError(
+            f"Invalid checkpoint result(s) {invalid}. Allowed: {sorted(_VALID_CHECKPOINT_RESULTS)}"
+        )
+
+    normalized_confidence: list[float] = []
+    for item in results:
+        try:
+            confidence = float(item.get("confidence", 1.0))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Checkpoint confidence must be a number between 0 and 1.") from exc
+        if not math.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+            raise ValueError("Checkpoint confidence must be a finite number between 0 and 1.")
+        normalized_confidence.append(confidence)
+
+    existing = (
+        db.query(QCCheckpointResult)
+        .filter(
+            QCCheckpointResult.job_id == job_id,
+            QCCheckpointResult.tenant_id == job.tenant_id,
+        )
+        .first()
+    )
+    if existing is not None:
+        raise ValueError("Checkpoint results already exist for this job; duplicate submission blocked.")
+
+    rows = [
+        QCCheckpointResult(
+            id=_uid(),
+            job_id=job_id,
+            tenant_id=job.tenant_id,
+            detection_point_id=str(item["detection_point_id"]),
+            result=str(item["result"]),
+            observed_value=item.get("observed_value"),
+            confidence=normalized_confidence[index],
+            notes=item.get("notes"),
+        )
+        for index, item in enumerate(results)
+    ]
+    db.add_all(rows)
+    db.commit()
+    for row in rows:
+        db.refresh(row)
+    return rows
 
 
 def submit_incidental_finding(

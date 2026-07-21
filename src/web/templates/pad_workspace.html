@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ t('pad.workspace.title') }}</title>
-    <link rel="manifest" href="/static/pad_manifest.json">
+    <link rel="manifest" href="/static/pad_manifest.json?v=2">
     <link rel="stylesheet" href="/static/pad_ui.css">
 </head>
 <body class="workspace-page">
@@ -43,6 +43,17 @@
             </div>
         </section>
         <section class="info-panel">
+            <div class="stage2-mock-banner">{{ t('pad.control.mock_banner') }}</div>
+            <section class="inspection-launcher" aria-labelledby="inspection-launcher-title">
+                <h2 id="inspection-launcher-title">{{ t('pad.control.title') }}</h2>
+                <p>{{ t('pad.control.help') }}</p>
+                <div class="sku-search-row">
+                    <input id="sku-search-input" type="search" placeholder="{{ t('pad.control.search_placeholder') }}" autocomplete="off">
+                    <button id="sku-search-btn" class="btn-primary qc-action-btn">{{ t('pad.control.search') }}</button>
+                </div>
+                <div id="sku-search-results" class="sku-search-results"></div>
+                <div id="qc-control-status" class="qc-control-status" role="status"></div>
+            </section>
             <div class="language-selector">
                 <label>{{ t('pad.workspace.language') }}</label>
                 <select id="language-select">
@@ -77,8 +88,17 @@
         unknownError: {{ t('pad.js.unknown_error') | tojson }},
         voiceNotSupported: {{ t('pad.js.voice_not_supported') | tojson }}
       };
+      window.GIRAFFE_PAD_CONTROL_I18N = {
+        search: {{ t('pad.control.search') | tojson }},
+        start: {{ t('pad.control.start') | tojson }},
+        searching: {{ t('pad.control.searching') | tojson }},
+        noSkus: {{ t('pad.control.no_skus') | tojson }},
+        starting: {{ t('pad.control.starting') | tojson }},
+        error: {{ t('pad.control.error') | tojson }}
+      };
     </script>
     <script src="/static/pad_chat.js"></script>
+    <script src="/static/pad_control.js"></script>
     <script src="/static/pad_orientation.js"></script>
 </body>
 </html>

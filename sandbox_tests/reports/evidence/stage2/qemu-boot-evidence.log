@@ -1,0 +1,14 @@
+Stage 2 sanitized QEMU serial evidence
+Source: external N1_WORK VM log; public endpoints, credentials, keys, and unrelated boot output omitted.
+
+[16.608862] Detected architecture arm64.
+[36.457911] Expecting device /dev/disk/by-label/BOOT.
+[TIME] Timed out waiting for device /dev/disk/by-label/BOOT.
+Press Enter for maintenance (or press Control-D to continue).
+Recovery: Control-D sent only after exact architecture, BOOT-label, and maintenance-prompt markers matched.
+[OK] Finished file system check on /dev/disk/by-label/BOOT.
+[OK] Mounted /boot.
+[OK] Mounted /boot/efi.
+[OK] Reached Local File Systems.
+[4715.111895] GIRAFFE_STAGE2_ARM64_READY.
+[OK] Finished cloud-init Final Stage.

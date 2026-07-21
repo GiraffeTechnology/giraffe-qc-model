@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ t('pad.inspection.title') }}</title>
-    <link rel="manifest" href="/static/pad_manifest.json">
+    <link rel="manifest" href="/static/pad_manifest.json?v=2">
     <link rel="stylesheet" href="/static/pad_ui.css">
 </head>
 <body class="inspection-page">
@@ -19,6 +19,26 @@
         {% include "_language_switch.html" %}
     </header>
     <main class="inspection-main">
+        <div class="stage2-mock-banner">{{ t('pad.inspection.mock_banner') }}</div>
+        <section class="stage2-camera-panel" aria-labelledby="evidence-heading">
+            <h3 id="evidence-heading">{{ t('pad.inspection.evidence') }}</h3>
+            <div class="stage2-camera-grid">
+                <video id="camera-preview" class="stage2-camera-preview" autoplay playsinline muted></video>
+                <div class="stage2-camera-actions">
+                    <label for="camera-device-select">{{ t('pad.inspection.camera_source') }}</label>
+                    <select id="camera-device-select">
+                        <option value="">{{ t('pad.inspection.camera_default') }}</option>
+                    </select>
+                    <button id="camera-start-btn" class="btn-primary qc-action-btn">{{ t('pad.inspection.camera_start') }}</button>
+                    <button id="camera-capture-btn" class="btn-secondary qc-action-btn" disabled>{{ t('pad.inspection.camera_capture') }}</button>
+                    <button id="camera-stop-btn" class="btn-secondary qc-action-btn" disabled>{{ t('pad.inspection.camera_stop') }}</button>
+                    <label class="btn-secondary qc-action-btn" for="fixture-upload">{{ t('pad.inspection.upload') }}</label>
+                    <input type="file" id="fixture-upload" accept="image/*" style="display:none">
+                    <canvas id="camera-canvas" hidden></canvas>
+                    <p id="media-status" class="placeholder-text">{{ t('pad.inspection.no_media') }}</p>
+                </div>
+            </div>
+        </section>
         <section class="inspection-checkpoints">
             <h3>{{ t('pad.inspection.checkpoints') }}</h3>
             <div id="checkpoints-list">
@@ -26,10 +46,47 @@
             </div>
         </section>
         <section class="inspection-actions">
+            <button class="btn-primary qc-action-btn" id="run-vision-btn" disabled>{{ t('pad.inspection.vision_run') }}</button>
             <button class="btn-primary qc-action-btn" id="submit-results-btn">{{ t('pad.inspection.submit') }}</button>
             <a href="/pad/inspections/{{ job_id }}/report" class="btn-secondary">{{ t('pad.inspection.view_report') }}</a>
         </section>
+        <p>{{ t('pad.inspection.submit_help') }}</p>
+        <div id="inspection-status" class="inspection-status" role="status"></div>
     </main>
+    <script>
+      window.GIRAFFE_PAD_INSPECTION = {
+        jobId: {{ job_id | tojson }},
+        strings: {
+          loading: {{ t('pad.inspection.loading') | tojson }},
+          upload: {{ t('pad.inspection.upload') | tojson }},
+          cameraStart: {{ t('pad.inspection.camera_start') | tojson }},
+          cameraDefault: {{ t('pad.inspection.camera_default') | tojson }},
+          cameraCapture: {{ t('pad.inspection.camera_capture') | tojson }},
+          cameraStop: {{ t('pad.inspection.camera_stop') | tojson }},
+          cameraReady: {{ t('pad.inspection.camera_ready') | tojson }},
+          cameraRequired: {{ t('pad.inspection.camera_required') | tojson }},
+          cameraDenied: {{ t('pad.inspection.camera_denied') | tojson }},
+          cameraTimeout: {{ t('pad.inspection.camera_timeout') | tojson }},
+          noMedia: {{ t('pad.inspection.no_media') | tojson }},
+          mediaAttached: {{ t('pad.inspection.media_attached') | tojson }},
+          chooseResult: {{ t('pad.inspection.choose_result') | tojson }},
+          pass: {{ t('pad.inspection.result.pass') | tojson }},
+          fail: {{ t('pad.inspection.result.fail') | tojson }},
+          notVisible: {{ t('pad.inspection.result.not_visible') | tojson }},
+          lowConfidence: {{ t('pad.inspection.result.low_confidence') | tojson }},
+          visionRun: {{ t('pad.inspection.vision_run') | tojson }},
+          visionAnalyzing: {{ t('pad.inspection.vision_analyzing') | tojson }},
+          visionReady: {{ t('pad.inspection.vision_ready') | tojson }},
+          visionSuggestion: {{ t('pad.inspection.vision_suggestion') | tojson }},
+          visionFailed: {{ t('pad.inspection.vision_failed') | tojson }},
+          incomplete: {{ t('pad.inspection.incomplete') | tojson }},
+          finalizing: {{ t('pad.inspection.finalizing') | tojson }},
+          finalized: {{ t('pad.inspection.finalized') | tojson }},
+          error: {{ t('pad.inspection.error') | tojson }}
+        }
+      };
+    </script>
+    <script src="/static/pad_inspection.js?v=stage2-live-vision-1"></script>
     <script src="/static/pad_orientation.js"></script>
 </body>
 </html>
