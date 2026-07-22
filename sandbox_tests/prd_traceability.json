@@ -235,9 +235,13 @@
       "requirement": "每检查点显示判断、置信度、证据并要求人工复核",
       "status": "implemented_unverified",
       "requires_real_run": true,
-      "code_evidence": ["src/api/pad_router.py"],
-      "test_evidence": ["tests/test_pad_conversational_ui.py"],
-      "real_run_evidence": null
+      "code_evidence": ["src/api/pad_router.py", "src/inspection/workflow.py"],
+      "test_evidence": [
+        "tests/test_pad_conversational_ui.py",
+        "tests/test_preset_workflow_enforcement.py"
+      ],
+      "real_run_evidence": null,
+      "gap": "服务端已强制:模型结果不能自证 pass,操作员未逐点复核则封顶 review_required;真实链路验收未执行"
     },
     {
       "id": "PRD-S2-25",

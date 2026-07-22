@@ -527,6 +527,25 @@ async def pad_inspection_job_state(
     )
 
 
+@router.get("/api/v1/pad/inspection-jobs/{job_id}/workflow")
+async def pad_inspection_workflow_state(
+    request: Request,
+    job_id: str,
+    db: Session = Depends(get_db_dep),
+):
+    """Preset-workflow checklist for a job: which ordered steps are done."""
+    operator_id = _require_operator(request)
+    if operator_id is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    tenant_id = request.session.get("tenant_id", "demo")
+    job = _pad_job(db, job_id, tenant_id)
+    if job is None:
+        return JSONResponse({"error": "inspection job not found"}, status_code=404)
+    from src.inspection.workflow import derive_workflow_state
+
+    return JSONResponse(derive_workflow_state(db, job, tenant_id=tenant_id))
+
+
 @router.post("/api/v1/pad/inspection-jobs/{job_id}/media")
 async def pad_attach_inspection_media(
     request: Request,
@@ -767,7 +786,9 @@ async def pad_submit_checkpoint_batch(
     from src.inspection.service import submit_checkpoint_results_batch
 
     try:
-        rows = submit_checkpoint_results_batch(db, job_id, results, tenant_id=tenant_id)
+        rows = submit_checkpoint_results_batch(
+            db, job_id, results, tenant_id=tenant_id, reviewed_by=str(operator_id)
+        )
     except (ValueError, TypeError) as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     return JSONResponse(
@@ -794,7 +815,11 @@ async def pad_finalize_inspection_job(
     from src.inspection.api_service import finalize_inspection_job
 
     try:
-        report = finalize_inspection_job(db, job_id, tenant_id=tenant_id)
+        # Preset workflow: the operator flow can never finalize a pass from
+        # model-only results — every checkpoint needs human review first.
+        report = finalize_inspection_job(
+            db, job_id, tenant_id=tenant_id, require_human_review=True
+        )
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     return JSONResponse(

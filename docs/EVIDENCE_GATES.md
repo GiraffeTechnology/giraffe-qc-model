@@ -44,6 +44,23 @@ mock 不再可能"默默冒充生产":
 - 服务端假 provider 仅在显式测试模式可用(已有,
   `test_no_fake_provider_in_prod`)。
 
+## 4. 预设工作流服务端强制(fail-closed)
+
+Stage 2 预设工作流不再是"约定",而是服务端行为:
+
+- **检查点结果带来源**:`qc_checkpoint_results.review_source`
+  (`operator` / `model`)与 `reviewed_by`(迁移 026)。操作员经
+  `/api/v1/pad/.../checkpoint-results` 提交的结果记为 `operator` 并记录
+  复核人;`ingest_model_output` 派生及 finalize 自动补的结果记为 `model`。
+- **模型永远不能自证 pass**:Pad 工作流的 finalize 以
+  `require_human_review=True` 调用——任何检查点缺少人工复核结果时,
+  判定封顶 `review_required`,并在报告中列出未复核的检查点。
+  v1 机器 API 路径保持原策略(其人工把关在 L2 human-final 层)。
+- **工作流步骤可审计**:`GET /api/v1/pad/inspection-jobs/{id}/workflow`
+  按预设顺序(标准激活 → 证据附加 → CV/VLM 分析 → 操作员逐点复核 →
+  服务端 finalize)返回每一步的完成状态与 `next_step`,
+  跳步不再是不可见的。
+
 ## 与既有检查的关系
 
 - `mock_labeling_lint.py`(§1.3,硬):要求 mock 显式标注 —— 管"诚实标注";

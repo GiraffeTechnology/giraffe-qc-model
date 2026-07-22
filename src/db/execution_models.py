@@ -116,6 +116,12 @@ class QCCheckpointResult(Base):
     observed_value: Mapped[Optional[str]] = mapped_column(String(256))
     confidence: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    # Provenance of the recorded decision: 'operator' when a human reviewed and
+    # submitted it, 'model' when it was derived from model output (or
+    # auto-inserted). The preset workflow forbids a pass verdict built on
+    # model-only results.
+    review_source: Mapped[str] = mapped_column(String(16), default="model", server_default="model", nullable=False)
+    reviewed_by: Mapped[Optional[str]] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
     job: Mapped["QCInspectionJob"] = relationship("QCInspectionJob", back_populates="checkpoint_results")

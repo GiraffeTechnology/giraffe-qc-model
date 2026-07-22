@@ -285,6 +285,7 @@ def submit_checkpoint_results_batch(
     job_id: str,
     results: list[dict],
     tenant_id: Optional[str] = None,
+    reviewed_by: Optional[str] = None,
 ) -> list[QCCheckpointResult]:
     """Atomically record one operator result for every active checkpoint.
 
@@ -364,6 +365,8 @@ def submit_checkpoint_results_batch(
             observed_value=item.get("observed_value"),
             confidence=normalized_confidence[index],
             notes=item.get("notes"),
+            review_source="operator",
+            reviewed_by=reviewed_by,
         )
         for index, item in enumerate(results)
     ]
@@ -408,7 +411,12 @@ def submit_incidental_finding(
     return finding
 
 
-def finalize_job(db: Session, job_id: str, tenant_id: Optional[str] = None) -> QCFinalReport:
+def finalize_job(
+    db: Session,
+    job_id: str,
+    tenant_id: Optional[str] = None,
+    require_human_review: bool = False,
+) -> QCFinalReport:
     """Apply the no-guess QC policy and write a QCFinalReport.
 
     Policy:
@@ -418,6 +426,11 @@ def finalize_job(db: Session, job_id: str, tenant_id: Optional[str] = None) -> Q
     - result in {missing, not_visible, low_confidence, unsupported} → verdict = 'review_required'
     - All checkpoints 'pass' AND major/critical incidental finding → 'review_required'
     - All checkpoints 'pass' AND no serious finding → 'pass'
+    - With ``require_human_review`` (the preset operator workflow): a pass
+      verdict additionally requires every checkpoint result to carry
+      ``review_source == 'operator'``. Model-derived or auto-inserted results
+      cap the verdict at 'review_required' — a model can never finalize its
+      own pass.
 
     Idempotent: if a final report already exists for a completed job, returns it unchanged.
     """
@@ -464,14 +477,30 @@ def finalize_job(db: Session, job_id: str, tenant_id: Optional[str] = None) -> Q
     findings = db.query(QCIncidentalFinding).filter_by(job_id=job_id, tenant_id=job.tenant_id).all()
     has_serious_finding = any(f.severity in ("major", "critical") for f in findings)
 
+    unreviewed_points = [
+        pt.point_code
+        for pt in points
+        if getattr(result_by_point[pt.id], "review_source", "model") != "operator"
+    ]
+    blocked_by_review = require_human_review and bool(unreviewed_points)
+
     if not points:
         verdict = "review_required"
     elif has_fail:
         verdict = "fail"
-    elif has_review_required or has_serious_finding:
+    elif has_review_required or has_serious_finding or blocked_by_review:
         verdict = "review_required"
     else:
         verdict = "pass"
+
+    summary_text = _build_summary(points, result_by_point, findings, verdict)
+    if blocked_by_review and verdict == "review_required":
+        summary_text += (
+            "\nOperator review incomplete: checkpoint(s) "
+            + ", ".join(sorted(unreviewed_points))
+            + " have no human-reviewed result; a pass verdict requires operator "
+            "review of every checkpoint."
+        )
 
     report = QCFinalReport(
         id=_uid(),
@@ -480,7 +509,7 @@ def finalize_job(db: Session, job_id: str, tenant_id: Optional[str] = None) -> Q
         overall_result=verdict,
         checkpoint_results_count=len(points),
         findings_count=len(findings),
-        summary_text=_build_summary(points, result_by_point, findings, verdict),
+        summary_text=summary_text,
     )
     db.add(report)
 
