@@ -144,6 +144,17 @@ def test_studio_page_renders(client):
     assert "Admin Studio" in resp.text
 
 
+def test_sample_created_for_tenant_is_available_in_existing_studio(client):
+    client.post(
+        "/admin/samples",
+        data={"tenant_id": "demo", "item_number": "HANDOFF-001", "name": "Studio handoff"},
+    )
+    page = client.get("/admin/studio?tenant_id=demo")
+    assert 'data-tenant="demo"' in page.text
+    items = client.get("/admin/studio/skus?tenant_id=demo").json()["items"]
+    assert any(item["item_number"] == "HANDOFF-001" for item in items)
+
+
 def test_studio_config_exposes_shared_seven_state_lifecycle(client):
     resp = client.get("/admin/studio/config")
     assert resp.status_code == 200

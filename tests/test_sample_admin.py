@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import re
 
 import pytest
 from fastapi.testclient import TestClient
@@ -61,6 +62,13 @@ def _make_sku(client, item_number: str, name: str) -> str:
     resp = client.get("/api/v1/sku/search", params={"q": item_number, "tenant_id": TENANT})
     items = resp.json()["items"]
     return items[0]["id"] if items else ""
+
+
+def _tiny_png() -> bytes:
+    return bytes.fromhex(
+        "89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de"
+        "0000000c49444154789c62f80f00000101000518d84e0000000049454e44ae426082"
+    )
 
 
 # ─── List page ──────────────────────────────────────────────────────────────
@@ -176,6 +184,12 @@ class TestAdminDetailPage:
         assert "/static/sample_camera.js" in html
         assert translate("sample.detail.capture_usb", "en") in html
 
+    def test_detection_points_are_authored_in_studio_conversation(self, client):
+        resp = client.get(f"/admin/samples/{self.sku_id}?tenant_id={TENANT}")
+        html = resp.text
+        assert "/detection-points" not in html
+        assert f"/admin/studio?tenant_id={TENANT}" in html
+        assert translate("sample.detail.studio_detection_hint", "en") in html
 
 class TestAdminSampleI18n:
     def test_sample_workspace_renders_and_switches_to_chinese(self, client):
@@ -260,6 +274,21 @@ class TestAdminPhotoRegistration:
         )
         assert resp.status_code == 200
 
+    def test_uploaded_photo_is_rendered_and_served(self, client):
+        png = _tiny_png()
+        resp = client.post(
+            f"/admin/samples/{self.sku_id}/photos",
+            data={"tenant_id": TENANT, "is_primary": "true"},
+            files={"photo_file": ("visible.png", io.BytesIO(png), "image/png")},
+        )
+        assert resp.status_code == 200
+        match = re.search(r'src="(/admin/samples/photos/[^"]+)"', resp.text)
+        assert match is not None
+        assert "data/qc_samples" not in resp.text
+        served = client.get(match.group(1).replace("&amp;", "&"))
+        assert served.status_code == 200
+        assert served.headers["content-type"] == "image/png"
+        assert served.content == png
 
 # ─── Set primary ──────────────────────────────────────────────────────────────
 
