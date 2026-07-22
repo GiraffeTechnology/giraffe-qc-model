@@ -1,0 +1,44 @@
+# Xavier NX Administrator MNN runner — systemd unit (least privilege).
+#
+# Install:
+#   sudo cp deploy/jetson/giraffe-xavier-admin-runner.service /etc/systemd/system/
+#   sudo cp deploy/jetson/xavier-admin-runner.env.example /etc/giraffe/xavier-admin-runner.env
+#   sudo chown root:giraffe /etc/giraffe/xavier-admin-runner.env
+#   sudo chmod 640 /etc/giraffe/xavier-admin-runner.env   # holds credentials
+#   sudo systemctl daemon-reload && sudo systemctl enable --now giraffe-xavier-admin-runner
+#
+# The unit intentionally has no mock escape hatch: APP_ENV=production plus
+# XAVIER_INFERENCE_MODE=real come from the environment file, and the service
+# refuses to start in mock mode under production.
+
+[Unit]
+Description=Giraffe QC Xavier NX Administrator MNN runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=giraffe
+Group=giraffe
+EnvironmentFile=/etc/giraffe/xavier-admin-runner.env
+WorkingDirectory=/opt/giraffe/giraffe-qc-model
+ExecStart=/opt/giraffe/venv/bin/python -m jetson_runner.app.main
+Restart=on-failure
+RestartSec=5
+
+# Least privilege / hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/giraffe/run /opt/giraffe/evidence
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+# (MNN/CUDA runtimes JIT; W^X cannot be enforced for this process.)
+
+[Install]
+WantedBy=multi-user.target
