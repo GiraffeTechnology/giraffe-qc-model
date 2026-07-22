@@ -64,6 +64,20 @@ def migrated_db(tmp_path, monkeypatch):
     return url
 
 
+def test_upgrade_head_accepts_percent_encoded_environment_url(tmp_path, monkeypatch):
+    """Production credentials may contain percent-encoded URL characters."""
+    db_path = tmp_path / "migration%2Fencoded.db"
+    url = f"sqlite:///{db_path}"
+    assert "%" in url
+    monkeypatch.setenv("QC_DB_URL", url)
+
+    cfg = Config(str(_PROJECT_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(_PROJECT_ROOT / "alembic"))
+    command.upgrade(cfg, "head")
+
+    assert "qc_training_judgments" in inspect(create_engine(url)).get_table_names()
+
+
 def test_upgrade_head_runs_clean(migrated_db):
     insp = inspect(create_engine(migrated_db))
     tables = set(insp.get_table_names())

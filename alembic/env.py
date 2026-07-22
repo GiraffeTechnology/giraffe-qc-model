@@ -11,7 +11,11 @@ if config.config_file_name is not None:
 
 db_url = os.getenv("QC_DB_URL")
 if db_url:
-    config.set_main_option("sqlalchemy.url", db_url)
+    # ConfigParser treats percent signs as interpolation markers.  Database
+    # URLs commonly contain percent-encoded credentials (for example %2F), so
+    # escape them while storing the value; get_section()/get_main_option()
+    # restores the original URL before SQLAlchemy sees it.
+    config.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
