@@ -12,12 +12,17 @@
   var fixtureUpload = document.getElementById('fixture-upload');
   var video = document.getElementById('camera-preview');
   var canvas = document.getElementById('camera-canvas');
+  var standardPhoto = document.getElementById('standard-photo');
+  var standardPhotoMissing = document.getElementById('standard-photo-missing');
   var deviceSelect = document.getElementById('camera-device-select');
   var startButton = document.getElementById('camera-start-btn');
-  var captureButton = document.getElementById('camera-capture-btn');
   var stopButton = document.getElementById('camera-stop-btn');
   var cameraStream = null;
   var currentJob = null;
+  var autoDetectionTimer = null;
+  var autoDetectionBusy = false;
+  var autoCaptureCommitted = false;
+  var consecutiveDetections = 0;
 
   function setStatus(text, kind) {
     status.textContent = text || '';
@@ -43,6 +48,15 @@
 
   function renderJob(job) {
     currentJob = job;
+    if (job.standard_photo && job.standard_photo.url) {
+      standardPhoto.src = job.standard_photo.url;
+      standardPhoto.hidden = false;
+      standardPhotoMissing.hidden = true;
+    } else {
+      standardPhoto.removeAttribute('src');
+      standardPhoto.hidden = true;
+      standardPhotoMissing.hidden = false;
+    }
     list.innerHTML = '';
     if (!job.checkpoints.length) {
       var empty = document.createElement('p');
@@ -120,10 +134,14 @@
   }
 
   function stopCamera() {
+    if (autoDetectionTimer) clearTimeout(autoDetectionTimer);
+    autoDetectionTimer = null;
+    autoDetectionBusy = false;
+    autoCaptureCommitted = false;
+    consecutiveDetections = 0;
     if (cameraStream) cameraStream.getTracks().forEach(function (track) { track.stop(); });
     cameraStream = null;
     video.srcObject = null;
-    captureButton.disabled = true;
     stopButton.disabled = true;
     startButton.disabled = false;
   }
@@ -180,12 +198,12 @@
       .then(function (stream) {
         cameraStream = stream;
         video.srcObject = stream;
-        captureButton.disabled = false;
         stopButton.disabled = false;
         var track = stream.getVideoTracks()[0];
         var label = track && track.label ? track.label : (s.cameraDefault || 'System default camera');
-        mediaStatus.textContent = (s.cameraReady || 'USB camera ready') + ': ' + label;
-        return populateDevices();
+        mediaStatus.textContent = (s.cameraReady || 'USB camera ready') + ': ' + label + ' · ' +
+          (s.instanceSearching || 'CV is looking for a stable instance in the live video…');
+        return populateDevices().then(scheduleAutoDetection);
       })
       .catch(function (error) {
         startButton.disabled = false;
@@ -193,29 +211,91 @@
       });
   }
 
-  function captureCamera() {
-    if (!cameraStream || !video.videoWidth || !video.videoHeight) {
-      setStatus(s.cameraRequired || 'Connect and start a USB camera first.', 'error');
-      return;
-    }
-    var captureStarted = performance.now();
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob(function (blob) {
-      if (!blob) {
-        setStatus((s.error || 'Inspection error:') + ' capture encoding failed', 'error');
+  function frameFile(name, quality) {
+    return new Promise(function (resolve, reject) {
+      if (!cameraStream || !video.videoWidth || !video.videoHeight) {
+        reject(new Error(s.cameraRequired || 'Connect and start a USB camera first.'));
         return;
       }
-      stageTimings.capture_ms = Math.round(performance.now() - captureStarted);
-      attachImage(new File([blob], 'mac-usb-camera.jpg', {type: 'image/jpeg'}), 'mac_usb_camera');
-    }, 'image/jpeg', 0.9);
+      var captureStarted = performance.now();
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(function (blob) {
+        if (!blob) {
+          reject(new Error('capture encoding failed'));
+          return;
+        }
+        resolve({
+          file: new File([blob], name, {type: 'image/jpeg'}),
+          elapsedMs: Math.round(performance.now() - captureStarted),
+        });
+      }, 'image/jpeg', quality);
+    });
+  }
+
+  function scheduleAutoDetection() {
+    if (!cameraStream || autoCaptureCommitted || autoDetectionTimer) return;
+    autoDetectionTimer = setTimeout(function () {
+      autoDetectionTimer = null;
+      detectInstanceFrame();
+    }, 900);
+  }
+
+  function detectInstanceFrame() {
+    if (!cameraStream || autoCaptureCommitted || autoDetectionBusy) return;
+    if (!video.videoWidth || !video.videoHeight) {
+      scheduleAutoDetection();
+      return;
+    }
+    autoDetectionBusy = true;
+    frameFile('cv-probe.jpg', 0.7).then(function (frame) {
+      var form = new FormData();
+      form.append('image', frame.file, frame.file.name);
+      return fetchJson('/api/v1/pad/inspection-jobs/' + encodeURIComponent(jobId) + '/instance-detect', {
+        method: 'POST', body: form,
+      });
+    }).then(function (result) {
+      if (!result.detected) {
+        consecutiveDetections = 0;
+        mediaStatus.textContent = s.instanceSearching || 'CV is looking for a stable instance in the live video…';
+        return;
+      }
+      consecutiveDetections += 1;
+      mediaStatus.textContent = (s.instanceProgress || 'Instance detected ({count}/2 stable frames)')
+        .replace('{count}', String(consecutiveDetections));
+      if (consecutiveDetections < 2) return;
+      autoCaptureCommitted = true;
+      mediaStatus.textContent = s.instanceCaptured || 'Stable instance detected. Capturing and judging automatically…';
+      return captureAndJudgeAutomatically();
+    }).catch(function (error) {
+      consecutiveDetections = 0;
+      setStatus((s.autoFailed || 'Automatic CV capture failed:') + ' ' + error.message, 'error');
+    }).finally(function () {
+      autoDetectionBusy = false;
+      if (!autoCaptureCommitted) scheduleAutoDetection();
+    });
+  }
+
+  function captureAndJudgeAutomatically() {
+    var captureStarted = performance.now();
+    return frameFile('mac-usb-camera-auto.jpg', 0.92).then(function (frame) {
+      stageTimings.capture_ms = Math.max(frame.elapsedMs, Math.round(performance.now() - captureStarted));
+      return attachImage(frame.file, 'mac_usb_camera');
+    }).then(function () {
+      return runVisionAnalysis();
+    }).catch(function (error) {
+      autoCaptureCommitted = false;
+      consecutiveDetections = 0;
+      setStatus((s.autoFailed || 'Automatic CV capture failed:') + ' ' + error.message, 'error');
+      scheduleAutoDetection();
+    });
   }
 
   function runVisionAnalysis() {
     runVisionButton.disabled = true;
     setStatus(s.visionAnalyzing || 'Running live vision inspection…');
-    fetchJson('/api/v1/pad/inspection-jobs/' + encodeURIComponent(jobId) + '/vision-analyze', {
+    return fetchJson('/api/v1/pad/inspection-jobs/' + encodeURIComponent(jobId) + '/vision-analyze', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({client_timings: stageTimings}),
@@ -287,10 +367,9 @@
   }
 
   fixtureUpload.addEventListener('change', function () {
-    if (fixtureUpload.files[0]) attachImage(fixtureUpload.files[0], 'fixture_upload');
+    if (fixtureUpload.files[0]) attachImage(fixtureUpload.files[0], 'fixture_upload').then(runVisionAnalysis);
   });
   startButton.addEventListener('click', startCamera);
-  captureButton.addEventListener('click', captureCamera);
   stopButton.addEventListener('click', stopCamera);
   deviceSelect.addEventListener('change', function () { if (cameraStream) startCamera(); });
   runVisionButton.addEventListener('click', runVisionAnalysis);

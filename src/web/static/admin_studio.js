@@ -242,7 +242,7 @@
   }
 
   // ── Training step (§9.5-9.8): CV+VLM judgment against a labeled sample, ──
-  // per-decision admin review, rolling 29/30-window publish gate. The gate
+  // per-decision admin review, rolling 30-sample publish gate. The gate
   // itself (sku.training) already arrives on the SKU summary; this section
   // additionally loads the pending review queue and lets the admin record
   // new judgments and submit decisions.
@@ -252,25 +252,29 @@
     const badge = status && status.qualified
       ? `<span class="status-badge status-training-qualified">${esc(t("trainingQualified"))}</span>`
       : `<span class="status-badge status-training-pending">${esc(t("trainingNotQualified"))}</span>`;
-    const window29 = status && status.recent_29_correct != null
-      ? t("trainingWindowStats", { correct: status.recent_29_correct, size: 29 }) : null;
     const window30 = status && status.recent_30_correct != null
       ? t("trainingWindowStats", { correct: status.recent_30_correct, size: 30 }) : null;
     const falsePassNote = status && status.recent_30_false_pass_count > 0
       ? `<div class="training-false-pass">${esc(t("trainingFalsePass", { count: status.recent_30_false_pass_count }))}</div>` : "";
+    const sampleOptions = (sku.photos || []).filter((photo) => !photo.is_primary).map((photo) => {
+      const label = photo.view_type || photo.angle || photo.id.slice(0, 8);
+      const primary = photo.is_primary ? ` (${t("primary")})` : "";
+      return `<option value="${esc(photo.id)}">${esc(label + primary)}</option>`;
+    }).join("");
     slot.innerHTML =
       `<div class="training-head">` +
       `<strong>${esc(t("trainingHeading"))}</strong> ${badge}` +
       `</div>` +
       `<div class="training-stats muted">` +
-      (window30 || window29 || t("trainingNoSamples")) +
+      (window30 || t("trainingNoSamples")) +
       `</div>` +
       falsePassNote +
       `<div class="training-form">` +
-      `<input type="file" id="training-sample-input" accept="image/*">` +
+      `<label>${esc(t("trainingSampleSource"))} ` +
+      `<select id="training-sample-select">${sampleOptions}</select></label>` +
       `<label><input type="radio" name="training-truth" value="qualified" checked> ${esc(t("trainingGroundTruthQualified"))}</label>` +
       `<label><input type="radio" name="training-truth" value="unqualified"> ${esc(t("trainingGroundTruthUnqualified"))}</label>` +
-      `<button type="button" class="btn" id="training-submit-btn">${esc(t("trainingSubmitSample"))}</button>` +
+      `<button type="button" class="btn" id="training-submit-btn" ${sampleOptions ? "" : "disabled"}>${esc(t("trainingSubmitSample"))}</button>` +
       `</div>` +
       `<div id="training-queue" class="training-queue"></div>`;
 
@@ -280,9 +284,9 @@
   }
 
   function submitTrainingSample(skuId) {
-    const input = $("#training-sample-input");
-    const file = input && input.files && input.files[0];
-    if (!file) {
+    const select = $("#training-sample-select");
+    const samplePhotoId = select && select.value;
+    if (!samplePhotoId) {
       addBubble(t("trainingSelectSample"), "system");
       return;
     }
@@ -291,12 +295,11 @@
     const fd = new FormData();
     fd.append("tenant_id", tenant);
     fd.append("ground_truth_label", groundTruth);
-    fd.append("image", file);
+    fd.append("sample_photo_id", samplePhotoId);
     addBubble(t("trainingRunning"), "system");
     api(`/admin/studio/skus/${skuId}/training/judgments`, { method: "POST", body: fd })
       .then(() => {
         addBubble(t("trainingRecorded"), "system");
-        if (input) input.value = "";
         loadTrainingQueue(skuId);
       })
       .catch((err) => addBubble(t("trainingFailed", { message: err.message }), "system"));

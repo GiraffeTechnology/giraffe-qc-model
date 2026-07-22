@@ -23,14 +23,21 @@
         <section class="stage2-camera-panel" aria-labelledby="evidence-heading">
             <h3 id="evidence-heading">{{ t('pad.inspection.evidence') }}</h3>
             <div class="stage2-camera-grid">
-                <video id="camera-preview" class="stage2-camera-preview" autoplay playsinline muted></video>
+                <figure class="stage2-camera-view">
+                    <figcaption>{{ t('pad.inspection.standard_photo') }}</figcaption>
+                    <img id="standard-photo" class="stage2-standard-photo" alt="{{ t('pad.inspection.standard_photo') }}" hidden>
+                    <p id="standard-photo-missing" class="stage2-standard-photo-missing placeholder-text">{{ t('pad.inspection.no_standard_photo') }}</p>
+                </figure>
+                <figure class="stage2-camera-view">
+                    <figcaption>{{ t('pad.inspection.live_sample') }}</figcaption>
+                    <video id="camera-preview" class="stage2-camera-preview" autoplay playsinline muted></video>
+                </figure>
                 <div class="stage2-camera-actions">
                     <label for="camera-device-select">{{ t('pad.inspection.camera_source') }}</label>
                     <select id="camera-device-select">
                         <option value="">{{ t('pad.inspection.camera_default') }}</option>
                     </select>
                     <button id="camera-start-btn" class="btn-primary qc-action-btn">{{ t('pad.inspection.camera_start') }}</button>
-                    <button id="camera-capture-btn" class="btn-secondary qc-action-btn" disabled>{{ t('pad.inspection.camera_capture') }}</button>
                     <button id="camera-stop-btn" class="btn-secondary qc-action-btn" disabled>{{ t('pad.inspection.camera_stop') }}</button>
                     <label class="btn-secondary qc-action-btn" for="fixture-upload">{{ t('pad.inspection.upload') }}</label>
                     <input type="file" id="fixture-upload" accept="image/*" style="display:none">
@@ -67,6 +74,11 @@
           cameraRequired: {{ t('pad.inspection.camera_required') | tojson }},
           cameraDenied: {{ t('pad.inspection.camera_denied') | tojson }},
           cameraTimeout: {{ t('pad.inspection.camera_timeout') | tojson }},
+          noStandardPhoto: {{ t('pad.inspection.no_standard_photo') | tojson }},
+          instanceSearching: {{ t('pad.inspection.instance_searching') | tojson }},
+          instanceProgress: {{ t('pad.inspection.instance_progress') | tojson }},
+          instanceCaptured: {{ t('pad.inspection.instance_captured') | tojson }},
+          autoFailed: {{ t('pad.inspection.auto_failed') | tojson }},
           noMedia: {{ t('pad.inspection.no_media') | tojson }},
           mediaAttached: {{ t('pad.inspection.media_attached') | tojson }},
           chooseResult: {{ t('pad.inspection.choose_result') | tojson }},
@@ -86,7 +98,7 @@
         }
       };
     </script>
-    <script src="/static/pad_inspection.js?v=stage2-live-vision-1"></script>
+    <script src="/static/pad_inspection.js?v=stage2-auto-cv-1"></script>
     <script src="/static/pad_orientation.js"></script>
 </body>
 </html>

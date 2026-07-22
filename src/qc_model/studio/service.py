@@ -801,8 +801,8 @@ def publish_bundle(
             "Cannot publish: this standard revision has not passed the training "
             f"step (rolling-window gate not met: {training_status.reason}). "
             f"{training_status.total_reviewed} reviewed training judgment(s) so far; "
-            "needs the last 29 all correct, or the last 30 with at least 29 "
-            "correct, covering both qualified and unqualified samples with "
+            "needs a consecutive 30-sample window with at least 29 correct "
+            "(accuracy >95%), covering both qualified and unqualified samples with "
             "zero false passes."
         )
 

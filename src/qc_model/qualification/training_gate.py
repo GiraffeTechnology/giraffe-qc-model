@@ -1,11 +1,8 @@
 """Rolling-window training gate for the Digital QC Studio (PRD §9.5-9.8).
 
-A standard revision may only be published once its reviewed training
-judgments satisfy either:
-
-* the most recent 29 reviewed judgments are ALL correct, or
-* the most recent 30 reviewed judgments include at least 29 correct
-  (i.e. at most one incorrect),
+A standard revision may only be published once its most recent 30 reviewed
+training judgments include at least 29 correct (accuracy > 95%, i.e. at most
+one incorrect),
 
 AND the qualifying window contains zero false passes (an unqualified
 sample the model called "pass" — never averaged away by an otherwise
@@ -13,7 +10,7 @@ strong window), AND the window covers at least one qualified and one
 unqualified ground-truth sample (PRD §9.7 item 6).
 
 Only admin-reviewed judgments (``status == "reviewed"``) count toward
-either window — an ``awaiting_admin_review`` record is not a training
+the window — an ``awaiting_admin_review`` record is not a training
 sample (PRD §9.7 item 1): "未裁决记录不计入有效训练次数."
 """
 from __future__ import annotations
@@ -25,15 +22,13 @@ from sqlalchemy.orm import Session
 
 from src.db.training_models import QCTrainingJudgment
 
-WINDOW_STRICT = 29
-WINDOW_LENIENT = 30
-WINDOW_LENIENT_MIN_CORRECT = 29
+WINDOW_SIZE = 30
+WINDOW_MIN_CORRECT = 29
 
 
 @dataclass(frozen=True)
 class TrainingGateStatus:
     total_reviewed: int
-    recent_29_correct: "int | None"
     recent_30_correct: "int | None"
     recent_30_false_pass_count: int
     recent_30_covers_both_labels: bool
@@ -44,7 +39,6 @@ class TrainingGateStatus:
     def to_dict(self) -> dict[str, Any]:
         return {
             "total_reviewed": self.total_reviewed,
-            "recent_29_correct": self.recent_29_correct,
             "recent_30_correct": self.recent_30_correct,
             "recent_30_false_pass_count": self.recent_30_false_pass_count,
             "recent_30_covers_both_labels": self.recent_30_covers_both_labels,
@@ -115,21 +109,15 @@ def evaluate_training_gate(
     total = len(records)
     per_checkpoint = _per_checkpoint_accuracy(records)
 
-    window29 = records[-WINDOW_STRICT:] if total >= WINDOW_STRICT else None
-    window30 = records[-WINDOW_LENIENT:] if total >= WINDOW_LENIENT else None
-
-    ok29, reason29 = _window_qualifies(window29, WINDOW_STRICT) if window29 else (False, "insufficient_samples_29")
-    ok30, reason30 = (
-        _window_qualifies(window30, WINDOW_LENIENT_MIN_CORRECT) if window30 else (False, "insufficient_samples_30")
+    window30 = records[-WINDOW_SIZE:] if total >= WINDOW_SIZE else None
+    qualified, reason = (
+        _window_qualifies(window30, WINDOW_MIN_CORRECT)
+        if window30
+        else (False, "insufficient_samples_30")
     )
-
-    qualified = ok29 or ok30
     if qualified:
-        reason = "qualified_29_of_29" if ok29 else "qualified_29_of_30"
-    else:
-        reason = reason30 if window30 is not None else reason29
+        reason = "qualified_29_of_30"
 
-    recent_29_correct = sum(1 for r in window29 if r.admin_decision == "correct") if window29 else None
     recent_30_correct = sum(1 for r in window30 if r.admin_decision == "correct") if window30 else None
     false_pass_30 = sum(1 for r in window30 if r.is_false_pass) if window30 else 0
     covers_both_30 = (
@@ -138,7 +126,6 @@ def evaluate_training_gate(
 
     return TrainingGateStatus(
         total_reviewed=total,
-        recent_29_correct=recent_29_correct,
         recent_30_correct=recent_30_correct,
         recent_30_false_pass_count=false_pass_30,
         recent_30_covers_both_labels=covers_both_30,
@@ -149,9 +136,8 @@ def evaluate_training_gate(
 
 
 __all__ = [
-    "WINDOW_STRICT",
-    "WINDOW_LENIENT",
-    "WINDOW_LENIENT_MIN_CORRECT",
+    "WINDOW_SIZE",
+    "WINDOW_MIN_CORRECT",
     "TrainingGateStatus",
     "evaluate_training_gate",
 ]

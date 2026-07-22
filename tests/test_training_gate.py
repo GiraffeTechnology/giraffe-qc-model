@@ -1,4 +1,4 @@
-"""Tests for the rolling 29/30-window training publish gate
+"""Tests for the rolling 30-sample training publish gate
 (PRD workflow §9.6/9.7)."""
 from __future__ import annotations
 
@@ -95,30 +95,27 @@ def test_insufficient_samples_never_qualifies(db_session, revision):
     status = evaluate_training_gate(db_session, tenant_id=TENANT, sku_id=sku.id, standard_revision_id=rev.id)
     assert status.qualified is False
     assert status.total_reviewed == 10
-    assert status.recent_29_correct is None
     assert status.recent_30_correct is None
 
 
-def test_29_of_29_all_correct_qualifies(db_session, revision):
+def test_29_of_29_all_correct_does_not_qualify(db_session, revision):
     sku, rev = revision
     _fill_alternating(db_session, sku, rev, 29, all_correct=True)
     status = evaluate_training_gate(db_session, tenant_id=TENANT, sku_id=sku.id, standard_revision_id=rev.id)
-    assert status.qualified is True
-    assert status.reason == "qualified_29_of_29"
-    assert status.recent_29_correct == 29
+    assert status.qualified is False
+    assert status.reason == "insufficient_samples_30"
+    assert status.recent_30_correct is None
 
 
 def test_29_of_30_with_one_wrong_qualifies(db_session, revision):
     sku, rev = revision
-    # 30 samples, only the last (index 29) is incorrect -> the last-29
-    # window (indices 1..29) contains that one incorrect record, so 29/29
-    # fails, but the last-30 window has 29 correct out of 30.
+    # 30 samples, only the last (index 29) is incorrect, so the consecutive
+    # 30-sample window has 29 correct (>95%).
     _fill_alternating(db_session, sku, rev, 30, all_correct=False)
     status = evaluate_training_gate(db_session, tenant_id=TENANT, sku_id=sku.id, standard_revision_id=rev.id)
     assert status.qualified is True
     assert status.reason == "qualified_29_of_30"
     assert status.recent_30_correct == 29
-    assert status.recent_29_correct == 28  # last 29 records include the one wrong decision
 
 
 def test_two_wrong_in_last_30_does_not_qualify(db_session, revision):
@@ -134,7 +131,7 @@ def test_two_wrong_in_last_30_does_not_qualify(db_session, revision):
 
 def test_false_pass_in_window_blocks_qualification_even_if_count_would_pass(db_session, revision):
     sku, rev = revision
-    _fill_alternating(db_session, sku, rev, 29, all_correct=True, false_pass_at=5)
+    _fill_alternating(db_session, sku, rev, 30, all_correct=True, false_pass_at=5)
     status = evaluate_training_gate(db_session, tenant_id=TENANT, sku_id=sku.id, standard_revision_id=rev.id)
     assert status.qualified is False
     assert "false_pass" in status.reason
@@ -142,9 +139,9 @@ def test_false_pass_in_window_blocks_qualification_even_if_count_would_pass(db_s
 
 def test_window_missing_a_ground_truth_label_blocks_qualification(db_session, revision):
     sku, rev = revision
-    # All 29 samples share the same ground-truth label -> the window never
+    # All 30 samples share the same ground-truth label -> the window never
     # exercised the other label, so it cannot qualify no matter how correct.
-    for i in range(29):
+    for i in range(30):
         _add_judgment(
             db_session, sku, rev, ground_truth_label="qualified",
             admin_decision="correct", reviewed_offset_seconds=i,
@@ -156,16 +153,16 @@ def test_window_missing_a_ground_truth_label_blocks_qualification(db_session, re
 
 def test_only_reviewed_judgments_count_toward_the_window(db_session, revision):
     sku, rev = revision
-    _fill_alternating(db_session, sku, rev, 28, all_correct=True)
-    # An unreviewed record must not push the count to 29.
+    _fill_alternating(db_session, sku, rev, 29, all_correct=True)
+    # An unreviewed record must not push the count to 30.
     _add_judgment(
         db_session, sku, rev, ground_truth_label="unqualified", admin_decision=None,
         status="awaiting_admin_review", reviewed_offset_seconds=100,
     )
     status = evaluate_training_gate(db_session, tenant_id=TENANT, sku_id=sku.id, standard_revision_id=rev.id)
-    assert status.total_reviewed == 28
+    assert status.total_reviewed == 29
     assert status.qualified is False
-    assert status.recent_29_correct is None
+    assert status.recent_30_correct is None
 
 
 def test_older_failures_do_not_permanently_block_a_now_qualifying_window(db_session, revision):
@@ -177,12 +174,12 @@ def test_older_failures_do_not_permanently_block_a_now_qualifying_window(db_sess
     for i in range(10):
         label = "qualified" if i % 2 == 0 else "unqualified"
         _add_judgment(db_session, sku, rev, ground_truth_label=label, admin_decision="incorrect", reviewed_offset_seconds=i)
-    # Next 29 are all correct (offset past the first batch) -> should
-    # qualify on the strict window regardless of the earlier failures.
-    _fill_alternating(db_session, sku, rev, 29, all_correct=True, offset=10)
+    # Next 30 are all correct (offset past the first batch) -> should
+    # qualify on the rolling window regardless of the earlier failures.
+    _fill_alternating(db_session, sku, rev, 30, all_correct=True, offset=10)
     status = evaluate_training_gate(db_session, tenant_id=TENANT, sku_id=sku.id, standard_revision_id=rev.id)
     assert status.qualified is True
-    assert status.total_reviewed == 39
+    assert status.total_reviewed == 40
 
 
 def test_per_checkpoint_accuracy_reflects_named_correction(db_session, revision):

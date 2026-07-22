@@ -870,15 +870,13 @@ async def studio_record_training_judgment(
     tenant_id: str = Form("default"),
     ground_truth_label: str = Form(...),
     ground_truth_notes: Optional[str] = Form(None),
-    image: UploadFile = File(...),
+    sample_photo_id: str = Form(...),
     db: Session = Depends(get_db_dep),
 ):
-    """Run one CV+VLM training judgment against a labeled sample.
+    """Run a CV+VLM judgment using a confirmed photo from Sample & Standard.
 
-    The sample must be a real, independently captured image of a labeled
-    physical item (qualified or a staged defect) -- never the standard
-    photo itself or a repeated submission, per the training-compliance
-    hard gate (PRD §9.3).
+    Digital QC Studio never captures or uploads training photos. It may only
+    call a tenant-owned sample photo already collected in Sample & Standard.
     """
     tenant_id = effective_tenant(request, tenant_id)
     sku = db.query(QCSkuItem).filter_by(id=sku_id, tenant_id=tenant_id).first()
@@ -890,22 +888,31 @@ async def studio_record_training_judgment(
             {"error": "SKU has no active confirmed standard revision to train against"},
             status_code=400,
         )
-    try:
-        validated = await read_and_validate_upload(image)
-    except UploadValidationError as exc:
-        return JSONResponse({"error": exc.message}, status_code=exc.status_code)
+    sample_photo = db.query(QCStandardPhoto).filter_by(
+        id=sample_photo_id, sku_id=sku_id, tenant_id=tenant_id,
+    ).first()
+    if sample_photo is None:
+        return JSONResponse({"error": "labeled sample photo not found"}, status_code=404)
+    if sample_photo.is_primary:
+        return JSONResponse({"error": "primary standard photo cannot be used as a training instance"}, status_code=400)
+    if not sample_photo.local_path:
+        return JSONResponse({"error": "labeled sample photo is not stored locally"}, status_code=400)
+    dest_path = resolve_sample_photo_path(sample_photo.local_path)
+    if dest_path is None or not dest_path.is_file():
+        return JSONResponse({"error": "labeled sample photo file is unavailable"}, status_code=400)
+    mime_type = sample_photo.mime_type or "image/jpeg"
+    if not mime_type.startswith("image/"):
+        return JSONResponse({"error": "labeled sample photo is not an image"}, status_code=400)
 
     dest_dir = _STUDIO_DATA_DIR / tenant_id / sku_id / "training"
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dest_path = dest_dir / f"{_uid()}{validated.extension}"
-    dest_path.write_bytes(validated.content)
     evidence_root = dest_dir / "cv-evidence"
 
     try:
         judgment = training_service.record_training_judgment(
             db,
             tenant_id=tenant_id, sku_id=sku_id, standard_revision_id=revision.id,
-            image_path=dest_path, mime_type=validated.mime_type,
+            image_path=dest_path, mime_type=mime_type,
             language=resolve_language(request),
             ground_truth_label=ground_truth_label,
             ground_truth_notes=ground_truth_notes,
