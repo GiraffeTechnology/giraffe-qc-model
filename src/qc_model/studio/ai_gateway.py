@@ -547,14 +547,74 @@ def author_image(*, image_path: Path, mime_type: str, language: str, current_sku
     return result
 
 
+_INT_RE = re.compile(r"-?\d+")
+
+
+def _extract_int(text: str | None) -> int | None:
+    """Pull the first integer out of a free-text observation, or None."""
+    if not text:
+        return None
+    match = _INT_RE.search(text)
+    return int(match.group()) if match else None
+
+
+def _cv_counts_by_point(cv_context: dict[str, Any] | None) -> dict[str, int]:
+    """Map point_code -> CV analyzer count, for points where CV reported one."""
+    counts: dict[str, int] = {}
+    if not cv_context:
+        return counts
+    for point in cv_context.get("points") or []:
+        code = point.get("point_code")
+        analysis = point.get("analysis") or {}
+        for entry in analysis.get("analyzers") or []:
+            count = entry.get("count")
+            if code and isinstance(count, int):
+                counts[code] = count
+                break
+    return counts
+
+
 def _normalize_inspection(
     value: dict[str, Any],
     *,
     config: AssistantConfig,
     elapsed: int,
     checkpoint_contract: list[dict[str, Any]],
+    cv_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Validate and normalize one model response.
+
+    Audit 2026-07-22 (§8.1): a live model response marked a checkpoint's CV
+    count as "supported" while its own ``observed_value`` for that same
+    point stated a different number — an internally self-contradictory
+    response that the prior schema had no way to catch, since "supported"
+    was only ever expressed as free text. ``cv_agreement`` makes that claim
+    structured and machine-checkable: when the model asserts ``"agrees"``
+    for a point whose CV evidence reports a numeric count, and its own
+    parsed ``observed_value`` states a different number, the response is
+    rejected here — fail closed via the same StudioAIError path that already
+    triggers primary/fallback escalation, rather than trusting a
+    self-contradictory claim.
+
+    STAGE2_QWEN_VISION_PRODUCTION_ASSESSMENT (2026-07-22): a blind 30B/4B
+    count on the raw photo got 2 of 3 items wrong with high stated
+    confidence — the vision model is not a reliable counter. CV must be the
+    counting authority; the vision model's role on a counting checkpoint is
+    limited to confirming or disputing the CV count, never substituting its
+    own freely generated number as the production observation. So for any
+    ``method_hint == "counting"`` checkpoint: if CV reports a count, that
+    count — not the model's text — becomes the recorded ``observed_value``,
+    and an honest ``"disagrees"`` downgrades the result to
+    ``low_confidence`` for human review rather than being accepted as a
+    confident pass. If CV has no detector configured for that point at all,
+    the checkpoint can never be autonomously passed on the model's own
+    guess — it is forced to ``low_confidence`` so it always reaches a human,
+    matching "CV 未可靠定位时必须停止" from the assessment's root-cause
+    analysis.
+    """
     expected_codes = [item["point_code"] for item in checkpoint_contract]
+    method_hints = {item["point_code"]: item.get("method_hint") for item in checkpoint_contract}
+    cv_counts = _cv_counts_by_point(cv_context)
     returned: dict[str, dict[str, Any]] = {}
     for item in value.get("checkpoint_results") or []:
         if not isinstance(item, dict):
@@ -569,10 +629,28 @@ def _normalize_inspection(
             confidence = max(0.0, min(1.0, float(item.get("confidence", 0.0))))
         except (TypeError, ValueError):
             confidence = 0.0
+        observed_value = str(item.get("observed_value") or "").strip()[:256] or None
+        cv_agreement = str(item.get("cv_agreement") or "").strip().lower() or None
+        if cv_agreement == "agrees" and code in cv_counts:
+            observed_int = _extract_int(observed_value)
+            if observed_int is not None and observed_int != cv_counts[code]:
+                raise StudioAIError(
+                    f"vision_inspection_cv_agreement_contradicts_observed_value:{code}"
+                )
+        notes = str(item.get("notes") or "").strip()[:2000] or None
+        if method_hints.get(code) == "counting":
+            if code in cv_counts:
+                observed_value = str(cv_counts[code])
+                if cv_agreement == "disagrees" and result == "pass":
+                    result = "low_confidence"
+                    notes = " ".join(filter(None, [notes, "model_disputes_cv_count_review_required"]))
+            else:
+                result = "low_confidence"
+                notes = " ".join(filter(None, [notes, "no_cv_detector_configured_for_counting_checkpoint"]))
         returned[code] = {
             "point_code": code, "result": result, "confidence": confidence,
-            "observed_value": str(item.get("observed_value") or "").strip()[:256] or None,
-            "notes": str(item.get("notes") or "").strip()[:2000] or None,
+            "observed_value": observed_value,
+            "notes": notes,
         }
     results = [
         returned.get(code) or {
@@ -643,8 +721,17 @@ def inspect_image(
             "confidence": "number from 0 to 1",
             "observed_value": "visible observation or null",
             "notes": "brief evidence explanation",
+            "cv_agreement": "agrees|disagrees|not_applicable — only when CV pre-analysis evidence is supplied for this point; state 'agrees' only if your own observed_value matches the CV count exactly, otherwise 'disagrees'",
         }],
     }
+    counting_rule = (
+        "For a checkpoint whose method_hint is 'counting': CV is the counting authority, not you. "
+        "If CV pre-analysis evidence is supplied for that point, do not invent your own count — compare "
+        "what you see to the CV count and report cv_agreement ('agrees' or 'disagrees') plus any visible "
+        "defect (damage, misalignment, discoloration) in notes; the recorded count always comes from CV, "
+        "never from your own tally. If no CV evidence is supplied for a counting checkpoint, you cannot "
+        "supply a trustworthy count yourself — use low_confidence rather than guessing a number."
+    )
     def make_prompt(
         contract: list[dict[str, Any]],
         context: dict[str, Any] | None,
@@ -656,7 +743,8 @@ def inspect_image(
             "not add new point codes. Never guess hidden properties, dimensions, tolerances, barcode "
             "content, or evidence outside the image. If a checkpoint is not clearly visible, use "
             "not_visible; if evidence is ambiguous, use low_confidence. This is a checkpoint suggestion "
-            "for operator review, not a final verdict. Return one valid JSON object only, no markdown: "
+            "for operator review, not a final verdict. " + counting_rule + " "
+            "Return one valid JSON object only, no markdown: "
             + json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
             + "\nCheckpoints: "
             + json.dumps(contract, ensure_ascii=False, separators=(",", ":"))
@@ -722,7 +810,7 @@ def inspect_image(
         )
         primary_result = _normalize_inspection(
             value, config=primary, elapsed=primary_elapsed,
-            checkpoint_contract=checkpoint_contract,
+            checkpoint_contract=checkpoint_contract, cv_context=cv_context,
         )
     except StudioAIError as primary_error:
         if not (_env_enabled("STUDIO_VISION_FALLBACK_ENABLED", True) and fallback.configured):
@@ -737,7 +825,7 @@ def inspect_image(
         )
         result = _normalize_inspection(
             fallback_value, config=fallback, elapsed=fallback_elapsed,
-            checkpoint_contract=checkpoint_contract,
+            checkpoint_contract=checkpoint_contract, cv_context=cv_context,
         )
         result["assistant"] = _assistant_route(
             selected=fallback, elapsed_ms=fallback_elapsed, primary=primary,
@@ -747,7 +835,7 @@ def inspect_image(
             "primary": None,
             "fallback": _normalize_inspection(
                 fallback_value, config=fallback, elapsed=fallback_elapsed,
-                checkpoint_contract=fallback_contract,
+                checkpoint_contract=fallback_contract, cv_context=cv_context,
             )["checkpoint_results"],
             "fallback_payload": "full_image" if fallback_crops is None else "checkpoint_crops",
             "crop_manifest": manifest,
@@ -780,7 +868,7 @@ def inspect_image(
             )
             fallback_result = _normalize_inspection(
                 fallback_value, config=fallback, elapsed=fallback_elapsed,
-                checkpoint_contract=fallback_contract,
+                checkpoint_contract=fallback_contract, cv_context=cv_context,
             )
         except StudioAIError as exc:
             reasons.append(f"fallback_error:{exc}")

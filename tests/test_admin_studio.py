@@ -876,7 +876,9 @@ def test_analysis_config_real_endpoint_persists_and_bundle_carries_hooks(client)
     )
     dp_id = _confirm_one_point(client, sku_id)
     expected = {"rhinestone_count": 24}
-    cv_config = {"analyzers": [{"name": "rhinestone_count", "params": {"min_area": 8}}]}
+    # min_area_px is the real analyzer parameter (src.cv_preanalysis.analyzers);
+    # a stale "min_area" key here would now be rejected as unrecognized (§8.1 P0 fix).
+    cv_config = {"analyzers": [{"name": "rhinestone_count", "params": {"min_area_px": 8}}]}
     saved = client.post(
         f"/admin/studio/detection-points/{dp_id}/analysis-config",
         json={"expected_features": expected, "cv_config": cv_config},
