@@ -54,8 +54,11 @@ The administrator review gate worked: the draft exposed both **Confirm** and
 - Focused text-assistant and administrator-workbench suite: **70 passed**.
 - Final full repository suite: **1,318 passed, 6 skipped, 0 failed**.
 - A second live 9B verification produced exactly four points with the expected
-  count values and production CV analyzer assignments in **89.0 seconds**.
-  Its remaining flower-core tolerance question was preserved for administrator input.
+  count values and production CV analyzer assignments in **89.0 seconds**. It
+  also returned one redundant analyzer-name question.
+- The final automated regression verifies that the redundant analyzer-name
+  question is removed while the unresolved flower-core tolerance question is
+  preserved for administrator input.
 - Live acceptance remains paused until the corrective PR is reviewed and merged.
 - Both observed 9B latencies (207.4 seconds before correction and 89.0 seconds
   after correction) remain recorded; more samples are required before claiming a stable latency improvement.
