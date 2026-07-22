@@ -305,6 +305,7 @@ def confirm_standard_intake(
     confirmed_checkpoints: list[dict],
     operator_comment: Optional[str] = None,
     tenant_id: Optional[str] = None,
+    question_answers: Optional[dict[str, str]] = None,
 ) -> tuple[QCSkuStandardRevision, QCOperatorConfirmation]:
     """Confirm the extracted draft, creating an active standard revision.
 
@@ -323,6 +324,45 @@ def confirm_standard_intake(
         )
     if not confirmed_checkpoints:
         raise ValueError("confirmed_checkpoints must not be empty.")
+
+    # Questions persisted with the draft are safety gates, not advisory text.
+    # The administrator answers them in the sample-management confirmation
+    # card. Answers are retained as audit evidence and exact-value answers
+    # also fill their corresponding checkpoint before validation.
+    raw_answers = question_answers or {}
+    answers = {
+        str(field).strip(): str(value).strip()
+        for field, value in raw_answers.items()
+        if str(field).strip()
+    }
+    answers_by_lower = {field.lower(): value for field, value in answers.items()}
+    checkpoint_by_code = {
+        str(cp.get("point_code") or "").strip().upper(): cp
+        for cp in confirmed_checkpoints
+    }
+    unresolved = []
+    for question in (intake.extracted_json or {}).get("questions_for_operator") or []:
+        field = str(question.get("field") or "").strip()
+        answer = answers.get(field) or answers_by_lower.get(field.lower(), "")
+        match = re.fullmatch(r"([A-Za-z0-9_]+)\.expected_value", field)
+        if match:
+            checkpoint = checkpoint_by_code.get(match.group(1).upper())
+            if checkpoint and answer and not str(checkpoint.get("expected_value") or "").strip():
+                checkpoint["expected_value"] = answer
+            if checkpoint and str(checkpoint.get("expected_value") or "").strip():
+                continue
+        if not answer:
+            unresolved.append(question)
+    if unresolved:
+        raise ValueError(
+            "Cannot confirm while the draft has unresolved administrator questions."
+        )
+
+    # Keep supplied answers on both the intake payload and immutable confirmation
+    # record so audits can see exactly what the administrator entered.
+    intake_payload = dict(intake.confirmation_payload_json or {})
+    intake_payload["question_answers"] = answers
+    intake.confirmation_payload_json = intake_payload
 
     # Detect duplicate point_codes before creating anything
     seen_codes: set[str] = set()
@@ -395,7 +435,10 @@ def confirm_standard_intake(
         sku_id=intake.sku_id,
         status="confirmed",
         confirmed_by=confirmed_by,
-        confirmed_json={"checkpoints": confirmed_checkpoints},
+        confirmed_json={
+            "checkpoints": confirmed_checkpoints,
+            "question_answers": answers,
+        },
         operator_comment=operator_comment,
         created_standard_revision_id=active_revision.id,
         confirmed_at=_now(),

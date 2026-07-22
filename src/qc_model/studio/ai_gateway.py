@@ -248,6 +248,35 @@ def _explicit_count(text: str, terms: tuple[str, ...]) -> int | None:
     return None
 
 
+def _explicit_center_bound(text: str | None) -> str | None:
+    """Recover a centering bound only when the administrator supplied it."""
+    if not text or not _mentions(text, _CENTER_TERMS):
+        return None
+    sentences = re.split(r"[。！？!?;；\n]+", text)
+    for sentence in sentences:
+        if not _mentions(sentence, _CENTER_TERMS):
+            continue
+        if not re.search(
+            r"居中|中心|偏离|center(?:ed|ing)?|centre(?:d|ing)?|offset",
+            sentence,
+            re.IGNORECASE,
+        ):
+            continue
+        bound = re.search(
+            r"(?:≤|<=|不超过|不得超过|最多|最大(?:允许)?(?:偏移|误差)?(?:为)?|"
+            r"maximum(?:\s+allowed)?(?:\s+(?:offset|deviation))?(?:\s+of)?|"
+            r"within|±)\s*(\d+(?:\.\d+)?)\s*"
+            r"(毫米|厘米|微米|mm|cm|μm|um|度|°|%)",
+            sentence,
+            flags=re.IGNORECASE,
+        )
+        if bound:
+            units = {"毫米": "mm", "厘米": "cm", "微米": "μm"}
+            unit = units.get(bound.group(2).lower(), bound.group(2))
+            return f"≤{bound.group(1)} {unit}"
+    return None
+
+
 def _enforce_authoritative_text(
     checkpoints: list[dict[str, Any]], source_text: str | None,
 ) -> list[dict[str, Any]]:
@@ -273,6 +302,7 @@ def _enforce_authoritative_text(
             re.IGNORECASE,
         )
     )
+    center_bound = _explicit_center_bound(source_text)
     seen_counts: set[str] = set()
     seen_center = False
     result: list[dict[str, Any]] = []
@@ -304,6 +334,14 @@ def _enforce_authoritative_text(
             checkpoint["cv_config"] = {
                 "analyzers": [{"name": "pistil_localization", "params": {}}]
             }
+            # The model is not an authority for tolerances. Remove every
+            # free-text/numeric constraint it authored and restore only an
+            # exact bound that is literally present in the administrator's
+            # source text.
+            checkpoint["expected_value"] = center_bound
+            checkpoint["description"] = None
+            checkpoint["pass_criteria"] = None
+            checkpoint["expected_features"] = {}
             seen_center = True
         result.append(checkpoint)
     return result
@@ -355,6 +393,47 @@ def _normalize_result(
                 })
     # If an explicit value and unit were recovered from the same candidate,
     # discard model questions that redundantly ask for that field or unit.
+    center_requested = bool(source_text) and _mentions(source_text or "", _CENTER_TERMS) and bool(
+        re.search(
+            r"居中|中心|偏离|center(?:ed|ing)?|centre(?:d|ing)?|offset",
+            source_text or "",
+            re.IGNORECASE,
+        )
+    )
+    if center_requested and _explicit_center_bound(source_text) is None:
+        alignment_points = [
+            cp for cp in checkpoints
+            if cp["method_hint"] == "alignment" and _mentions(
+                " ".join(filter(None, (
+                    cp.get("point_code"), cp.get("label"),
+                ))),
+                _CENTER_TERMS,
+            )
+        ]
+        if alignment_points:
+            # Replace any model-authored tolerance question with one
+            # deterministic, localized unresolved field. A confirmation must
+            # remain blocked until the administrator provides the boundary.
+            questions = [
+                q for q in questions
+                if not (
+                    _mentions(f"{q['field']} {q['question']}", _CENTER_TERMS)
+                    or re.search(
+                        r"center|centre|offset|alignment|threshold_for_centering",
+                        f"{q['field']} {q['question']}",
+                        re.IGNORECASE,
+                    )
+                )
+            ]
+            checkpoint = alignment_points[0]
+            question = {
+                "zh-CN": "请提供花蕊居中的最大允许偏移量（含单位）。",
+                "ja": "花芯の中心ずれの最大許容値（単位を含む）を指定してください。",
+            }.get(language, "Provide the maximum allowed stamen offset, including its unit.")
+            questions.append({
+                "field": f"{checkpoint['point_code']}.alignment_tolerance",
+                "question": question,
+            })
     resolved = [cp for cp in checkpoints if cp["expected_value"]]
     if resolved:
         questions = [q for q in questions if not any(

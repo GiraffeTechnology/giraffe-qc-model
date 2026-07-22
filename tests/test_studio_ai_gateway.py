@@ -285,19 +285,13 @@ def test_live_text_draft_preserves_explicit_counts_and_coalesces_complements(mon
                 {"point_code": "PEARL_COUNT_CHECK", "label": "珍珠数量检查", "method_hint": "defect_detection", "severity": "critical", "pass_criteria": "检测到且仅检测到3颗珍珠"},
                 {"point_code": "PEARL_MISSING_CHECK", "label": "珍珠缺失检查", "method_hint": "defect_detection", "severity": "major", "pass_criteria": "不得缺失"},
                 {"point_code": "RHINESTONE_COUNT_CHECK", "label": "水钻数量检查", "method_hint": "defect_detection", "severity": "critical", "pass_criteria": "检测到且仅检测到7颗水钻"},
-                {"point_code": "STIGMA_CENTER_CHECK", "label": "花蕊居中检查", "method_hint": "defect_detection", "severity": "critical", "pass_criteria": "花蕊必须居中"},
+                {"point_code": "STIGMA_CENTER_CHECK", "label": "花蕊居中检查", "method_hint": "defect_detection", "severity": "critical", "expected_value": "≤0.5 mm", "description": "默认阈值0.5mm", "pass_criteria": "花蕊偏移必须小于等于0.5mm（默认阈值）"},
                 {"point_code": "STIGMA_OFFSET_CHECK", "label": "花蕊偏移检查", "method_hint": "defect_detection", "severity": "major", "pass_criteria": "不得偏离中心"},
             ],
-            "questions": [
-                {
-                    "field": "cv_config.analyzers[0].params.threshold_for_centering",
-                    "question": "请提供用于判定花蕊居中的最大允许偏移量。",
-                },
-                {
+            "questions": [{
                     "field": "cv_config.analyzers[1].name",
                     "question": "是否需要为花瓣、珍珠和水钻分别指定不同的分析器名称？",
-                },
-            ],
+            }],
         }
         return {"message": {"content": json.dumps(content, ensure_ascii=False)}}, 207400
 
@@ -329,10 +323,28 @@ def test_live_text_draft_preserves_explicit_counts_and_coalesces_complements(mon
     assert by_code["STIGMA_CENTER_CHECK"]["cv_config"] == {
         "analyzers": [{"name": "pistil_localization", "params": {}}]
     }
+    assert by_code["STIGMA_CENTER_CHECK"]["expected_value"] is None
+    assert by_code["STIGMA_CENTER_CHECK"]["description"] is None
+    assert by_code["STIGMA_CENTER_CHECK"]["pass_criteria"] is None
+    assert "0.5" not in json.dumps(by_code["STIGMA_CENTER_CHECK"], ensure_ascii=False)
     assert result["questions"] == [{
-        "field": "cv_config.analyzers[0].params.threshold_for_centering",
-        "question": "请提供用于判定花蕊居中的最大允许偏移量。",
+        "field": "STIGMA_CENTER_CHECK.alignment_tolerance",
+        "question": "请提供花蕊居中的最大允许偏移量（含单位）。",
     }]
+
+
+def test_explicit_center_bound_from_administrator_is_authoritative():
+    checkpoint = ai_gateway._validate_checkpoint({
+        "point_code": "STAMEN_CENTER", "label": "花蕊居中",
+        "method_hint": "alignment", "expected_value": "≤9 mm",
+        "description": "模型声称9mm", "pass_criteria": "模型声称9mm",
+    })
+    result = ai_gateway._enforce_authoritative_text(
+        [checkpoint], "花蕊必须居中，最大允许偏移不超过0.8毫米。"
+    )
+    assert result[0]["expected_value"] == "≤0.8 mm"
+    assert result[0]["description"] is None
+    assert result[0]["pass_criteria"] is None
 
 
 def test_count_is_not_inferred_when_administrator_did_not_supply_one():

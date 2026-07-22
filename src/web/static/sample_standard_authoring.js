@@ -294,9 +294,27 @@
     }), "meta");
   }
 
+  function questionText(question) {
+    if (typeof question === "string") return question;
+    if (!question) return "";
+    const raw = String(
+      question.question || question.prompt || question.question_key || question.i18n_key || ""
+    ).trim();
+    if (!raw) return "";
+    if (strings[raw]) return t(raw);
+    // Some providers return a translation key in the question field. Never
+    // expose that key as the only operator-facing prompt.
+    if (/^[A-Za-z][A-Za-z0-9_.:-]*$/.test(raw) && (raw.includes(".") || raw.includes(":"))) {
+      const field = String(question.field || "").replace(/[._-]+/g, " ").trim();
+      if (field) return t("administratorQuestion") + " (" + field + ")";
+      return t("administratorQuestion");
+    }
+    return raw;
+  }
+
   function showQuestions(questions) {
     (questions || []).forEach((question) => {
-      const text = typeof question === "string" ? question : question && question.question;
+      const text = questionText(question);
       if (text) addBubble(text, "system");
     });
   }
@@ -308,6 +326,10 @@
     const panel = fragment.querySelector(".sample-confirm-card");
     const body = fragment.querySelector(".sample-confirm-body");
     const countInputs = {};
+    const questionInputs = {};
+    const unresolvedQuestions = (card.questions || []).filter(
+      (question) => question && (question.question || question.question_key || question.i18n_key)
+    );
 
     if (card.coverage_review) {
       const coverage = card.coverage_review;
@@ -344,7 +366,45 @@
       body.appendChild(row);
     });
 
-    panel.querySelector(".sample-confirm-yes").addEventListener("click", () => {
+    const confirmButton = panel.querySelector(".sample-confirm-yes");
+    unresolvedQuestions.forEach((question, index) => {
+      const row = document.createElement("div");
+      row.className = "sample-confirm-row sample-confirm-question";
+      const field = String(question.field || "question_" + index).trim() || "question_" + index;
+      const label = document.createElement("div");
+      label.className = "sample-confirm-fields";
+      label.textContent = questionText(question);
+      row.appendChild(label);
+      const input = document.createElement("textarea");
+      input.className = "sample-confirm-input sample-confirm-question-input";
+      input.rows = 2;
+      input.placeholder = t("answerPlaceholder");
+      input.dataset.questionField = field;
+      row.appendChild(input);
+      questionInputs[field] = input;
+      body.appendChild(row);
+    });
+    if (unresolvedQuestions.length) {
+      const warning = document.createElement("div");
+      warning.className = "sample-confirm-fields";
+      warning.textContent = t("resolveQuestionsBeforeConfirm");
+      body.appendChild(warning);
+    }
+
+    function isComplete() {
+      const countsReady = Object.values(countInputs).every((input) => input.value.trim());
+      const questionsReady = Object.values(questionInputs).every((input) => input.value.trim());
+      return countsReady && questionsReady;
+    }
+    function updateConfirmState() {
+      confirmButton.disabled = !isComplete();
+      confirmButton.title = confirmButton.disabled ? t("resolveQuestionsBeforeConfirm") : "";
+    }
+    Object.values(countInputs).forEach((input) => input.addEventListener("input", updateConfirmState));
+    Object.values(questionInputs).forEach((input) => input.addEventListener("input", updateConfirmState));
+    updateConfirmState();
+
+    confirmButton.addEventListener("click", () => {
       const checkpoints = (card.checkpoints || []).map((checkpoint, index) => {
         const result = Object.assign({}, checkpoint);
         if (countInputs[index]) result.expected_value = countInputs[index].value.trim();
@@ -354,10 +414,26 @@
         addBubble(t("provideCounts"), "system");
         return;
       }
+      const questionAnswers = {};
+      unresolvedQuestions.forEach((question, index) => {
+        const field = String(question.field || "question_" + index).trim() || "question_" + index;
+        questionAnswers[field] = (questionInputs[field] || {}).value
+          ? questionInputs[field].value.trim()
+          : "";
+      });
+      if (Object.values(questionAnswers).some((answer) => !answer)) {
+        addBubble(t("resolveQuestionsBeforeConfirm"), "system");
+        return;
+      }
       api("/admin/studio/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenant_id: tenant, intake_id: card.intake_id, checkpoints }),
+        body: JSON.stringify({
+          tenant_id: tenant,
+          intake_id: card.intake_id,
+          checkpoints,
+          question_answers: questionAnswers,
+        }),
       }).then((result) => {
         panel.querySelector(".sample-confirm-actions").innerHTML =
           `<span class="hint">${esc(t("confirmedRevision", { revision: result.revision_no }))}</span>`;
@@ -385,7 +461,7 @@
     showAssistantMeta(result.assistant);
     if (result.sku) renderDetectionPoints(result.sku);
     if (result.confirmation_card) renderConfirmation(result.confirmation_card);
-    else showQuestions(result.questions);
+    showQuestions(result.questions);
   }
 
   function sendText(text) {
