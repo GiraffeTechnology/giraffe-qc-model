@@ -108,6 +108,11 @@ body {
 .bubble.meta { padding: 3px 8px; border: 0; background: transparent; color: var(--muted); font-size: 11px; }
 @keyframes pulse { to { opacity: .2; transform: scale(.7); } }
 .bubble.system img.chat-photo { max-width: 220px; border-radius: 8px; display: block; margin-top: 6px; }
+.standard-import-toolbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 8px 12px 0; border-top: 1px solid var(--border);
+}
+.standard-import-toolbar .muted { font-size: 11px; }
 
 .chat-input {
   display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border);

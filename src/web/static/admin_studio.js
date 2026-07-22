@@ -3,6 +3,7 @@
   "use strict";
 
   const tenant = document.body.dataset.tenant || "default";
+  const initialSkuId = document.body.dataset.initialSku || null;
   const state = { skuId: null, sku: null, renderedIntakes: new Set() };
 
   const $ = (sel) => document.querySelector(sel);
@@ -667,6 +668,55 @@
       .finally(() => setAssistantState(t("assistantReady"), false));
   }
 
+  function importStandard(file, sourceKind) {
+    if (!state.skuId) {
+      addBubble(t("selectBeforeImport"), "system");
+      return Promise.resolve(false);
+    }
+    const fd = new FormData();
+    fd.append("sku_id", state.skuId);
+    fd.append("tenant_id", tenant);
+    fd.append("source_kind", sourceKind);
+    fd.append("document", file);
+    addBubble(t("importReading", { filename: file.name }), "user");
+    setAssistantState(t("importSending"), true);
+    const pending = addBubble(t("importSending"), "pending");
+    return api("/admin/studio/import-standard", { method: "POST", body: fd })
+      .then((res) => {
+        pending.remove();
+        if (res.import && res.import.ocr_used) addBubble(t("ocrComplete"), "system");
+        if (res.reply) addBubble(res.reply, "system");
+        showAssistantMeta(res.assistant);
+        if (res.sku) setActiveSku(res.sku);
+        if (res.confirmation_card) renderConfirmCard(res.confirmation_card);
+        else renderQuestions(res.questions);
+        addBubble(t("importComplete"), "system");
+        return true;
+      })
+      .catch((err) => {
+        pending.remove();
+        addBubble(t("importFailed", { message: err.message }), "system");
+        return false;
+      })
+      .finally(() => setAssistantState(t("assistantReady"), false));
+  }
+
+  function openImportPicker(selector) {
+    if (!state.skuId) {
+      addBubble(t("selectBeforeImport"), "system");
+      return;
+    }
+    addBubble(t("importOpening"), "system");
+    $(selector).click();
+  }
+
+  function handleImportSelection(event, sourceKind) {
+    const input = event.target;
+    const file = input.files && input.files[0];
+    input.value = "";
+    if (file) importStandard(file, sourceKind);
+  }
+
   // Assistant follow-up questions arrive without a confirmation card when the
   // administrator has not defined checkpoints yet (checkpoints are authored by
   // the administrator; photo analysis only describes and asks). Surface them
@@ -1087,6 +1137,10 @@
     e.target.value = "";
   });
   $("#photo-file-toggle").addEventListener("click", requestDeviceFile);
+  $("#process-card-toggle").addEventListener("click", () => openImportPicker("#process-card-input"));
+  $("#standard-file-toggle").addEventListener("click", () => openImportPicker("#standard-file-input"));
+  $("#process-card-input").addEventListener("change", (e) => handleImportSelection(e, "process_card"));
+  $("#standard-file-input").addEventListener("change", (e) => handleImportSelection(e, "file"));
   $("#standard-camera-toggle").addEventListener("click", openStandardCamera);
   $("#standard-camera-close").addEventListener("click", closeStandardCamera);
   standardCameraStart.addEventListener("click", startStandardCamera);
@@ -1119,5 +1173,9 @@
       setAssistantState(ready ? t("assistantReady") : t("assistantUnavailable"), false);
     })
     .catch(() => setAssistantState(t("assistantUnavailable"), false));
-  loadSkus();
+  if (initialSkuId) {
+    selectSku(initialSkuId).catch(() => loadSkus());
+  } else {
+    loadSkus();
+  }
 })();

@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import subprocess
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -48,11 +49,18 @@ from src.qc_model.studio.analysis_config import (
 )
 from src.storage.upload_validation import (
     UploadValidationError,
+    read_and_validate_document_upload,
     read_and_validate_upload,
+    validate_image_content,
+)
+from src.qc_model.ingestion.process_card import (
+    REAL_TEXT_EXTRACTION_EXTENSIONS,
+    extract_process_card_text,
 )
 from src.api.authz import effective_actor, effective_tenant
 from src.api.admin_auth import current_admin
 from src.api.uploads import validate_safe_id
+from src.api.sample_admin_router import resolve_sample_photo_path
 from src.db.sku_models import QCSkuStandardRevision
 from src.pad.session_service import get_or_create_conversation_session
 from src.qc_model.qualification import training as training_service
@@ -61,12 +69,13 @@ from src.web.i18n import install_i18n, resolve_language
 
 router = APIRouter(tags=["admin-studio"])
 
+_LEGACY_STUDIO_DATA_DIR = Path("data/qc_studio")
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "web" / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 # Carry the shared web-shell language switch on the Studio page (S1 seam).
 install_i18n(templates)
 
-_STUDIO_DATA_DIR = Path("data/qc_studio")
+_STUDIO_DATA_DIR = Path(os.getenv("QC_STUDIO_DATA_DIR", "data/qc_studio"))
 
 
 def _uid() -> str:
@@ -117,14 +126,18 @@ def _record_message(
 
 
 @router.get("/admin/studio", response_class=HTMLResponse)
-def studio_page(request: Request, tenant_id: str = "default"):
+def studio_page(request: Request, tenant_id: str = "default", sku_id: str = ""):
     from src.db.sku_models import SKU_LIFECYCLE_STATES
     tenant_id = effective_tenant(request, tenant_id)
 
     return templates.TemplateResponse(
         request,
         "admin_studio.html",
-        {"tenant_id": tenant_id, "sku_lifecycle_states": list(SKU_LIFECYCLE_STATES)},
+        {
+            "tenant_id": tenant_id,
+            "initial_sku_id": sku_id,
+            "sku_lifecycle_states": list(SKU_LIFECYCLE_STATES),
+        },
     )
 
 
@@ -299,6 +312,149 @@ async def studio_chat(request: Request, body: ChatRequest, db: Session = Depends
     )
     return payload
 
+@router.post("/admin/studio/import-standard")
+async def studio_import_standard(
+    request: Request,
+    sku_id: str = Form(...),
+    tenant_id: str = Form("default"),
+    source_kind: str = Form("file"),
+    document: UploadFile = File(...),
+    db: Session = Depends(get_db_dep),
+):
+    """Turn a process card or standard file into a 9B-authored draft.
+
+    Images are OCR'd first. All recovered text then follows the same text-
+    assistant and administrator confirmation path as natural-language input.
+    """
+    tenant_id = effective_tenant(request, tenant_id)
+    validate_safe_id(sku_id, "sku_id")
+    sku = db.query(QCSkuItem).filter_by(id=sku_id, tenant_id=tenant_id).first()
+    if sku is None:
+        raise HTTPException(status_code=404, detail="SKU not found")
+    if source_kind not in {"process_card", "file"}:
+        raise HTTPException(status_code=400, detail="invalid import source")
+
+    filename = document.filename or ""
+    try:
+        validated = await read_and_validate_document_upload(document, filename=filename)
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    supported = {".jpg", ".jpeg", ".png", ".pdf"} | set(REAL_TEXT_EXTRACTION_EXTENSIONS)
+    if validated.extension not in supported:
+        raise HTTPException(
+            status_code=415,
+            detail="This file type cannot yet be converted to text for standard authoring.",
+        )
+
+    dest_dir = _STUDIO_DATA_DIR / tenant_id / sku_id / "standard_imports"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_path = dest_dir / f"{_uid()}{validated.extension}"
+    dest_path.write_bytes(validated.content)
+
+    extracted_text: str | None = None
+    ocr_used = False
+    extraction_assistant = None
+    if validated.extension in {".jpg", ".jpeg", ".png"}:
+        try:
+            image = validate_image_content(validated.content)
+        except UploadValidationError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+        if not ai_gateway.vision_config().configured:
+            raise HTTPException(status_code=503, detail="OCR assistant is not configured")
+        try:
+            ocr = await asyncio.to_thread(
+                ai_gateway.extract_image_text,
+                image_path=dest_path,
+                mime_type=image.mime_type,
+                language=resolve_language(request),
+            )
+        except ai_gateway.StudioAIError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        extracted_text = ocr["text"]
+        ocr_used = True
+        extraction_assistant = ocr.get("assistant")
+    elif validated.extension == ".pdf":
+        extracted_text = await asyncio.to_thread(extract_process_card_text, dest_path)
+        if not extracted_text:
+            if not ai_gateway.vision_config().configured:
+                raise HTTPException(status_code=503, detail="OCR assistant is not configured")
+            page_prefix = dest_dir / f"{dest_path.stem}-page"
+            try:
+                rendered = await asyncio.to_thread(
+                    subprocess.run,
+                    ["pdftoppm", "-png", "-r", "150", "-f", "1", "-l", "10",
+                     str(dest_path), str(page_prefix)],
+                    capture_output=True, check=False, timeout=60,
+                )
+            except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as exc:
+                raise HTTPException(status_code=503, detail="PDF OCR renderer is unavailable") from exc
+            pages = sorted(dest_dir.glob(f"{page_prefix.name}-*.png"))
+            if rendered.returncode != 0 or not pages:
+                raise HTTPException(status_code=422, detail="PDF pages could not be prepared for OCR")
+            page_texts = []
+            assistants = []
+            for page in pages:
+                try:
+                    ocr = await asyncio.to_thread(
+                        ai_gateway.extract_image_text,
+                        image_path=page,
+                        mime_type="image/png",
+                        language=resolve_language(request),
+                    )
+                except ai_gateway.StudioAIError as exc:
+                    raise HTTPException(status_code=502, detail=str(exc)) from exc
+                page_texts.append(ocr["text"])
+                assistants.append(ocr.get("assistant"))
+            extracted_text = "\n\n".join(page_texts)
+            ocr_used = True
+            extraction_assistant = assistants
+    elif validated.extension in REAL_TEXT_EXTRACTION_EXTENSIONS:
+        extracted_text = await asyncio.to_thread(extract_process_card_text, dest_path)
+    if not extracted_text:
+        raise HTTPException(status_code=422, detail="No readable standard text was found.")
+
+    if not ai_gateway.text_config().configured:
+        raise HTTPException(status_code=503, detail="text assistant is not configured")
+    import_message = (
+        f"Imported {source_kind} '{filename}'. Convert the following source text "
+        "into a complete QC standard draft without inventing missing values:\n"
+        f"{extracted_text}"
+    )
+    try:
+        ai_result = await asyncio.to_thread(
+            ai_gateway.author_text,
+            message=import_message,
+            language=resolve_language(request),
+            current_sku=studio.sku_summary(db, sku),
+        )
+    except ai_gateway.StudioAIError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    result = studio.process_structured_ai_turn(
+        db,
+        tenant_id=tenant_id,
+        message=import_message,
+        ai_result=ai_result,
+        current_sku_id=sku.id,
+        operator_id=effective_actor(request),
+        source_channel="studio_import_live_ai",
+    )
+    _record_message(
+        request, db, role="user", text=f"Imported {source_kind}: {filename}",
+    )
+    _record_message(
+        request, db, role="assistant", text=result.reply, intent=result.action,
+        action={"sku_id": sku.id, "source_kind": source_kind},
+    )
+    payload = result.to_dict()
+    payload["import"] = {
+        "source_kind": source_kind,
+        "filename": filename,
+        "ocr_used": ocr_used,
+        "extraction_assistant": extraction_assistant,
+    }
+    return payload
+
 
 # ── Voice toggle (§5.3) — controlled not-enabled response, never crashes ──────
 
@@ -418,6 +574,24 @@ async def studio_upload(
     }
 
 
+def _resolve_studio_photo_path(local_path: str) -> Path | None:
+    sample_path = resolve_sample_photo_path(local_path)
+    if sample_path is not None:
+        return sample_path
+    path = Path(local_path)
+    if not path.is_absolute():
+        try:
+            suffix = path.relative_to(_LEGACY_STUDIO_DATA_DIR)
+        except ValueError:
+            return None
+        path = _STUDIO_DATA_DIR / suffix
+    resolved = path.resolve()
+    root = _STUDIO_DATA_DIR.resolve()
+    if resolved != root and root not in resolved.parents:
+        return None
+    return resolved
+
+
 @router.get("/admin/studio/photos/{photo_id}")
 def serve_photo(
     photo_id: str,
@@ -427,8 +601,8 @@ def serve_photo(
     photo = db.query(QCStandardPhoto).filter_by(id=photo_id, tenant_id=tenant_id).first()
     if photo is None or not photo.local_path:
         raise HTTPException(status_code=404, detail="Photo not found")
-    path = Path(photo.local_path)
-    if not path.exists():
+    path = _resolve_studio_photo_path(photo.local_path)
+    if path is None or not path.is_file():
         raise HTTPException(status_code=404, detail="Photo file missing")
     return FileResponse(str(path), media_type=photo.mime_type or "application/octet-stream")
 

@@ -155,6 +155,133 @@ def test_sample_created_for_tenant_is_available_in_existing_studio(client):
     assert any(item["item_number"] == "HANDOFF-001" for item in items)
 
 
+def test_sample_handoff_preselects_sku_and_exposes_three_authoring_inputs(client):
+    created = client.post(
+        "/admin/samples",
+        follow_redirects=False,
+        data={"tenant_id": "demo", "item_number": "HANDOFF-002", "name": "Studio handoff"},
+    )
+    sku_id = created.headers["location"].split("/")[-1].split("?")[0]
+    detail = client.get(created.headers["location"])
+    assert f"sku_id={sku_id}" in detail.text
+    page = client.get(f"/admin/studio?tenant_id=demo&sku_id={sku_id}")
+    assert f'data-initial-sku="{sku_id}"' in page.text
+    assert 'id="chat-text"' in page.text
+    assert 'id="process-card-toggle"' in page.text
+    assert 'id="standard-file-toggle"' in page.text
+
+
+def _structured_import_result():
+    return {
+        "intent": "define_requirements",
+        "reply": "Structured draft ready.",
+        "sku": {},
+        "questions": [],
+        "checkpoints": [{
+            "point_code": "STONE_COUNT", "label": "Stone count",
+            "description": "Count stones", "method_hint": "counting",
+            "severity": "major", "expected_value": "7",
+            "pass_criteria": "Exactly 7", "expected_features": {}, "cv_config": {},
+        }],
+        "assistant": {"role": "text", "provider": "test", "model": "text-9b", "elapsed_ms": 1, "mode": "live"},
+    }
+
+
+def test_text_standard_file_is_always_structured_by_text_assistant(client, monkeypatch):
+    from src.qc_model.studio import ai_gateway
+
+    sku_id = _create_flw(client)
+    seen = {}
+    monkeypatch.setattr(ai_gateway, "text_config", lambda: type("C", (), {"configured": True})())
+    def fake_author_text(**kwargs):
+        seen.update(kwargs)
+        return _structured_import_result()
+    monkeypatch.setattr(ai_gateway, "author_text", fake_author_text)
+    response = client.post(
+        "/admin/studio/import-standard",
+        data={"tenant_id": "default", "sku_id": sku_id, "source_kind": "file"},
+        files={"document": ("standard.txt", "7 rhinestones; missing one is rejected", "text/plain")},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["assistant"]["model"] == "text-9b"
+    assert body["import"]["ocr_used"] is False
+    assert "7 rhinestones" in seen["message"]
+    assert body["confirmation_card"]["checkpoints"][0]["expected_value"] == "7"
+
+
+def test_process_card_image_runs_ocr_before_text_assistant(client, monkeypatch):
+    from src.qc_model.studio import ai_gateway
+
+    sku_id = _create_flw(client)
+    calls = []
+    monkeypatch.setattr(ai_gateway, "vision_config", lambda: type("C", (), {"configured": True})())
+    monkeypatch.setattr(ai_gateway, "text_config", lambda: type("C", (), {"configured": True})())
+    def fake_ocr(**kwargs):
+        calls.append("ocr")
+        return {"text": "3 pearls and 7 rhinestones", "assistant": {"model": "ocr"}}
+    def fake_text(**kwargs):
+        calls.append("9b")
+        assert "3 pearls and 7 rhinestones" in kwargs["message"]
+        return _structured_import_result()
+    monkeypatch.setattr(ai_gateway, "extract_image_text", fake_ocr)
+    monkeypatch.setattr(ai_gateway, "author_text", fake_text)
+    response = client.post(
+        "/admin/studio/import-standard",
+        data={"tenant_id": "default", "sku_id": sku_id, "source_kind": "process_card"},
+        files={"document": ("card.png", _tiny_png(), "image/png")},
+    )
+    assert response.status_code == 200, response.text
+    assert calls == ["ocr", "9b"]
+    assert response.json()["import"]["ocr_used"] is True
+
+
+def test_scanned_pdf_renders_then_runs_ocr_before_text_assistant(client, monkeypatch):
+    from pathlib import Path
+    from src.api import qc_studio_router
+    from src.qc_model.studio import ai_gateway
+
+    sku_id = _create_flw(client)
+    calls = []
+    monkeypatch.setattr(qc_studio_router, "extract_process_card_text", lambda path: None)
+    monkeypatch.setattr(ai_gateway, "vision_config", lambda: type("C", (), {"configured": True})())
+    monkeypatch.setattr(ai_gateway, "text_config", lambda: type("C", (), {"configured": True})())
+    def fake_render(args, **kwargs):
+        Path(args[-1] + "-1.png").write_bytes(_tiny_png())
+        return type("Completed", (), {"returncode": 0})()
+    def fake_ocr(**kwargs):
+        calls.append("ocr")
+        return {"text": "4 petals", "assistant": {"model": "ocr"}}
+    def fake_text(**kwargs):
+        calls.append("9b")
+        assert "4 petals" in kwargs["message"]
+        return _structured_import_result()
+    monkeypatch.setattr(qc_studio_router.subprocess, "run", fake_render)
+    monkeypatch.setattr(ai_gateway, "extract_image_text", fake_ocr)
+    monkeypatch.setattr(ai_gateway, "author_text", fake_text)
+    response = client.post(
+        "/admin/studio/import-standard",
+        data={"tenant_id": "default", "sku_id": sku_id, "source_kind": "process_card"},
+        files={"document": ("scanned.pdf", b"%PDF-scanned", "application/pdf")},
+    )
+    assert response.status_code == 200, response.text
+    assert calls == ["ocr", "9b"]
+    assert response.json()["import"]["ocr_used"] is True
+
+
+def test_import_rejects_unconvertible_file_before_text_assistant(client, monkeypatch):
+    from src.qc_model.studio import ai_gateway
+
+    sku_id = _create_flw(client)
+    monkeypatch.setattr(ai_gateway, "author_text", lambda **kwargs: pytest.fail("9B must not receive unreadable input"))
+    response = client.post(
+        "/admin/studio/import-standard",
+        data={"tenant_id": "default", "sku_id": sku_id, "source_kind": "file"},
+        files={"document": ("drawing.dxf", b"not-rendered", "application/dxf")},
+    )
+    assert response.status_code == 415
+
+
 def test_studio_config_exposes_shared_seven_state_lifecycle(client):
     resp = client.get("/admin/studio/config")
     assert resp.status_code == 200
