@@ -1,5 +1,14 @@
 # Stage 2 P0 Remediation Record
 
+> **Superseded (2026-07-22, later same day):** the 30B remote vision
+> fallback described below has been decommissioned per a production
+> decision (STAGE2_QWEN_VISION_PRODUCTION_ASSESSMENT_20260722) — the blind
+> 30B counting evaluation in that assessment got 2 of 3 items wrong with
+> high stated confidence. Qwen3-VL-4B is now the sole production vision
+> model, scoped to counting confirmation and obvious-defect detection; see
+> `src/qc_model/studio/ai_gateway.py`. This record is kept as-is for audit
+> history; do not treat its fallback/routing description below as current.
+
 **Environment:** on-site sandbox host (path redacted — see internal deployment log)
 
 **Status:** implementation and automated verification complete; interactive

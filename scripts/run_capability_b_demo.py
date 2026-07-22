@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 """
-HISTORICAL DEMO — unrelated to Stage 3 Group B. Do not present this script's
-output as Stage 3 Group A/B evidence. Stage 3's Group A/B definitions live in
-docs/STAGE3_AB_TESTING_SPEC.md; that spec's real-device entry points are
-scripts/jetson_stage3_run_group_a.py and jetson_stage3_run_group_b.py. The
-"Capability B" name below predates and has no relationship to that spec.
+HISTORICAL DEMO — unrelated to Stage 3 Group B (now decommissioned, see
+docs/STAGE3_AB_TESTING_SPEC.md §0). Do not present this script's output as
+Stage 3 evidence. Stage 3's Group A definition lives in
+docs/STAGE3_AB_TESTING_SPEC.md; that spec's real-device entry point is
+scripts/jetson_stage3_run_group_a.py. The "Capability B" name below predates
+and has no relationship to that spec.
 
 Core Capability B demo — three-tier video pipeline.
 

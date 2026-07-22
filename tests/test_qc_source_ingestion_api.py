@@ -341,9 +341,6 @@ def test_upload_process_card_image_uses_live_provider_neutral_ocr(client, monkey
             "assistant": {
                 "role": "vision", "provider": "openai_compatible",
                 "model": "replaceable-4b", "elapsed_ms": 42, "mode": "live",
-                "route": "primary", "strategy": "cv_then_primary_then_conditional_fallback",
-                "primary_model": "replaceable-4b", "fallback_model": None,
-                "fallback_used": False, "escalation_reasons": [], "passes": 1,
             },
         },
     )

@@ -96,7 +96,7 @@ def main() -> int:
             print(f"  - {p}")
         print(
             "\nRemove or redact these before committing. See the P0 remediation "
-            "in docs/STAGE3_AB_TESTING_SPEC.md §6 (禁止事项)."
+            "in docs/STAGE3_AB_TESTING_SPEC.md §5 (禁止事项)."
         )
         return 1
     print(f"Sensitive-info lint passed: {len(_DENYLIST)} denylisted string(s) not found in tracked files.")

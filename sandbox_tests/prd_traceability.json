@@ -347,34 +347,31 @@
     },
     {
       "id": "PRD-S3-03",
-      "requirement": "Group B 远程 adapter + 受限隧道 + 严格 schema + 失败关闭（GAP-05/06/07）",
-      "status": "implemented_unverified",
-      "requires_real_run": true,
+      "requirement": "Group B（远程 VLM）已从系统中彻底移除，不再参与 Stage 2 及以后的测试或生产（生产决策 2026-07-22，STAGE2_QWEN_VISION_PRODUCTION_ASSESSMENT_20260722 30B 计数正确率仅 1/3 且高置信度报错）",
+      "status": "verified",
+      "requires_real_run": false,
       "code_evidence": [
-        "src/qc_model/production/remote_chat_provider.py",
-        "docs/STAGE3_GROUP_B_REMOTE_ADAPTER.md",
-        "deploy/jetson/giraffe-stage3-group-b-tunnel.service",
-        "deploy/jetson/stage3-group-b-tunnel.env.example"
+        "src/qc_model/studio/ai_gateway.py",
+        "src/qc_model/production/provider.py",
+        "docs/STAGE3_AB_TESTING_SPEC.md"
       ],
-      "test_evidence": ["tests/test_remote_chat_vlm_provider.py"],
+      "test_evidence": ["tests/test_studio_ai_gateway.py", "tests/test_provider_abstraction.py"],
       "real_run_evidence": null,
-      "gap": "adapter 契约、图片大小限制、断网/超时/坏 JSON/缺字段失败关闭均有单测覆盖；真机隧道与远程真实调用待验收。GAP-08（远程 /model-info 身份证据）是仓库外部依赖，见 STAGE3_GROUP_B_REMOTE_ADAPTER.md §3"
+      "gap": "remote_chat_provider.py、jetson_stage3_run_group_b.py、STAGE3_GROUP_B_REMOTE_ADAPTER.md、Group B 部署件与测试均已删除；stage3_ab_report.schema.json 的 stage3_group 收紧为仅接受 'A'"
     },
     {
       "id": "PRD-S3-04",
-      "requirement": "Stage 3 A/B 真机 harness：授权门禁前置、真实签名请求、不得伪造结果（GAP-02 harness 部分）",
+      "requirement": "Stage 3 Group A 真机 harness：授权门禁前置、真实签名请求、不得伪造结果（GAP-02 harness 部分）",
       "status": "implemented_unverified",
       "requires_real_run": true,
       "code_evidence": [
-        "scripts/jetson_stage3_run_group_a.py",
-        "scripts/jetson_stage3_run_group_b.py"
+        "scripts/jetson_stage3_run_group_a.py"
       ],
       "test_evidence": [
-        "tests/test_jetson_stage3_group_a_harness.py",
-        "tests/test_jetson_stage3_group_b_harness.py"
+        "tests/test_jetson_stage3_group_a_harness.py"
       ],
       "real_run_evidence": null,
-      "gap": "Group A 签名已用真实 AdminAuthenticator 验证兼容；两个 harness 的门禁拒绝路径、传输失败不伪造 pass 均有单测；真机连通性与真实模型调用待验收"
+      "gap": "Group A 签名已用真实 AdminAuthenticator 验证兼容；门禁拒绝路径、传输失败不伪造 pass 均有单测；真机连通性与真实模型调用待验收"
     },
     {
       "id": "PRD-S3-05",
@@ -447,6 +444,15 @@
     {
       "id": "PRD-S2-41",
       "requirement": "计数类检测点若无可用 CV 检测器，不得凭 VLM 自行猜测的数量自动放行，须强制转人工复核（STAGE2_QWEN_VISION_PRODUCTION_ASSESSMENT_20260722 §3：CV 未可靠定位时必须停止）",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": ["src/qc_model/studio/ai_gateway.py"],
+      "test_evidence": ["tests/test_studio_ai_gateway.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-42",
+      "requirement": "Qwen3-VL-4B 为生产唯一视觉模型，无 30B/远程升级路径；检查点范围收窄为仅 counting 与 defect_detection，其余 method_hint 一律转人工复核（生产决策 2026-07-22）",
       "status": "verified",
       "requires_real_run": false,
       "code_evidence": ["src/qc_model/studio/ai_gateway.py"],
