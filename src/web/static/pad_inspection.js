@@ -97,14 +97,20 @@
       .catch(function (error) { setStatus((s.error || 'Inspection error:') + ' ' + error.message, 'error'); });
   }
 
+  // Client-side stage timings for the 10s SLO record: capture (frame encode)
+  // and upload (media POST) happen in the browser, so the browser reports them.
+  var stageTimings = {};
+
   function attachImage(file, source) {
     var form = new FormData();
     form.append('image', file, file.name || 'capture.jpg');
     form.append('capture_source', source);
     mediaStatus.textContent = s.loading || 'Loading…';
+    var uploadStarted = performance.now();
     return fetchJson('/api/v1/pad/inspection-jobs/' + encodeURIComponent(jobId) + '/media', {
       method: 'POST', body: form,
     }).then(function (data) {
+      stageTimings.upload_ms = Math.round(performance.now() - uploadStarted);
       mediaStatus.textContent = (s.mediaAttached || 'Evidence attached') + ' · ' + data.source + ' · ' + data.sha256.slice(0, 12);
       return loadJob();
     }).catch(function (error) {
@@ -192,6 +198,7 @@
       setStatus(s.cameraRequired || 'Connect and start a USB camera first.', 'error');
       return;
     }
+    var captureStarted = performance.now();
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -200,6 +207,7 @@
         setStatus((s.error || 'Inspection error:') + ' capture encoding failed', 'error');
         return;
       }
+      stageTimings.capture_ms = Math.round(performance.now() - captureStarted);
       attachImage(new File([blob], 'mac-usb-camera.jpg', {type: 'image/jpeg'}), 'mac_usb_camera');
     }, 'image/jpeg', 0.9);
   }
@@ -209,6 +217,8 @@
     setStatus(s.visionAnalyzing || 'Running live vision inspection…');
     fetchJson('/api/v1/pad/inspection-jobs/' + encodeURIComponent(jobId) + '/vision-analyze', {
       method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({client_timings: stageTimings}),
     }).then(function (data) {
       var byCode = {};
       (data.checkpoint_results || []).forEach(function (item) { byCode[item.point_code] = item; });
