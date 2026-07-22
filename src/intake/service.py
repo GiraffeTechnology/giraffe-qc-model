@@ -156,6 +156,14 @@ def persist_structured_draft(
     This is intentionally separate from the deterministic test adapter.  It
     never creates a standard revision and therefore cannot bypass the Admin
     Studio confirmation gate.
+
+    UI audit (2026-07-22): a draft with no checkpoints (e.g. a photo-analysis
+    turn that only asks clarifying questions) has nothing for the admin to
+    confirm or reject. Marking it ``pending_confirmation`` anyway left it
+    permanently pending — ``sku_summary()``'s "most recent pending
+    confirmation" lookup would later resurface it as an empty confirm card
+    on an unrelated page load. Such a draft is recorded as ``extracted``
+    instead, so it never surfaces as a confirmable candidate.
     """
     intake = db.query(QCStandardIntake).filter_by(id=intake_id).one()
     extracted = {
@@ -169,7 +177,7 @@ def persist_structured_draft(
         "checkpoints": checkpoints,
         "questions_for_operator": questions,
     }
-    intake.status = "pending_confirmation"
+    intake.status = "pending_confirmation" if checkpoints else "extracted"
     intake.parser_version = parser_version[:64]
     intake.confidence_score = _score(extracted)
     db.commit()

@@ -47,6 +47,7 @@ import src.db.intake_models       # noqa: F401
 import src.db.studio_models       # noqa: F401
 import src.db.qc_bundle_models    # noqa: F401
 import src.db.qc_verdict_models   # noqa: F401
+import src.db.training_models     # noqa: F401
 
 from src.api.main import app
 from src.api.deps import get_db_dep
@@ -189,7 +190,38 @@ def _s3_signed_bundle_body(sku_id: str, revision_id: str) -> dict:
 # ── The single required Definition-of-Done demo (§15) ─────────────────────────
 
 
-def test_admin_to_pad_e2e_definition_of_done(client):
+def _qualify_training(db_session_factory, sku_id: str, standard_revision_id: str, tenant_id: str = TENANT) -> None:
+    """Directly insert a qualifying rolling window of reviewed training
+    judgments (PRD §9.5-9.8) so this cross-session e2e proof stays focused
+    on the Admin -> Pad -> Server hand-off it exists to test, rather than
+    also mocking 29 individual CV+VLM training calls -- the training gate's
+    own logic is exhaustively covered by tests/test_training_gate.py."""
+    import uuid
+    from datetime import datetime, timedelta, timezone
+
+    from src.db.training_models import QCTrainingJudgment
+
+    session = db_session_factory()
+    try:
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        for i in range(29):
+            session.add(QCTrainingJudgment(
+                id=uuid.uuid4().hex, tenant_id=tenant_id, sku_id=sku_id,
+                standard_revision_id=standard_revision_id,
+                ground_truth_label="qualified" if i % 2 == 0 else "unqualified",
+                model_overall_result="pass" if i % 2 == 0 else "fail",
+                model_checkpoint_results_json=[],
+                status="reviewed", admin_decision="correct", admin_id="test-admin",
+                reviewed_at=base + timedelta(seconds=i),
+                is_false_pass=False,
+                created_at=base + timedelta(seconds=i),
+            ))
+        session.commit()
+    finally:
+        session.close()
+
+
+def test_admin_to_pad_e2e_definition_of_done(client, db_session_factory):
     ctx = _studio_create_confirm(client)
     sku_id, revision_id, point_codes = ctx["sku_id"], ctx["revision_id"], ctx["point_codes"]
 
@@ -198,6 +230,7 @@ def test_admin_to_pad_e2e_definition_of_done(client):
     assert client.get(ctx["photo_url"]).status_code == 200
 
     # S2: publish a signed L2 studio bundle over the confirmed standard.
+    _qualify_training(db_session_factory, sku_id, revision_id)
     pub = client.post("/admin/studio/publish", json={"tenant_id": TENANT, "sku_id": sku_id})
     assert pub.status_code == 200, pub.text
     bundle = pub.json()["bundle"]

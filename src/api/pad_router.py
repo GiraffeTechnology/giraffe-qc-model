@@ -11,6 +11,9 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_db_dep
+from src.inspection.cv_pipeline import RegistrationFailed as _RegistrationFailed
+from src.inspection.cv_pipeline import registered_crop as _registered_crop
+from src.inspection.cv_pipeline import run_cv_for_points
 from src.openclaw.qc_agent_bridge import QCAgentBridge, get_bridge
 from src.pad.agent_service import process_pad_message
 from src.pad.session_service import (
@@ -684,7 +687,6 @@ async def pad_run_vision_analysis(
             client_timings[stage] = value
 
     from src.db.execution_models import QCInspectionMedia, QCModelResult
-    from src.cv_preanalysis import PreanalysisError, run_preanalysis, write_evidence
     from src.inspection.service import get_active_detection_points_for_job
     from src.qc_model.studio import ai_gateway
 
@@ -716,54 +718,11 @@ async def pad_run_vision_analysis(
     ]
 
     cv_started = time.monotonic()
-    cv_records: list[dict[str, Any]] = []
-    cv_prompt_points: list[dict[str, Any]] = []
     evidence_root = image_path.parent / "cv-evidence"
-    for point in points:
-        config = point.cv_config_json or {}
-        if not config:
-            cv_records.append({
-                "point_code": point.point_code,
-                "cv_status": "not_configured",
-                "analysis": None,
-                "evidence_path": None,
-            })
-            continue
-        try:
-            analysis = run_preanalysis(
-                image_path,
-                config,
-                point.expected_features_json or {},
-            )
-            evidence_path = write_evidence(
-                evidence_root,
-                request_id=job.id,
-                point_code=point.point_code,
-                analysis=analysis,
-            )
-        except PreanalysisError as exc:
-            # WS8 failure semantics: CV is evidence, never the final judge.
-            # Record the failure and continue to the VLM without this point's
-            # CV context; operator review remains mandatory downstream.
-            cv_records.append({
-                "point_code": point.point_code,
-                "cv_status": "failed",
-                "error": str(exc)[:500],
-                "analysis": None,
-                "evidence_path": None,
-            })
-            continue
-        record = {
-            "point_code": point.point_code,
-            "cv_status": "completed",
-            "analysis": analysis,
-            "evidence_path": evidence_path,
-        }
-        cv_records.append(record)
-        cv_prompt_points.append({
-            "point_code": point.point_code,
-            "analysis": analysis,
-        })
+    cv_records, cv_prompt_points = run_cv_for_points(
+        db, tenant_id=tenant_id, points=points, image_path=image_path,
+        evidence_root=evidence_root, request_id=job.id,
+    )
     cv_context = None
     if cv_prompt_points:
         cv_context = {

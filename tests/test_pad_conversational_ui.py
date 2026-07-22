@@ -1190,7 +1190,10 @@ def test_stage2_live_vision_endpoint_records_suggestions_without_auto_finalizing
         "analyzers": [{"name": "pistil_localization", "params": {}}],
     }
     configured_point.expected_features_json = {}
-    configured_point.regions_json = [{"x": 0.1, "y": 0.1, "w": 0.5, "h": 0.5}]
+    # No authored regions_json: this point exercises the legacy
+    # whole-frame CV path (a region without a real standard-photo
+    # image_id would now require standard-photo registration -- see
+    # test_cv_registration_pipeline.py for that path).
     db_session.commit()
     fake_results = [
         {

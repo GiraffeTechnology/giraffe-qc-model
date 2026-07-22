@@ -172,7 +172,8 @@
       })
       .join("");
 
-    const canPublish = sku.standard_status === "standard_active";
+    const trainingQualified = Boolean(sku.training && sku.training.qualified);
+    const canPublish = sku.standard_status === "standard_active" && trainingQualified;
     skuCard.innerHTML =
       `<h3>${esc(sku.name)}</h3>` +
       `<div class="sku-sub">${esc(sku.item_number)}${sku.category ? " · " + esc(sku.category) : ""}</div>` +
@@ -184,8 +185,11 @@
       `</div>` +
       `<div><span class="status-badge status-${esc(sku.standard_status)}">${esc(standardStatusLabel(sku.standard_status))}</span></div>` +
       (dps ? `<ul class="dp-list">${dps}</ul>` : `<p class="muted" style="margin-top:12px">${esc(t("noDetectionPoints"))}</p>`) +
+      `<div id="training-section" class="training-section"></div>` +
       `<div class="publish-row">` +
       `<button class="publish-btn" id="publish-btn" ${canPublish ? "" : "disabled"}>${esc(t("publish"))}</button>` +
+      (sku.standard_status === "standard_active" && !trainingQualified
+        ? `<div class="muted publish-blocked-note">${esc(t("publishBlockedByTraining"))}</div>` : "") +
       `<div class="bundle-note hidden" id="bundle-note"></div>` +
       `</div>` +
       `<p class="install-next">${esc(t("installNext"))} <a href="/admin/workstations">${esc(t("installManage"))}</a></p>` +
@@ -201,7 +205,10 @@
       btn.addEventListener("click", () => editAnalysisConfig(btn.dataset.dpId));
     });
 
-    if (sku.active_revision_id) loadProbation(sku.active_revision_id);
+    if (sku.active_revision_id) {
+      loadProbation(sku.active_revision_id);
+      renderTraining($("#training-section"), sku);
+    }
   }
 
   function editAnalysisConfig(dpId) {
@@ -305,6 +312,131 @@
         addBubble(lines.join("\n"), "system");
       })
       .catch((err) => addBubble(t("disagreementLoadFailed", { message: err.message }), "system"));
+  }
+
+  // ── Training step (§9.5-9.8): CV+VLM judgment against a labeled sample, ──
+  // per-decision admin review, rolling 29/30-window publish gate. The gate
+  // itself (sku.training) already arrives on the SKU summary; this section
+  // additionally loads the pending review queue and lets the admin record
+  // new judgments and submit decisions.
+  function renderTraining(slot, sku) {
+    if (!slot) return;
+    const status = sku.training;
+    const badge = status && status.qualified
+      ? `<span class="status-badge status-training-qualified">${esc(t("trainingQualified"))}</span>`
+      : `<span class="status-badge status-training-pending">${esc(t("trainingNotQualified"))}</span>`;
+    const window29 = status && status.recent_29_correct != null
+      ? t("trainingWindowStats", { correct: status.recent_29_correct, size: 29 }) : null;
+    const window30 = status && status.recent_30_correct != null
+      ? t("trainingWindowStats", { correct: status.recent_30_correct, size: 30 }) : null;
+    const falsePassNote = status && status.recent_30_false_pass_count > 0
+      ? `<div class="training-false-pass">${esc(t("trainingFalsePass", { count: status.recent_30_false_pass_count }))}</div>` : "";
+    slot.innerHTML =
+      `<div class="training-head">` +
+      `<strong>${esc(t("trainingHeading"))}</strong> ${badge}` +
+      `</div>` +
+      `<div class="training-stats muted">` +
+      (window30 || window29 || t("trainingNoSamples")) +
+      `</div>` +
+      falsePassNote +
+      `<div class="training-form">` +
+      `<input type="file" id="training-sample-input" accept="image/*">` +
+      `<label><input type="radio" name="training-truth" value="qualified" checked> ${esc(t("trainingGroundTruthQualified"))}</label>` +
+      `<label><input type="radio" name="training-truth" value="unqualified"> ${esc(t("trainingGroundTruthUnqualified"))}</label>` +
+      `<button type="button" class="btn" id="training-submit-btn">${esc(t("trainingSubmitSample"))}</button>` +
+      `</div>` +
+      `<div id="training-queue" class="training-queue"></div>`;
+
+    const submitBtn = slot.querySelector("#training-submit-btn");
+    if (submitBtn) submitBtn.addEventListener("click", () => submitTrainingSample(sku.id));
+    loadTrainingQueue(sku.id);
+  }
+
+  function submitTrainingSample(skuId) {
+    const input = $("#training-sample-input");
+    const file = input && input.files && input.files[0];
+    if (!file) {
+      addBubble(t("trainingSelectSample"), "system");
+      return;
+    }
+    const truthInput = document.querySelector('input[name="training-truth"]:checked');
+    const groundTruth = truthInput ? truthInput.value : "qualified";
+    const fd = new FormData();
+    fd.append("tenant_id", tenant);
+    fd.append("ground_truth_label", groundTruth);
+    fd.append("image", file);
+    addBubble(t("trainingRunning"), "system");
+    api(`/admin/studio/skus/${skuId}/training/judgments`, { method: "POST", body: fd })
+      .then(() => {
+        addBubble(t("trainingRecorded"), "system");
+        if (input) input.value = "";
+        loadTrainingQueue(skuId);
+      })
+      .catch((err) => addBubble(t("trainingFailed", { message: err.message }), "system"));
+  }
+
+  function loadTrainingQueue(skuId) {
+    const queue = $("#training-queue");
+    if (!queue) return;
+    api(`/admin/studio/skus/${skuId}/training/judgments?tenant_id=${tenant}`)
+      .then((data) => renderTrainingQueue(queue, skuId, data.judgments || []))
+      .catch(() => { queue.innerHTML = ""; });
+  }
+
+  function renderTrainingQueue(queue, skuId, judgments) {
+    if (!judgments.length) {
+      queue.innerHTML = `<p class="muted">${esc(t("trainingQueueEmpty"))}</p>`;
+      return;
+    }
+    queue.innerHTML = judgments.map((j) => {
+      const results = (j.checkpoint_results || [])
+        .map((r) => `${esc(r.point_code)}: ${esc(r.result)}`)
+        .join(", ");
+      return (
+        `<div class="training-item" data-judgment-id="${esc(j.id)}">` +
+        `<div class="training-item__meta">${esc(t("trainingGroundTruth", { label: j.ground_truth_label }))} · ${esc(t("trainingModelResult", { result: j.model_overall_result }))}</div>` +
+        `<div class="training-item__results muted">${results}</div>` +
+        `<div class="training-item__actions">` +
+        `<button type="button" class="btn btn-primary training-correct">${esc(t("trainingCorrect"))}</button>` +
+        `<button type="button" class="btn training-incorrect">${esc(t("trainingIncorrect"))}</button>` +
+        `</div>` +
+        `</div>`
+      );
+    }).join("");
+    queue.querySelectorAll(".training-item").forEach((row) => {
+      const judgmentId = row.dataset.judgmentId;
+      row.querySelector(".training-correct").addEventListener("click", () => submitTrainingDecision(skuId, judgmentId, "correct"));
+      row.querySelector(".training-incorrect").addEventListener("click", () => submitTrainingDecision(skuId, judgmentId, "incorrect"));
+    });
+  }
+
+  function submitTrainingDecision(skuId, judgmentId, decision) {
+    let correction = null;
+    if (decision === "incorrect") {
+      const pointCode = window.prompt(t("trainingCorrectionPoint"));
+      if (pointCode === null) return;
+      const modelError = window.prompt(t("trainingCorrectionModelError"));
+      if (modelError === null) return;
+      const correctConclusion = window.prompt(t("trainingCorrectionConclusion"));
+      if (correctConclusion === null) return;
+      const correctFacts = window.prompt(t("trainingCorrectionFacts"));
+      if (correctFacts === null) return;
+      correction = {
+        point_code: pointCode, model_error: modelError,
+        correct_conclusion: correctConclusion, correct_facts: correctFacts,
+      };
+    }
+    api(`/admin/studio/training/judgments/${judgmentId}/decision`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tenant_id: tenant, decision, correction }),
+    })
+      .then(() => {
+        addBubble(t("trainingDecisionSaved"), "system");
+        loadTrainingQueue(skuId);
+        selectSku(skuId); // refresh the gate status + publish button
+      })
+      .catch((err) => addBubble(t("trainingDecisionFailed", { message: err.message }), "system"));
   }
 
   function publish() {

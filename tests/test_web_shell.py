@@ -110,6 +110,15 @@ def test_admin_home_shows_sample_count_where_available(client):
     assert "card__count" in resp.text
 
 
+def test_admin_home_samples_card_precedes_studio_card(client):
+    """UI audit (2026-07-22, PRD §9.8): samples-and-standards must come
+    before the digital QC studio — there is nothing to train on until a
+    sample has been captured and reviewed."""
+    resp = client.get("/admin")
+    body = resp.text
+    assert body.index('href="/admin/samples"') < body.index('href="/admin/studio"')
+
+
 # --- Scaffold routes -------------------------------------------------------
 
 

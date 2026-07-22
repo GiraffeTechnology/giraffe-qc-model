@@ -27,6 +27,7 @@ import src.db.qc_bundle_models    # noqa: F401
 import src.db.qc_verdict_models   # noqa: F401
 import src.db.pad_models          # noqa: F401
 import src.db.qc_probation_models # noqa: F401
+import src.db.training_models     # noqa: F401
 
 _PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -43,6 +44,7 @@ _CREATE_ALL_ADOPTION_TABLES = [
 _MIGRATED_TABLES = [
     *_CREATE_ALL_ADOPTION_TABLES,
     "qc_probation_transition_audits",
+    "qc_training_judgments",
 ]
 
 
