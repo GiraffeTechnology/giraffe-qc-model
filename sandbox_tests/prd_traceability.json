@@ -89,13 +89,13 @@
     },
     {
       "id": "PRD-S2-09",
-      "requirement": "AI 主动生成完整候选检查点并做覆盖度自审",
+      "requirement": "检测点由管理员通过对话流或工艺卡输入；AI 仅结构化提取与追问，不得从标准照生成检测点（2026-07-22 需求修正）",
       "status": "implemented_unverified",
       "requires_real_run": true,
-      "code_evidence": ["src/qc_model/studio/ai_gateway.py"],
-      "test_evidence": ["tests/test_studio_ai_gateway.py"],
+      "code_evidence": ["src/qc_model/studio/ai_gateway.py", "src/intake/service.py"],
+      "test_evidence": ["tests/test_studio_ai_gateway.py", "tests/test_admin_studio.py"],
       "real_run_evidence": null,
-      "gap": "coverage_review 已实现（PR #74）；对当前真实标准件的验收未执行"
+      "gap": "照片分析已改为纯描述+追问，模型自发的检查点列表被强制丢弃；对话流/工艺卡编制的真实验收未执行"
     },
     {
       "id": "PRD-S2-10",
