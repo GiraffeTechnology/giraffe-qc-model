@@ -4,9 +4,8 @@ This directory is the Stage 3 branch for physical camera, real Xavier NX,
 role-boundary, timing, and defocus/low-light/occlusion evidence. It carries
 two separate gates that must not be conflated.
 
-Group B (remote/cloud VLM) has been decommissioned from the system
-(`docs/STAGE3_AB_TESTING_SPEC.md` §0) — only Group A (Jetson-local CV +
-Jetson-local VLM) remains.
+Stage 3 uses Group A only: Jetson-local CV plus a Jetson-local visual model,
+as defined by `docs/STAGE3_AB_TESTING_SPEC.md`.
 
 ## Deployment preparation — may proceed now
 
@@ -15,16 +14,12 @@ service install, and the readiness self-check may all proceed in parallel
 with Stage 2 acceptance. Follow, in order:
 
 1. `docs/STAGE3_JETSON_PREDEPLOY_CHECKLIST.md`
-2. `docs/STAGE3_AB_TESTING_SPEC.md` (the authoritative Group A
-   definition — **do not** reuse the repo's historical
-   `scripts/run_capability_a_demo.py` / `run_capability_b_demo.py` naming or
-   conclusions; see that spec's §2)
+2. `docs/STAGE3_AB_TESTING_SPEC.md` (the authoritative Group A definition)
 
 ## Stage 3 testing — requires the authorization gate to be open
 
 Formal Stage 3 Group A testing may start **only** after the current
-Stage 2 interactive acceptance has passed. This is not a standing "blocked"
-notice to delete when convenient — it is a live, machine-checked gate:
+Stage 2 interactive acceptance has passed. This is a live, machine-checked gate:
 
 ```bash
 python3 scripts/ci/stage3_authorization_gate.py

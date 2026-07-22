@@ -142,6 +142,17 @@ def test_studio_page_renders(client):
     resp = client.get("/admin/studio")
     assert resp.status_code == 200
     assert "Admin Studio" in resp.text
+    assert "1 Training" in resp.text
+    assert "2 Publish" in resp.text
+    assert "1 SKU" not in resp.text
+    assert "Reference photo" not in resp.text
+
+
+def test_sample_page_shows_sample_entry_and_detection_confirmation_workflow(client):
+    sku_id = _create_flw(client)
+    page = client.get(f"/admin/samples/{sku_id}")
+    assert "1 Sample entry" in page.text
+    assert "2 Detection-point confirmation" in page.text
 
 
 def test_sample_created_for_tenant_is_available_in_existing_studio(client):
