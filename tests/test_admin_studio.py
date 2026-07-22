@@ -155,7 +155,7 @@ def test_sample_created_for_tenant_is_available_in_existing_studio(client):
     assert any(item["item_number"] == "HANDOFF-001" for item in items)
 
 
-def test_sample_handoff_preselects_sku_and_exposes_three_authoring_inputs(client):
+def test_sample_workbench_owns_three_authoring_inputs_and_confirmation(client):
     created = client.post(
         "/admin/samples",
         follow_redirects=False,
@@ -163,12 +163,18 @@ def test_sample_handoff_preselects_sku_and_exposes_three_authoring_inputs(client
     )
     sku_id = created.headers["location"].split("/")[-1].split("?")[0]
     detail = client.get(created.headers["location"])
-    assert f"sku_id={sku_id}" in detail.text
+    assert f'data-sku-id="{sku_id}"' in detail.text
+    assert 'id="sample-authoring-text"' in detail.text
+    assert 'id="sample-process-card-toggle"' in detail.text
+    assert 'id="sample-standard-file-toggle"' in detail.text
+    assert 'id="sample-confirm-card-template"' in detail.text
+    assert '/static/sample_standard_authoring.js' in detail.text
     page = client.get(f"/admin/studio?tenant_id=demo&sku_id={sku_id}")
     assert f'data-initial-sku="{sku_id}"' in page.text
-    assert 'id="chat-text"' in page.text
-    assert 'id="process-card-toggle"' in page.text
-    assert 'id="standard-file-toggle"' in page.text
+    assert 'id="chat-text"' not in page.text
+    assert 'id="process-card-toggle"' not in page.text
+    assert 'id="standard-file-toggle"' not in page.text
+    assert 'id="confirm-card-template"' not in page.text
 
 
 def _structured_import_result():
@@ -513,40 +519,23 @@ def test_upload_valid_png_displayed(client):
     assert served.status_code == 200
 
 
-def test_admin_studio_assets_capture_usb_standard_sample_through_upload_contract():
-    """Stage 2 starts with a live standard-sample capture, not job evidence."""
+def test_sample_workbench_assets_capture_usb_standard_sample_and_review_drafts():
+    """Sample capture and draft review stay together in sample management."""
     root = __import__("pathlib").Path(__file__).resolve().parent.parent
-    html = (root / "src/web/templates/admin_studio.html").read_text()
-    javascript = (root / "src/web/static/admin_studio.js").read_text()
+    html = (root / "src/web/templates/sample_detail.html").read_text()
+    camera = (root / "src/web/static/sample_camera.js").read_text()
+    authoring = (root / "src/web/static/sample_standard_authoring.js").read_text()
 
-    assert 'title="{{ t(\'studio.camera.toggle\') }}" hidden' in html
-    assert 'title="{{ t(\'studio.album.title\') }}" hidden' in html
-    assert 'title="{{ t(\'studio.file.title\') }}" hidden' in html
-
-    assert 'id="standard-camera-toggle"' in html
-    assert 'id="standard-camera-preview"' in html
-    assert 'id="standard-camera-capture"' in html
-    assert 'id="standard-camera-upload-confirm"' in html
-    assert 'id="standard-camera-retake"' in html
-    assert 'id="photo-album-toggle"' in html
-    assert 'id="photo-file-toggle"' in html
-    assert 'id="photo-file-input"' in html
-    assert "navigator.mediaDevices.getUserMedia" in javascript
-    assert "navigator.mediaDevices.enumerateDevices" in javascript
-    assert '.drawImage(' in javascript
-    assert ".toBlob(" in javascript
-    assert "mac-usb-standard-sample.jpg" in javascript
-    assert "pendingStandardSampleBlob" in javascript
-    assert "uploadCapturedStandardSample" in javascript
-    assert "retakeStandardSample" in javascript
-    assert "requestAlbumPhoto" in javascript
-    assert "readAlbumPhoto" in javascript
-    assert "FileReader" in javascript
-    assert "readAsArrayBuffer" in javascript
-    assert "requestDeviceFile" in javascript
-    assert "readDeviceFile" in javascript
-    assert 'api("/admin/studio/upload"' in javascript
-    assert "card.coverage_review" in javascript
+    assert 'id="sample-camera-preview"' in html
+    assert 'id="sample-camera-capture"' in html
+    assert 'id="sample-camera-upload-confirm"' in html
+    assert 'id="sample-camera-retake"' in html
+    assert "navigator.mediaDevices.getUserMedia" in camera
+    assert "navigator.mediaDevices.enumerateDevices" in camera
+    assert ".drawImage(" in camera
+    assert ".toBlob(" in camera
+    assert 'id="sample-confirm-card-template"' in html
+    assert "card.coverage_review" in authoring
     assert "coverageComplete" in html
     assert "coverageIncomplete" in html
 

@@ -340,15 +340,30 @@ _STRINGS = {
     "sample.detail.add_requirement": {LANG_EN: "Add Requirement", LANG_ZH: "添加检验要求", LANG_JA: "要件を追加"},
     "sample.detail.detection_points": {LANG_EN: "Detection Points", LANG_ZH: "检测点", LANG_JA: "検出ポイント"},
     "sample.detail.add_detection_point": {LANG_EN: "Add Detection Point", LANG_ZH: "添加检测点", LANG_JA: "検出ポイントを追加"},
-    "sample.detail.studio_detection_hint": {
-        LANG_EN: "Create detection points in the existing Digital Inspector Studio conversation. The text assistant drafts them for administrator review.",
-        LANG_ZH: "请在现有数字质检工作室对话框中用自然语言创建检测点；文字助手生成草案后由管理员审核。",
-        LANG_JA: "既存のデジタル検査員スタジオの会話で検出ポイントを作成し、テキストアシスタントの草案を管理者が確認します。",
+    "sample.detail.sample_detection_hint": {
+        LANG_EN: "Detection points are drafted and confirmed in the sample standard workbench above.",
+        LANG_ZH: "检测点在上方样品标准工作室中生成草案并确认。",
+        LANG_JA: "検出ポイントは上のサンプル標準ワークベンチで下書きし、確認します。",
     },
-    "sample.detail.open_studio": {
-        LANG_EN: "Continue in Digital Inspector Studio",
-        LANG_ZH: "进入数字质检工作室继续",
-        LANG_JA: "デジタル検査員スタジオで続行",
+    "sample.authoring.title": {
+        LANG_EN: "Sample standard workbench",
+        LANG_ZH: "样品标准工作室",
+        LANG_JA: "サンプル標準ワークベンチ",
+    },
+    "sample.authoring.subtitle": {
+        LANG_EN: "Enter standards in natural language, import a process card, or upload a standard file. Review every draft before confirmation.",
+        LANG_ZH: "使用自然语言、导入工艺卡或上传标准文件录入检测标准；每份草案均须审核后确认。",
+        LANG_JA: "自然言語、工程カード、標準ファイルで検査標準を入力し、すべての草案を確認してください。",
+    },
+    "sample.authoring.placeholder": {
+        LANG_EN: "Describe detection standards or checkpoints…",
+        LANG_ZH: "描述检测标准或检测点……",
+        LANG_JA: "検査標準または検出ポイントを入力…",
+    },
+    "sample.authoring.welcome": {
+        LANG_EN: "Describe the checkpoints, or import a process card or standard file. The text assistant will produce a structured draft for your review.",
+        LANG_ZH: "请描述检测点，或导入工艺卡/标准文件。文字助手会生成结构化草案供你审核。",
+        LANG_JA: "検出ポイントを入力するか、工程カード／標準ファイルを取り込んでください。文字アシスタントが確認用の構造化草案を作成します。",
     },
     "sample.detail.paste_roi": {LANG_EN: "Paste from ROI Editor", LANG_ZH: "从区域编辑器粘贴", LANG_JA: "ROI エディタから貼り付け"},
     "sample.severity.minor": {LANG_EN: "minor", LANG_ZH: "轻微", LANG_JA: "軽微"},
@@ -470,9 +485,19 @@ _STRINGS = {
         LANG_JA: "再認定が必要",
     },
     "studio.center.title": {
-        LANG_EN: "Standard authoring conversation",
-        LANG_ZH: "质检标准对话",
-        LANG_JA: "標準作成会話",
+        LANG_EN: "Training and release",
+        LANG_ZH: "训练与发布",
+        LANG_JA: "トレーニングと公開",
+    },
+    "studio.center.training_scope": {
+        LANG_EN: "Select a SKU to run reviewed training, qualification, publishing, and installation. Detection standards are managed with the sample.",
+        LANG_ZH: "选择 SKU 后进行审核训练、合规判定、发布与安装。检测标准随样品管理。",
+        LANG_JA: "SKU を選択し、レビュー付きトレーニング、認定、公開、インストールを行います。検査標準はサンプル側で管理します。",
+    },
+    "studio.center.open_sample": {
+        LANG_EN: "Open sample standard workbench",
+        LANG_ZH: "打开样品标准工作室",
+        LANG_JA: "サンプル標準ワークベンチを開く",
     },
     "studio.voice.title": {
         LANG_EN: "Voice input",

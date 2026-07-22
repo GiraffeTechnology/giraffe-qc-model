@@ -184,12 +184,16 @@ class TestAdminDetailPage:
         assert "/static/sample_camera.js" in html
         assert translate("sample.detail.capture_usb", "en") in html
 
-    def test_detection_points_are_authored_in_studio_conversation(self, client):
+    def test_detection_points_are_authored_in_sample_workbench(self, client):
         resp = client.get(f"/admin/samples/{self.sku_id}?tenant_id={TENANT}")
         html = resp.text
         assert "/detection-points" not in html
-        assert f"/admin/studio?tenant_id={TENANT}" in html
-        assert translate("sample.detail.studio_detection_hint", "en") in html
+        assert 'id="sample-authoring-text"' in html
+        assert 'id="sample-process-card-toggle"' in html
+        assert 'id="sample-standard-file-toggle"' in html
+        assert 'id="sample-confirm-card-template"' in html
+        assert translate("sample.detail.sample_detection_hint", "en") in html
+        assert translate("sample.authoring.title", "en") in html
 
 class TestAdminSampleI18n:
     def test_sample_workspace_renders_and_switches_to_chinese(self, client):
