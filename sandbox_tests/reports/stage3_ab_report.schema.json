@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://giraffetechnology.com/sandbox/qc-report-stage3-ab-v1.schema.json",
-  "title": "Stage 3 Jetson A/B report",
-  "description": "Extends the base sandbox report schema (report.schema.json) with the fields required to distinguish Group A (local MNN) from Group B (remote VLM) and to make the executing model's identity auditable. See docs/STAGE3_AB_TESTING_SPEC.md.",
+  "title": "Stage 3 Jetson report",
+  "description": "Extends the base sandbox report schema (report.schema.json) with the fields required to identify Group A (local MNN) and make the executing model's identity auditable. Group B (remote VLM) was decommissioned 2026-07-22 (docs/STAGE3_AB_TESTING_SPEC.md §0) and stage3_group now only accepts 'A'. See docs/STAGE3_AB_TESTING_SPEC.md.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -26,16 +26,16 @@
       "enum": ["passed", "failed", "blocked"]
     },
     "stage3_group": {
-      "enum": ["A", "B"],
-      "description": "Which Stage 3 group (docs/STAGE3_AB_TESTING_SPEC.md) this report covers. Must never be confused with the historical Capability A/B demos."
+      "const": "A",
+      "description": "Which Stage 3 group (docs/STAGE3_AB_TESTING_SPEC.md) this report covers. Group B (remote VLM) was decommissioned 2026-07-22; only 'A' is valid. Must never be confused with the historical Capability A/B demos."
     },
     "cv_execution_location": {
       "const": "jetson_local",
-      "description": "CV always runs on the Jetson for both groups."
+      "description": "CV always runs on the Jetson."
     },
     "vlm_execution_location": {
-      "enum": ["jetson_local", "remote"],
-      "description": "Group A must be jetson_local; Group B must be remote."
+      "const": "jetson_local",
+      "description": "The vision model always runs on the Jetson; the remote path was decommissioned."
     },
     "model": {
       "type": "object",
@@ -70,36 +70,13 @@
         }
       }
     },
-    "network": {
-      "type": "object",
-      "description": "Required when stage3_group is B — Group A has no network hop to record.",
-      "properties": {
-        "tunnel_ready": { "type": "boolean" },
-        "remote_model_ready": { "type": "boolean" },
-        "round_trip_ms_p50": { "type": "number", "minimum": 0 },
-        "round_trip_ms_p95": { "type": "number", "minimum": 0 }
-      }
-    },
     "hardware_validation_status": {
       "enum": ["not_run", "passed"],
       "description": "Must stay not_run until a reviewed immutable evidence record exists (jetson_runner/HARDWARE_VALIDATION.md). No Stage 3 report may set this to passed by itself."
     },
     "production_eligible": {
       "const": false,
-      "description": "Every Stage 3 A/B report must keep this false until hardware validation passes and is reviewed."
+      "description": "Every Stage 3 report must keep this false until hardware validation passes and is reviewed."
     }
-  },
-  "allOf": [
-    {
-      "if": { "properties": { "stage3_group": { "const": "A" } } },
-      "then": { "properties": { "vlm_execution_location": { "const": "jetson_local" } } }
-    },
-    {
-      "if": { "properties": { "stage3_group": { "const": "B" } } },
-      "then": {
-        "properties": { "vlm_execution_location": { "const": "remote" } },
-        "required": ["network"]
-      }
-    }
-  ]
+  }
 }

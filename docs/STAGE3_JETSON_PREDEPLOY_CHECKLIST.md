@@ -51,20 +51,6 @@ Stage 2 修复记录(2026-07-22)明确:**只有全新的 Stage 2 交互验收通
       服务必须拒绝启动(`MockModeNotAllowedInProduction`),然后改回 `real`
 - [ ] 非回环访问必须有 TLS 终结(反向代理)
 
-## 2.5 Group B 远程隧道(如需在部署准备阶段一并配置)
-
-按 `docs/STAGE3_GROUP_B_REMOTE_ADAPTER.md`:
-
-- [ ] 在远程主机为专用 SSH key 配置受限 `authorized_keys`(`command="/bin/false"`
-      + `permitopen` 限定到远程服务自身回环端口)
-- [ ] 复制 `deploy/jetson/stage3-group-b-tunnel.env.example` →
-      `/etc/giraffe/stage3-group-b-tunnel.env`(mode 640),填齐占位符
-- [ ] 安装 systemd 单元 `deploy/jetson/giraffe-stage3-group-b-tunnel.service`,
-      `systemctl enable --now`
-- [ ] 确认隧道自动重连(重启远程 sshd 或短暂断网后应自动恢复)
-- [ ] `RemoteChatVlmInspectionProvider` 的 `VLM_BASE_URL` 只指向本机转发端口
-      (`127.0.0.1:<local port>`),不得直接指向远程主机地址
-
 ## 3. 就绪自检(真机上执行)
 
 ```bash
@@ -95,17 +81,17 @@ python3 scripts/jetson_stage3_predeploy_check.py \
 python3 scripts/ci/stage3_authorization_gate.py
 ```
 
-门禁 CLOSED 时,`scripts/jetson_stage3_run_group_a.py` /
-`jetson_stage3_run_group_b.py` 会自行拒绝运行,不产生任何报告——不存在
-绕过参数。门禁只在 `sandbox_tests/prd_traceability.json` 的 `PRD-S2-30`
-指向一份真实存在、`passed`、非 mock、足够新的 Stage 2 报告时才会 OPEN。
+门禁 CLOSED 时,`scripts/jetson_stage3_run_group_a.py` 会自行拒绝运行,
+不产生任何报告——不存在绕过参数。门禁只在 `sandbox_tests/prd_traceability.json`
+的 `PRD-S2-30` 指向一份真实存在、`passed`、非 mock、足够新的 Stage 2 报告时
+才会 OPEN。
 
 ## 6. 证据回填
 
 - [ ] 把硬件验证证据引用回填进 `sandbox_tests/prd_traceability.json`
       (PRD-S2-20 Jetson 硬件加速行),由 PRD traceability 门禁校验其存在
-- [ ] Stage 3 A/B 测试报告落地为
-      `sandbox_tests/reports/stage3_ab_<group>_<timestamp>.json`,符合
+- [ ] Stage 3 测试报告落地为
+      `sandbox_tests/reports/stage3_ab_A_<timestamp>.json`,符合
       `sandbox_tests/reports/stage3_ab_report.schema.json`;
       `scripts/ci/stage3_ab_report_check.py` 与
       `scripts/ci/report_evidence_check.py` 会拒绝零真实调用或字段缺失的

@@ -3,18 +3,18 @@
 
 Validates every ``sandbox_tests/reports/stage3_ab_*.json`` against the rules
 in ``sandbox_tests/reports/stage3_ab_report.schema.json`` /
-``docs/STAGE3_AB_TESTING_SPEC.md`` §4. No ``jsonschema`` dependency is used
+``docs/STAGE3_AB_TESTING_SPEC.md`` §3. No ``jsonschema`` dependency is used
 (this repo is stdlib-first for CI scripts); the checks below are a direct,
 readable transcription of the schema's constraints:
 
-* ``stage3_group`` is ``"A"`` or ``"B"``.
+* ``stage3_group`` is ``"A"`` — Group B (remote VLM) was decommissioned
+  2026-07-22 (spec §0) and is no longer a valid value.
 * ``cv_execution_location`` is always ``"jetson_local"``.
-* ``vlm_execution_location`` matches the group (A → jetson_local, B → remote).
+* ``vlm_execution_location`` is always ``"jetson_local"``.
 * ``model.{provider,name,revision,quantization,backend,manifest_sha256}`` are
   all present, non-empty, and ``manifest_sha256`` is a real 64-hex-char
   digest — not a placeholder.
-* Group B reports carry a ``network`` block.
-* ``production_eligible`` is ``false`` — a Stage 3 A/B report can never
+* ``production_eligible`` is ``false`` — a Stage 3 report can never
   self-declare production eligibility.
 * If present, ``hardware_validation_status`` is ``not_run`` or ``passed``
   (this script does not and cannot flip it — that requires the reviewed
@@ -48,24 +48,23 @@ def check_report(path: Path, report: dict) -> list[str]:
     rel = path.relative_to(REPO_ROOT)
 
     group = report.get("stage3_group")
-    if group not in ("A", "B"):
-        problems.append(f"{rel}: stage3_group is {group!r}, must be 'A' or 'B'")
+    if group != "A":
+        problems.append(
+            f"{rel}: stage3_group is {group!r}, must be 'A' "
+            "(Group B / remote VLM was decommissioned 2026-07-22)"
+        )
         group = None
 
     if report.get("cv_execution_location") != "jetson_local":
         problems.append(
             f"{rel}: cv_execution_location is {report.get('cv_execution_location')!r}, "
-            "must be 'jetson_local' for both groups"
+            "must be 'jetson_local'"
         )
 
     vlm_loc = report.get("vlm_execution_location")
-    if group == "A" and vlm_loc != "jetson_local":
+    if vlm_loc != "jetson_local":
         problems.append(
-            f"{rel}: Group A report has vlm_execution_location={vlm_loc!r}, must be 'jetson_local'"
-        )
-    if group == "B" and vlm_loc != "remote":
-        problems.append(
-            f"{rel}: Group B report has vlm_execution_location={vlm_loc!r}, must be 'remote'"
+            f"{rel}: vlm_execution_location is {vlm_loc!r}, must be 'jetson_local'"
         )
 
     model = report.get("model")
@@ -82,9 +81,6 @@ def check_report(path: Path, report: dict) -> list[str]:
     digest = model.get("manifest_sha256")
     if isinstance(digest, str) and digest and not _HEX64.match(digest):
         problems.append(f"{rel}: model.manifest_sha256 is not a 64-hex-char digest: {digest!r}")
-
-    if group == "B" and not isinstance(report.get("network"), dict):
-        problems.append(f"{rel}: Group B report is missing the 'network' block")
 
     if report.get("production_eligible") is not False:
         problems.append(
