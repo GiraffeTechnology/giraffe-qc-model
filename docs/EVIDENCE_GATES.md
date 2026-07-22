@@ -60,6 +60,17 @@ Stage 2 预设工作流不再是"约定",而是服务端行为:
   按预设顺序(标准激活 → 证据附加 → CV/VLM 分析 → 操作员逐点复核 →
   服务端 finalize)返回每一步的完成状态与 `next_step`,
   跳步不再是不可见的。
+- **发布先于检测**:操作员建任务时,active 修订必须已有签名发布
+  bundle,否则 409(`pad_create_inspection_job`)。PRD 状态机中段的
+  Published 一步不能再被操作员侧跳过。
+- **Probation 闭环接入 Web/Pad 链路**:Pad finalize 后经
+  `src/inspection/probation_bridge.py` 记录 `(ai_verdict,
+  human_final_verdict, agreed)` 与逐点分歧(job_ref 去重,幂等);
+  试用期计数、30/+10 检查与 ≥90% 转正对浏览器模拟链路同样生效。
+- **统一生命周期视图**:`derive_standard_lifecycle` 把散在
+  修订状态/发布 bundle/工作站安装/Probation 四处的事实映射回 PRD 状态链
+  (draft → ready_for_review → confirmed → published → installed_on_pad →
+  probation → active_inspection),Studio SKU 卡与 workflow 端点共用。
 
 ## 与既有检查的关系
 

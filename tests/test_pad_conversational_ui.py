@@ -84,11 +84,43 @@ def client(db_session):
     app.dependency_overrides.clear()
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def seeded_sku(db_session):
-    """Shirt SKU with an active standard revision — available for confirm/job tests."""
+    """Shirt SKU with an active, *published* standard revision.
+
+    The preset workflow requires publish before operator inspection, so the
+    fixture records the publish-bundle row an admin publish would create.
+    """
     from src.db.seed_data import seed_shirt_custom
-    return seed_shirt_custom(db_session, tenant_id="demo")
+    from src.db.sku_models import QCSkuStandardRevision
+    from src.db.studio_models import QCPublishBundle
+
+    sku = seed_shirt_custom(db_session, tenant_id="demo")
+    active = (
+        db_session.query(QCSkuStandardRevision)
+        .filter_by(sku_id=sku.id, tenant_id="demo", status="active")
+        .first()
+    )
+    if active is not None and (
+        db_session.query(QCPublishBundle)
+        .filter_by(tenant_id="demo", sku_id=sku.id, standard_revision_id=active.id)
+        .first()
+        is None
+    ):
+        db_session.add(
+            QCPublishBundle(
+                id="test-bundle-" + active.id,
+                tenant_id="demo",
+                sku_id=sku.id,
+                standard_revision_id=active.id,
+                revision_no=active.revision_no,
+                manifest_json={"test_fixture": True},
+                bundle_hash="0" * 64,
+                signature="test-signature",
+            )
+        )
+        db_session.commit()
+    return sku
 
 
 @pytest.fixture
@@ -337,6 +369,7 @@ def test_19_confirm_standard_requires_intake_id(auth_client, db_session, seeded_
     assert "revision_id" in data
 
 
+
 # ---------------------------------------------------------------------------
 # Test 20: Create inspection job (real DB write via create_inspection_job_from_api)
 # ---------------------------------------------------------------------------
@@ -350,6 +383,31 @@ def test_20_create_inspection_job(auth_client, seeded_sku):
     assert data["status"] == "job_created"
     assert data["sku_id"] == seeded_sku.id
     assert "job_id" in data
+
+
+# ---------------------------------------------------------------------------
+# Test 20b: Preset workflow ordering — unpublished standard blocks operator job
+# ---------------------------------------------------------------------------
+def test_20b_unpublished_standard_blocks_operator_job(auth_client, db_session):
+    from uuid import uuid4
+    from src.db.sku_models import QCSkuItem, QCSkuStandardRevision
+
+    sku = QCSkuItem(
+        id=uuid4().hex, tenant_id="demo", item_number="UNPUB-1",
+        name="Unpublished standard", status="active",
+    )
+    db_session.add(sku)
+    db_session.add(QCSkuStandardRevision(
+        id=uuid4().hex, sku_id=sku.id, tenant_id="demo",
+        revision_no=1, status="active",
+    ))
+    db_session.commit()
+
+    resp = auth_client.post(
+        "/api/v1/pad/create_inspection_job", json={"sku_id": sku.id}
+    )
+    assert resp.status_code == 409
+    assert "not published" in resp.json()["error"]
 
 
 # ---------------------------------------------------------------------------

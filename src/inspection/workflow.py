@@ -32,6 +32,89 @@ STEPS = (
     "finalized",
 )
 
+# PRD Authoring Extension §3.1 lifecycle, as a single derived view. The
+# underlying facts live on four entities (revision status, publish bundles,
+# workstation installs, probation records); this maps them back onto the PRD
+# state chain so "where is this standard in its lifecycle" has one answer.
+LIFECYCLE_STAGES = (
+    "draft",
+    "ready_for_review",
+    "confirmed",
+    "published",
+    "installed_on_pad",
+    "probation",
+    "active_inspection",
+)
+
+
+def derive_standard_lifecycle(
+    db: Session, sku_id: str, tenant_id: str
+) -> dict[str, Any]:
+    """Derive the PRD-vocabulary lifecycle stage for a SKU's standard."""
+    from src.db.sku_models import QCSkuStandardRevision
+    from src.db.studio_models import QCPublishBundle
+    from src.db.qc_bundle_models import QCBundle, QCBundleAssignment, QCWorkstation
+    from src.qc_model.qualification import probation as _probation
+
+    active = (
+        db.query(QCSkuStandardRevision)
+        .filter_by(sku_id=sku_id, tenant_id=tenant_id, status="active")
+        .order_by(QCSkuStandardRevision.revision_no.desc())
+        .first()
+    )
+    if active is None:
+        pending = (
+            db.query(QCSkuStandardRevision)
+            .filter(
+                QCSkuStandardRevision.sku_id == sku_id,
+                QCSkuStandardRevision.tenant_id == tenant_id,
+                QCSkuStandardRevision.status.in_(("draft", "pending_confirmation")),
+            )
+            .first()
+        )
+        stage = "ready_for_review" if pending is not None else "draft"
+        return {"stage": stage, "standard_revision_id": None}
+
+    stage = "confirmed"
+    published = (
+        db.query(QCPublishBundle)
+        .filter_by(tenant_id=tenant_id, sku_id=sku_id, standard_revision_id=active.id)
+        .first()
+    )
+    if published is not None:
+        stage = "published"
+
+        # Best-effort install detection: a workstation reports the same
+        # bundle_version it was assigned, for a distribution bundle whose
+        # manifest carries this revision.
+        installed = (
+            db.query(QCBundleAssignment)
+            .join(QCWorkstation, QCBundleAssignment.workstation_pk == QCWorkstation.id)
+            .join(QCBundle, QCBundleAssignment.bundle_pk == QCBundle.id)
+            .filter(
+                QCBundleAssignment.tenant_id == tenant_id,
+                QCWorkstation.installed_bundle_version
+                == QCBundleAssignment.bundle_version,
+            )
+            .all()
+        )
+        if any(active.id in str(a.bundle.manifest_json) for a in installed):
+            stage = "installed_on_pad"
+
+    probation = _probation.get_probation_for_revision(db, active.id, tenant_id)
+    if probation is not None:
+        if probation.status == _probation.PROBATION_QUALIFIED:
+            stage = "active_inspection"
+        else:
+            stage = "probation"
+
+    return {
+        "stage": stage,
+        "standard_revision_id": active.id,
+        "revision_no": active.revision_no,
+        "probation_status": probation.status if probation else None,
+    }
+
 
 def derive_workflow_state(
     db: Session, job: QCInspectionJob, tenant_id: Optional[str] = None
@@ -100,4 +183,5 @@ def derive_workflow_state(
         "steps": steps,
         "next_step": next_step,
         "workflow_complete": next_step is None,
+        "standard_lifecycle": derive_standard_lifecycle(db, job.sku_id, tid),
     }

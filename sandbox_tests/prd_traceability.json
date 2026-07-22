@@ -166,9 +166,16 @@
       "requirement": "Probation 每单人工确认、30 单后按 +10 单检查、≥90% 转 Active",
       "status": "implemented_unverified",
       "requires_real_run": true,
-      "code_evidence": ["src/qc_model/qualification/probation.py"],
-      "test_evidence": ["tests/test_probation_qualification.py"],
-      "real_run_evidence": null
+      "code_evidence": [
+        "src/qc_model/qualification/probation.py",
+        "src/inspection/probation_bridge.py"
+      ],
+      "test_evidence": [
+        "tests/test_probation_qualification.py",
+        "tests/test_preset_workflow_enforcement.py"
+      ],
+      "real_run_evidence": null,
+      "gap": "Web/Pad 检测链路 finalize 已接 (ai, human, agreed) 记录;真实 30 单转正流程待验收"
     },
     {
       "id": "PRD-S2-18",
@@ -215,10 +222,16 @@
       "requirement": "操作员选择已安装 SKU，支持离线搜索",
       "status": "implemented_unverified",
       "requires_real_run": true,
-      "code_evidence": ["apps/android-qc/app/src/test/kotlin/com/giraffetechnology/qc/store/BundleImporterTest.kt"],
-      "test_evidence": ["apps/android-qc/app/src/test/kotlin/com/giraffetechnology/qc/store/BundleImporterTest.kt"],
+      "code_evidence": [
+        "src/api/pad_router.py",
+        "apps/android-qc/app/src/test/kotlin/com/giraffetechnology/qc/store/BundleImporterTest.kt"
+      ],
+      "test_evidence": [
+        "tests/test_pad_conversational_ui.py",
+        "apps/android-qc/app/src/test/kotlin/com/giraffetechnology/qc/store/BundleImporterTest.kt"
+      ],
       "real_run_evidence": null,
-      "gap": "浏览器模拟 Pad 未完成发布、安装、断网搜索实测"
+      "gap": "未发布标准已被服务端拒绝建任务(409);\"已安装\"级门槛需 Pad 会话建模工作站身份;断网搜索实测待做"
     },
     {
       "id": "PRD-S2-23",

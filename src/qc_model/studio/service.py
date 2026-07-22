@@ -45,6 +45,13 @@ from src.qc_model.bundle import ed25519 as _ed
 from src.qc_model.qualification import probation as _probation
 
 
+def _derive_lifecycle(db, sku_id: str, tenant_id: str) -> dict:
+    """PRD-vocabulary lifecycle stage for the SKU card (single derived view)."""
+    from src.inspection.workflow import derive_standard_lifecycle
+
+    return derive_standard_lifecycle(db, sku_id, tenant_id)
+
+
 def _uid() -> str:
     return uuid.uuid4().hex
 
@@ -275,6 +282,7 @@ def sku_summary(db: Session, sku: QCSkuItem) -> Dict[str, Any]:
         "detection_points": detection_points,
         "detection_point_count": len(detection_points),
         "pending_confirmation": pending_card,
+        "lifecycle": _derive_lifecycle(db, sku.id, sku.tenant_id),
     }
 
 

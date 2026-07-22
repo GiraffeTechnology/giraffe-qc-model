@@ -394,6 +394,35 @@ async def pad_create_inspection_job(
     sku_id: Optional[str] = body.get("sku_id")
     if not sku_id:
         return JSONResponse({"error": "sku_id required"}, status_code=400)
+
+    # Preset workflow ordering: an operator may only inspect a standard that
+    # has been published (signed L2 bundle exists for the active revision).
+    # Publish → install precede inspection; an unpublished draft/confirmed
+    # standard is not inspectable from the operator surface.
+    from src.db.studio_models import QCPublishBundle
+    from src.inspection.service import get_active_standard_revision
+
+    active_revision = get_active_standard_revision(db, str(sku_id), tenant_id)
+    if active_revision is not None:
+        published = (
+            db.query(QCPublishBundle)
+            .filter_by(
+                tenant_id=tenant_id,
+                sku_id=str(sku_id),
+                standard_revision_id=active_revision.id,
+            )
+            .first()
+        )
+        if published is None:
+            return JSONResponse(
+                {
+                    "error": (
+                        "standard revision is not published; publish the signed "
+                        "bundle before operator inspection"
+                    )
+                },
+                status_code=409,
+            )
     try:
         from src.inspection.api_service import create_inspection_job_from_api
         job = create_inspection_job_from_api(
@@ -813,6 +842,7 @@ async def pad_finalize_inspection_job(
     if _pad_job(db, job_id, tenant_id) is None:
         return JSONResponse({"error": "inspection job not found"}, status_code=404)
     from src.inspection.api_service import finalize_inspection_job
+    from src.inspection.probation_bridge import record_probation_outcome
 
     try:
         # Preset workflow: the operator flow can never finalize a pass from
@@ -822,6 +852,9 @@ async def pad_finalize_inspection_job(
         )
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
+    # Probation loop (PRD Authoring Extension §3.2): a revision under
+    # probation records this job's (ai, human, agreed) pair.
+    probation_record = record_probation_outcome(db, _pad_job(db, job_id, tenant_id), report, tenant_id)
     return JSONResponse(
         {
             "status": "finalized",
@@ -829,5 +862,6 @@ async def pad_finalize_inspection_job(
             "checkpoint_results_count": report.checkpoint_results_count,
             "findings_count": report.findings_count,
             "summary_text": report.summary_text,
+            "probation": probation_record,
         }
     )
