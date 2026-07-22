@@ -231,7 +231,7 @@
         "apps/android-qc/app/src/test/kotlin/com/giraffetechnology/qc/store/BundleImporterTest.kt"
       ],
       "real_run_evidence": null,
-      "gap": "未发布标准已被服务端拒绝建任务(409);\"已安装\"级门槛需 Pad 会话建模工作站身份;断网搜索实测待做"
+      "gap": "未发布标准已被服务端拒绝(409);会话绑定工作站后强制\"已安装\"级门槛(未安装 409);断网搜索实测待做"
     },
     {
       "id": "PRD-S2-23",
@@ -291,7 +291,7 @@
       "code_evidence": ["src/api/pad_router.py"],
       "test_evidence": ["tests/test_pad_conversational_ui.py"],
       "real_run_evidence": null,
-      "gap": "模型耗时与路由时序已持久化（PR #74）；capture/upload/render 分阶段遥测与 10 秒 SLO 证据缺失"
+      "gap": "capture/upload(客户端上报)+ CV/inference/server_total 已随模型结果持久化，含 10s SLO 判定；render 在响应之后发生、前端尚未回传;真实链路 SLO 证据待验收"
     },
     {
       "id": "PRD-S2-29",

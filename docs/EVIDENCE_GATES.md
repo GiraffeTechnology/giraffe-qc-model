@@ -67,6 +67,14 @@ Stage 2 预设工作流不再是"约定",而是服务端行为:
   `src/inspection/probation_bridge.py` 记录 `(ai_verdict,
   human_final_verdict, agreed)` 与逐点分歧(job_ref 去重,幂等);
   试用期计数、30/+10 检查与 ≥90% 转正对浏览器模拟链路同样生效。
+- **安装先于检测(工作站绑定后)**:`POST /api/v1/pad/workstation`
+  把操作员会话绑定到已注册工作站;绑定后建任务额外要求该工作站已
+  安装携带当前修订的 bundle,否则 409。浏览器 Pad 没有设备身份,
+  绑定就是启用 PRD"只检已安装标准"门槛的开关。
+- **分阶段遥测 + 10s SLO**:`vision-analyze` 接受客户端上报的
+  capture/upload 耗时,与服务端 CV/inference/server_total 一起随
+  模型结果持久化,并记录 10 秒 SLO 判定(明确标注 render 不含在内,
+  不猜测)。
 - **统一生命周期视图**:`derive_standard_lifecycle` 把散在
   修订状态/发布 bundle/工作站安装/Probation 四处的事实映射回 PRD 状态链
   (draft → ready_for_review → confirmed → published → installed_on_pad →
