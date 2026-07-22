@@ -2,6 +2,16 @@
 {% block title %}{{ sku.item_number }} — {{ t('sample.admin.title') }}{% endblock %}
 {% block content %}
 <div id="sample-standard-workbench" data-tenant="{{ tenant_id }}" data-sku-id="{{ sku.id }}">
+<section class="workflow-bar" aria-label="{{ t('sample.workflow.label') }}">
+  <div class="workflow-copy">
+    <strong>{{ t('sample.workflow.title') }}</strong>
+    <span>{{ t('sample.workflow.subtitle') }}</span>
+  </div>
+  <ol class="workflow-steps">
+    <li>{{ t('sample.workflow.entry') }}</li>
+    <li>{{ t('sample.workflow.confirmation') }}</li>
+  </ol>
+</section>
 <div class="page-header">
   <div>
     <h1>{{ sku.item_number }}</h1>
@@ -226,10 +236,13 @@
   </details>
 </section>
 
-<!-- Detection Points -->
+<!-- Detection Points: confirmation, region annotation (§2), and CV/analysis
+     config are all authored here — not in Studio (Studio only trains and
+     publishes the standard this page produces). -->
 <section class="card">
   <h2>{{ t('sample.detail.detection_points') }}</h2>
 
+  <div id="sample-detection-points">
   {% set active_dps = sku.detection_points | selectattr('is_active') | list %}
   {% if active_dps %}
   <table class="inner-table">
@@ -248,9 +261,32 @@
     </tbody>
   </table>
   {% endif %}
+  </div>
 
   <p class="hint">{{ t('sample.detail.sample_detection_hint') }}</p>
 </section>
+
+<!-- Region annotation editor (§2) — cloned into a detection point row -->
+<template id="sample-region-editor-template">
+  <div class="region-editor">
+    <div class="region-editor__controls">
+      <label>{{ t('studio.region.photo') }}:
+        <select class="region-photo-select"></select>
+      </label>
+      <span class="muted region-hint">{{ t('studio.region.hint') }}</span>
+    </div>
+    <div class="region-canvas-wrap">
+      <img class="region-image" alt="{{ t('studio.js.standard_photo_alt') }}">
+      <canvas class="region-canvas"></canvas>
+    </div>
+    <ul class="region-list"></ul>
+    <div class="region-editor__actions">
+      <button type="button" class="btn btn-primary region-save">{{ t('studio.region.save') }}</button>
+      <button type="button" class="btn region-cancel">{{ t('studio.region.cancel') }}</button>
+    </div>
+    <div class="region-error muted"></div>
+  </div>
+</template>
 </div>
 {% endblock %}
 
@@ -290,8 +326,23 @@ window.GIRAFFE_SAMPLE_AUTHOR_I18N = {
   coverageComplete: {{ t('studio.js.coverage_complete') | tojson }},
   coverageIncomplete: {{ t('studio.js.coverage_incomplete') | tojson }},
   coverageChecked: {{ t('studio.js.coverage_checked') | tojson }},
-  coverageOmissions: {{ t('studio.js.coverage_omissions') | tojson }}
+  coverageOmissions: {{ t('studio.js.coverage_omissions') | tojson }},
+  noDetectionPoints: {{ t('studio.js.no_detection_points') | tojson }},
+  engineering: {{ t('studio.engineering') | tojson }},
+  regions: {{ t('studio.js.regions') | tojson }},
+  addRegions: {{ t('studio.js.add_regions') | tojson }},
+  editCvConfig: {{ t('studio.js.edit_cv_config') | tojson }},
+  addCvConfig: {{ t('studio.js.add_cv_config') | tojson }},
+  uploadPhotoBeforeRegions: {{ t('studio.js.upload_photo_before_regions') | tojson }},
+  regionsSaved: {{ t('studio.js.regions_saved') | tojson }},
+  primary: {{ t('studio.js.primary') | tojson }},
+  remove: {{ t('studio.js.remove') | tojson }},
+  expectedFeaturesPrompt: {{ t('studio.js.expected_features_prompt') | tojson }},
+  cvConfigPrompt: {{ t('studio.js.cv_config_prompt') | tojson }},
+  invalidAnalysisJson: {{ t('studio.js.invalid_analysis_json') | tojson }},
+  analysisSaved: {{ t('studio.js.analysis_saved') | tojson }},
+  analysisSaveFailed: {{ t('studio.js.analysis_save_failed') | tojson }}
 };
 </script>
-<script src="/static/sample_standard_authoring.js?v=sample-workbench-1"></script>
+<script src="/static/sample_standard_authoring.js?v=sample-workbench-2"></script>
 {% endblock %}

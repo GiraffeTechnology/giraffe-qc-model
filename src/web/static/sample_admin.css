@@ -268,3 +268,48 @@ main {
 
 /* PR22 authored proposals */
 .qcm-proposal { border-left: 3px solid #c7d2fe; padding: 4px 8px; margin: 6px 0; background: #fbfcff; }
+
+/* Sample workflow bar — mirrors admin_studio.css's .workflow-bar for the
+   two-step (entry, detection-point confirmation) Samples workspace. */
+.workflow-bar {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  background: #f4faf7; border: 1px solid #d7e8e0; border-radius: 22px;
+  padding: 10px 14px; margin-bottom: 16px;
+}
+.workflow-copy { min-width: 260px; display: flex; flex-direction: column; gap: 3px; }
+.workflow-copy strong { font-family: Georgia, serif; font-size: 18px; color: #173f35; }
+.workflow-copy span { color: #64748b; font-size: 12px; }
+.workflow-steps {
+  flex: 1; display: grid; grid-template-columns: repeat(2, 1fr);
+  list-style: none; margin: 0; padding: 0;
+}
+.workflow-steps li {
+  position: relative; padding: 9px 7px; text-align: center; font-size: 11px;
+  color: #395c53; background: #eaf2ee; border-right: 2px solid #fff;
+}
+.workflow-steps li:first-child { border-radius: 18px 0 0 18px; }
+.workflow-steps li:last-child { border-radius: 0 18px 18px 0; }
+@media (max-width: 720px) { .workflow-copy { display: none; } }
+
+/* Detection-point confirmation: read/edit list, region annotation (§2), and
+   CV/analysis config — ported from Studio since confirmation now lives here. */
+.dp-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.dp-list li { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
+.dp-list .dp-code { font-weight: 600; }
+.dp-list .dp-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.engineering-settings { margin-top: 7px; }
+.engineering-settings summary { cursor: pointer; color: var(--muted); font-size: 11px; }
+.engineering-settings .btn { margin-right: 5px; }
+.dp-regions-btn { margin-top: 6px; }
+.region-editor { margin-top: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: #fafafa; }
+.region-editor__controls { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 12px; }
+.region-editor__controls select { padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+.region-hint { font-size: 11px; }
+.region-canvas-wrap { position: relative; width: 100%; max-width: 100%; }
+.region-image { width: 100%; display: block; border-radius: 6px; border: 1px solid var(--border); user-select: none; }
+.region-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: crosshair; }
+.region-list { list-style: none; margin: 8px 0; padding: 0; font-size: 12px; }
+.region-list li { display: flex; justify-content: space-between; align-items: center; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 4px; background: #fff; }
+.region-list .region-remove { border: none; background: none; color: #b42318; cursor: pointer; font-size: 12px; }
+.region-editor__actions { display: flex; gap: 8px; margin-top: 8px; }
+.region-error { font-size: 12px; color: #b42318; margin-top: 6px; }
