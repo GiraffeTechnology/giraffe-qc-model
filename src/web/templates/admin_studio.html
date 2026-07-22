@@ -55,62 +55,16 @@
       <ul id="sku-list" class="sku-list"></ul>
     </aside>
 
-    <!-- CENTER: conversation + input -->
+    <!-- CENTER: training and operational feedback only. -->
     <section class="panel panel-center">
       <div class="panel-head">
         <h2>{{ t('studio.center.title') }}</h2>
-        <span id="assistant-state" class="assistant-state" aria-live="polite">{{ t('studio.assistant.checking') }}</span>
         <span id="active-sku-chip" class="chip hidden"></span>
       </div>
-      <div id="conversation" class="conversation" aria-live="polite"></div>
-
-      <section id="standard-camera-panel" class="standard-camera-panel hidden" aria-labelledby="standard-camera-heading">
-        <div class="standard-camera-head">
-          <strong id="standard-camera-heading">{{ t('studio.camera.heading') }}</strong>
-          <button type="button" id="standard-camera-close" class="camera-close" aria-label="{{ t('studio.camera.close') }}">×</button>
-        </div>
-        <div class="standard-camera-grid">
-          <video id="standard-camera-preview" class="standard-camera-preview" autoplay playsinline muted></video>
-          <canvas id="standard-camera-canvas" class="standard-camera-preview hidden"></canvas>
-          <div class="standard-camera-actions">
-            <label for="standard-camera-device">{{ t('studio.camera.source') }}</label>
-            <select id="standard-camera-device">
-              <option value="">{{ t('studio.camera.default') }}</option>
-            </select>
-            <button type="button" id="standard-camera-start" class="btn">{{ t('studio.camera.start') }}</button>
-            <button type="button" id="standard-camera-capture" class="btn btn-primary" disabled>{{ t('studio.camera.capture') }}</button>
-            <button type="button" id="standard-camera-stop" class="btn" disabled>{{ t('studio.camera.stop') }}</button>
-            <p id="standard-camera-status" class="standard-camera-status" aria-live="polite"></p>
-            <div id="standard-camera-confirm" class="standard-camera-confirm hidden" role="group" aria-label="{{ t('studio.camera.confirm') }}">
-              <strong>{{ t('studio.camera.confirm') }}</strong>
-              <div>
-                <button type="button" id="standard-camera-upload-confirm" class="btn btn-primary">{{ t('studio.camera.upload_yes') }}</button>
-                <button type="button" id="standard-camera-retake" class="btn">{{ t('studio.camera.retake') }}</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <div class="standard-import-toolbar" aria-label="{{ t('studio.import.toolbar') }}">
-        <button type="button" id="process-card-toggle" class="btn">{{ t('studio.import.process_card') }}</button>
-        <input type="file" id="process-card-input" accept="image/jpeg,image/png,.pdf" hidden>
-        <button type="button" id="standard-file-toggle" class="btn">{{ t('studio.import.file') }}</button>
-        <input type="file" id="standard-file-input" accept="image/jpeg,image/png,.pdf,.docx,.xlsx,.txt,.md,.csv" hidden>
-        <span class="muted">{{ t('studio.import.hint') }}</span>
+      <div id="conversation" class="conversation studio-operations-note" aria-live="polite">
+        <p>{{ t('studio.center.training_scope') }}</p>
+        <a class="btn" id="sample-authoring-link" href="/admin/samples">{{ t('studio.center.open_sample') }}</a>
       </div>
-
-      <form id="chat-form" class="chat-input">
-        <button type="button" id="voice-toggle" class="icon-btn" title="{{ t('studio.voice.title') }}">🎤</button>
-        <button type="button" id="standard-camera-toggle" class="icon-btn" title="{{ t('studio.camera.toggle') }}" hidden>📷</button>
-        <button type="button" id="photo-album-toggle" class="icon-btn" title="{{ t('studio.album.title') }}" hidden>🖼️</button>
-        <input type="file" id="photo-input" accept="image/*" hidden>
-        <button type="button" id="photo-file-toggle" class="icon-btn" title="{{ t('studio.file.title') }}" hidden>📁</button>
-        <input type="file" id="photo-file-input" accept="image/*" hidden>
-        <input type="text" id="chat-text" placeholder="{{ t('studio.chat.placeholder') }}" autocomplete="off">
-        <button type="submit" class="send-btn">{{ t('studio.send') }}</button>
-      </form>
-      <div class="human-gate-note">{{ t('studio.human_gate') }}</div>
     </section>
 
     <!-- RIGHT: SKU card + standard preview + detection points + status -->
@@ -124,18 +78,6 @@
       </div>
     </aside>
   </div>
-
-  <!-- Confirmation card template rendered into the conversation -->
-  <template id="confirm-card-template">
-    <div class="confirm-card">
-      <div class="confirm-head">{{ t('studio.confirm.head') }}</div>
-      <div class="confirm-body"></div>
-      <div class="confirm-actions">
-        <button type="button" class="btn btn-primary confirm-yes">{{ t('studio.confirm.yes') }}</button>
-        <button type="button" class="btn confirm-no">{{ t('studio.confirm.no') }}</button>
-      </div>
-    </div>
-  </template>
 
   <!-- Region annotation editor (§2) — cloned into a detection point row -->
   <template id="region-editor-template">
