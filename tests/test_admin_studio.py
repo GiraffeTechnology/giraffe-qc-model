@@ -99,7 +99,7 @@ def _create_flw(client) -> str:
 
 
 def _qualify_training(db_session_factory, sku_id: str, tenant_id: str = "default") -> None:
-    """Directly insert a qualifying rolling window (29 reviewed, alternating
+    """Directly insert a qualifying rolling window (30 reviewed, alternating
     qualified/unqualified, zero false passes) of training judgments against
     the SKU's *current* active standard revision, so publish-focused tests
     don't each need to mock 29 individual CV+VLM training calls -- the
@@ -121,7 +121,7 @@ def _qualify_training(db_session_factory, sku_id: str, tenant_id: str = "default
         )
         assert revision is not None, "no active standard revision to qualify training for"
         base = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        for i in range(29):
+        for i in range(30):
             session.add(QCTrainingJudgment(
                 id=uuid.uuid4().hex, tenant_id=tenant_id, sku_id=sku_id,
                 standard_revision_id=revision.id,

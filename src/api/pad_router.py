@@ -6,7 +6,7 @@ import time
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -527,6 +527,18 @@ def _pad_job(db: Session, job_id: str, tenant_id: str):
     return db.query(QCInspectionJob).filter_by(id=job_id, tenant_id=tenant_id).first()
 
 
+def _pad_standard_photo(db: Session, job, tenant_id: str):
+    """Return the tenant-owned primary reference photo for the job's SKU."""
+    from src.db.sku_models import QCStandardPhoto
+
+    return (
+        db.query(QCStandardPhoto)
+        .filter_by(sku_id=job.sku_id, tenant_id=tenant_id)
+        .order_by(QCStandardPhoto.is_primary.desc(), QCStandardPhoto.created_at.asc())
+        .first()
+    )
+
+
 @router.get("/api/v1/pad/inspection-jobs/{job_id}")
 async def pad_inspection_job_state(
     request: Request,
@@ -549,12 +561,23 @@ async def pad_inspection_job_state(
         row.detection_point_id: row
         for row in db.query(QCCheckpointResult).filter_by(job_id=job_id, tenant_id=tenant_id).all()
     }
+    standard_photo = _pad_standard_photo(db, job, tenant_id)
     return JSONResponse(
         {
             "id": job.id,
             "sku_id": job.sku_id,
             "status": job.status,
             "active_standard_revision_id": job.active_standard_revision_id,
+            "standard_photo": (
+                {
+                    "id": standard_photo.id,
+                    "url": f"/api/v1/pad/inspection-jobs/{job.id}/standard-photo",
+                    "width_px": standard_photo.width_px,
+                    "height_px": standard_photo.height_px,
+                }
+                if standard_photo is not None
+                else None
+            ),
             "checkpoints": [
                 {
                     "id": point.id,
@@ -577,6 +600,97 @@ async def pad_inspection_job_state(
             ),
         }
     )
+
+
+@router.get("/api/v1/pad/inspection-jobs/{job_id}/standard-photo")
+async def pad_inspection_standard_photo(
+    request: Request,
+    job_id: str,
+    db: Session = Depends(get_db_dep),
+):
+    """Serve the job's reference photo without exposing a server path."""
+    operator_id = _require_operator(request)
+    if operator_id is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    tenant_id = request.session.get("tenant_id", "demo")
+    job = _pad_job(db, job_id, tenant_id)
+    if job is None:
+        return JSONResponse({"error": "inspection job not found"}, status_code=404)
+    photo = _pad_standard_photo(db, job, tenant_id)
+    if photo is None:
+        return JSONResponse({"error": "standard photo not found"}, status_code=404)
+    if photo.local_path:
+        from src.api.sample_admin_router import resolve_sample_photo_path
+
+        path = resolve_sample_photo_path(photo.local_path)
+        if path is not None and path.is_file():
+            return FileResponse(str(path), media_type=photo.mime_type or "application/octet-stream")
+    if photo.image_url and photo.image_url.startswith(("https://", "http://")):
+        return RedirectResponse(photo.image_url, status_code=302)
+    return JSONResponse({"error": "standard photo file missing"}, status_code=404)
+
+
+@router.post("/api/v1/pad/inspection-jobs/{job_id}/instance-detect")
+async def pad_detect_instance_in_frame(
+    request: Request,
+    job_id: str,
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db_dep),
+):
+    """Use CV registration to detect a stable product instance in a video frame.
+
+    Probe frames are validated and decoded in memory. They are never persisted
+    as evidence or sample data; only the final automatically captured frame is
+    attached by the normal inspection-media endpoint.
+    """
+    operator_id = _require_operator(request)
+    if operator_id is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    tenant_id = request.session.get("tenant_id", "demo")
+    job = _pad_job(db, job_id, tenant_id)
+    if job is None:
+        return JSONResponse({"error": "inspection job not found"}, status_code=404)
+    if job.final_report is not None:
+        return JSONResponse({"error": "inspection job already finalized"}, status_code=409)
+
+    photo = _pad_standard_photo(db, job, tenant_id)
+    if photo is None or not photo.local_path:
+        return JSONResponse({"error": "local standard photo is required for CV detection"}, status_code=409)
+    from src.api.sample_admin_router import resolve_sample_photo_path
+    from src.storage.upload_validation import UploadValidationError, read_and_validate_upload
+
+    standard_path = resolve_sample_photo_path(photo.local_path)
+    if standard_path is None or not standard_path.is_file():
+        return JSONResponse({"error": "standard photo file missing"}, status_code=409)
+    try:
+        validated = await read_and_validate_upload(image)
+    except UploadValidationError as exc:
+        return JSONResponse({"error": exc.message}, status_code=exc.status_code)
+
+    import cv2
+    import numpy as np
+    from src.cv_preanalysis.registration import RegistrationError, register
+
+    standard_image = cv2.imread(str(standard_path), cv2.IMREAD_COLOR)
+    captured_image = cv2.imdecode(np.frombuffer(validated.content, np.uint8), cv2.IMREAD_COLOR)
+    if standard_image is None or captured_image is None:
+        return JSONResponse({"detected": False, "reason": "unreadable_frame"})
+    sharpness = float(cv2.Laplacian(cv2.cvtColor(captured_image, cv2.COLOR_BGR2GRAY), cv2.CV_64F).var())
+    if sharpness < 35.0:
+        return JSONResponse({"detected": False, "reason": "frame_blurry", "sharpness": round(sharpness, 2)})
+    try:
+        registration = register(standard_image, captured_image, backend="orb")
+    except RegistrationError as exc:
+        return JSONResponse({"detected": False, "reason": str(exc)[:120], "sharpness": round(sharpness, 2)})
+    match_ratio = registration.inlier_count / max(1, registration.match_count)
+    return JSONResponse({
+        "detected": True,
+        "backend": registration.backend,
+        "inlier_count": registration.inlier_count,
+        "match_count": registration.match_count,
+        "match_ratio": round(match_ratio, 4),
+        "sharpness": round(sharpness, 2),
+    })
 
 
 @router.get("/api/v1/pad/inspection-jobs/{job_id}/workflow")

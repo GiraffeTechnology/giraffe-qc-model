@@ -204,7 +204,7 @@ def _qualify_training(db_session_factory, sku_id: str, standard_revision_id: str
     session = db_session_factory()
     try:
         base = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        for i in range(29):
+        for i in range(30):
             session.add(QCTrainingJudgment(
                 id=uuid.uuid4().hex, tenant_id=tenant_id, sku_id=sku_id,
                 standard_revision_id=standard_revision_id,

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ t('studio.page.title') }}</title>
-  <link rel="stylesheet" href="/static/admin_studio.css?v=stage2-workspace-split-1">
+  <link rel="stylesheet" href="/static/admin_studio.css?v=stage2-confirmed-samples-1">
 </head>
 <body data-tenant="{{ tenant_id }}" data-initial-sku="{{ initial_sku_id }}">
   <header class="studio-header">
@@ -111,6 +111,7 @@
       trainingFalsePass: {{ t('studio.js.training_false_pass') | tojson }},
       trainingGroundTruthQualified: {{ t('studio.js.training_ground_truth_qualified') | tojson }},
       trainingGroundTruthUnqualified: {{ t('studio.js.training_ground_truth_unqualified') | tojson }},
+      trainingSampleSource: {{ t('studio.js.training_sample_source') | tojson }},
       trainingSubmitSample: {{ t('studio.js.training_submit_sample') | tojson }},
       trainingSelectSample: {{ t('studio.js.training_select_sample') | tojson }},
       trainingRunning: {{ t('studio.js.training_running') | tojson }},
@@ -145,6 +146,6 @@
       }
     };
   </script>
-  <script src="/static/admin_studio.js?v=stage2-workspace-split-1"></script>
+  <script src="/static/admin_studio.js?v=stage2-confirmed-samples-1"></script>
 </body>
 </html>

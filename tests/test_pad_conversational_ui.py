@@ -1261,6 +1261,76 @@ def test_stage2_control_assets_include_camera_and_real_report():
     assert "/finalize" in inspection_js
     assert "/api/v1/pad/inspection-jobs/" in report_js
 
+    template = (
+        Path(__file__).resolve().parent.parent / "src" / "web" / "templates" / "pad_inspection.html"
+    ).read_text()
+    assert 'id="standard-photo"' in template
+    assert 'id="camera-preview"' in template
+    assert 'id="camera-capture-btn"' not in template
+    assert "/instance-detect" in inspection_js
+    assert "captureAndJudgeAutomatically" in inspection_js
+
+
+def test_operator_workspace_serves_standard_and_cv_detects_live_instance(
+    auth_client, db_session, seeded_sku, tmp_path, monkeypatch
+):
+    from uuid import uuid4
+
+    from src.api import sample_admin_router
+    from src.db.sku_models import QCStandardPhoto
+
+    fixture = Path(__file__).parent / "fixtures" / "qc" / "flower_brooch_4petal_3pearl_7rhinestone.jpg"
+    monkeypatch.setattr(sample_admin_router, "_DATA_DIR", tmp_path)
+    photo_path = tmp_path / "standard.jpg"
+    photo_path.write_bytes(fixture.read_bytes())
+    previous_primaries = [
+        row.id
+        for row in db_session.query(QCStandardPhoto).filter_by(
+            tenant_id="demo", sku_id=seeded_sku.id, is_primary=True
+        ).all()
+    ]
+    db_session.query(QCStandardPhoto).filter_by(
+        tenant_id="demo", sku_id=seeded_sku.id
+    ).update({"is_primary": False})
+    photo = QCStandardPhoto(
+        id="pad-standard-" + uuid4().hex,
+        tenant_id="demo",
+        sku_id=seeded_sku.id,
+        local_path=str(photo_path),
+        mime_type="image/jpeg",
+        is_primary=True,
+    )
+    db_session.add(photo)
+    db_session.commit()
+
+    created = auth_client.post(
+        "/api/v1/pad/create_inspection_job", json={"sku_id": seeded_sku.id}
+    )
+    assert created.status_code == 200
+    job_id = created.json()["job_id"]
+    state = auth_client.get(f"/api/v1/pad/inspection-jobs/{job_id}")
+    assert state.status_code == 200
+    standard = state.json()["standard_photo"]
+    assert standard["id"] == photo.id
+    served = auth_client.get(standard["url"])
+    assert served.status_code == 200
+    assert served.headers["content-type"].startswith("image/jpeg")
+
+    detected = auth_client.post(
+        f"/api/v1/pad/inspection-jobs/{job_id}/instance-detect",
+        files={"image": ("live.jpg", fixture.read_bytes(), "image/jpeg")},
+    )
+    assert detected.status_code == 200, detected.text
+    assert detected.json()["detected"] is True
+    assert detected.json()["inlier_count"] >= 10
+
+    db_session.delete(photo)
+    if previous_primaries:
+        db_session.query(QCStandardPhoto).filter(
+            QCStandardPhoto.id.in_(previous_primaries)
+        ).update({"is_primary": True}, synchronize_session=False)
+    db_session.commit()
+
 
 # ---------------------------------------------------------------------------
 # Stage timings: capture/upload (client) + cv/inference (server) + 10s SLO

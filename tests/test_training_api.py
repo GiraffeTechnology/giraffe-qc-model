@@ -78,7 +78,31 @@ def _create_and_confirm(client) -> str:
         "/admin/studio/confirm",
         json={"intake_id": card["intake_id"], "confirmed_by": "admin", "checkpoints": card["checkpoints"]},
     )
+    uploaded = client.post(
+        f"/admin/samples/{sku_id}/photos",
+        data={"tenant_id": "default", "is_primary": "true", "view_type": "standard"},
+        files={"photo_file": ("standard.png", _tiny_png(), "image/png")},
+        follow_redirects=False,
+    )
+    assert uploaded.status_code == 303, uploaded.text
     return sku_id
+
+
+def _add_training_photo(client, sku_id) -> str:
+    before = {
+        photo["id"] for photo in client.get(f"/admin/studio/skus/{sku_id}").json()["photos"]
+    }
+    uploaded = client.post(
+        f"/admin/samples/{sku_id}/photos",
+        data={"tenant_id": "default", "is_primary": "false", "view_type": "training_instance"},
+        files={"photo_file": ("training-instance.png", _tiny_png(), "image/png")},
+        follow_redirects=False,
+    )
+    assert uploaded.status_code == 303, uploaded.text
+    after = client.get(f"/admin/studio/skus/{sku_id}").json()["photos"]
+    added = [photo["id"] for photo in after if photo["id"] not in before]
+    assert len(added) == 1
+    return added[0]
 
 
 def _submit_judgment(client, monkeypatch, sku_id, *, ground_truth_label, model_result="pass"):
@@ -100,10 +124,14 @@ def _submit_judgment(client, monkeypatch, sku_id, *, ground_truth_label, model_r
         }
 
     monkeypatch.setattr(ai_gateway, "inspect_image", fake_inspect_image)
+    sample_photo_id = _add_training_photo(client, sku_id)
     resp = client.post(
         f"/admin/studio/skus/{sku_id}/training/judgments",
-        data={"tenant_id": "default", "ground_truth_label": ground_truth_label},
-        files={"image": ("sample.png", _tiny_png(), "image/png")},
+        data={
+            "tenant_id": "default",
+            "ground_truth_label": ground_truth_label,
+            "sample_photo_id": sample_photo_id,
+        },
     )
     assert resp.status_code == 200, resp.text
     return resp.json()["judgment"]
@@ -117,8 +145,11 @@ def test_record_judgment_requires_active_revision(client):
     sku_id = resp.json()["sku"]["id"]
     resp = client.post(
         f"/admin/studio/skus/{sku_id}/training/judgments",
-        data={"tenant_id": "default", "ground_truth_label": "qualified"},
-        files={"image": ("sample.png", _tiny_png(), "image/png")},
+        data={
+            "tenant_id": "default",
+            "ground_truth_label": "qualified",
+            "sample_photo_id": "not-created",
+        },
     )
     assert resp.status_code == 400
     assert "active confirmed standard" in resp.json()["error"]
@@ -126,10 +157,14 @@ def test_record_judgment_requires_active_revision(client):
 
 def test_record_judgment_rejects_invalid_ground_truth_label(client):
     sku_id = _create_and_confirm(client)
+    sample_photo_id = _add_training_photo(client, sku_id)
     resp = client.post(
         f"/admin/studio/skus/{sku_id}/training/judgments",
-        data={"tenant_id": "default", "ground_truth_label": "maybe"},
-        files={"image": ("sample.png", _tiny_png(), "image/png")},
+        data={
+            "tenant_id": "default",
+            "ground_truth_label": "maybe",
+            "sample_photo_id": sample_photo_id,
+        },
     )
     assert resp.status_code == 400
     assert "ground_truth_label" in resp.json()["error"]
@@ -205,9 +240,22 @@ def test_training_status_reflects_reviewed_judgments_and_gates_publish(client, m
         )
         assert decision.status_code == 200, decision.text
 
+    status_29 = client.get(f"/admin/studio/skus/{sku_id}/training/status").json()
+    assert status_29["status"]["qualified"] is False
+    assert status_29["status"]["total_reviewed"] == 29
+
+    judgment = _submit_judgment(
+        client, monkeypatch, sku_id, ground_truth_label="unqualified", model_result="fail"
+    )
+    decision = client.post(
+        f"/admin/studio/training/judgments/{judgment['id']}/decision",
+        json={"tenant_id": "default", "admin_id": "admin-1", "decision": "correct"},
+    )
+    assert decision.status_code == 200, decision.text
+
     status_full = client.get(f"/admin/studio/skus/{sku_id}/training/status").json()
     assert status_full["status"]["qualified"] is True
-    assert status_full["status"]["total_reviewed"] == 29
+    assert status_full["status"]["total_reviewed"] == 30
 
     published = client.post("/admin/studio/publish", json={"sku_id": sku_id})
     assert published.status_code == 200, published.text
