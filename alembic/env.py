@@ -11,7 +11,16 @@ if config.config_file_name is not None:
 
 db_url = os.getenv("QC_DB_URL")
 if db_url:
-    config.set_main_option("sqlalchemy.url", db_url)
+    # Alembic stores main options in ConfigParser, where a literal percent
+    # starts interpolation. Percent-encoded credentials (for example %2F)
+    # must therefore be escaped for ConfigParser; get_main_option returns the
+    # original URL to SQLAlchemy afterwards.
+    config.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
+
+# Shared Giraffe databases may host migration chains from several services.
+# Operators can isolate qc-model's revision state without modifying another
+# service's default alembic_version table.
+version_table = os.getenv("QC_ALEMBIC_VERSION_TABLE", "alembic_version")
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,7 +31,12 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
-    context.configure(url=url, target_metadata=target_metadata, literal_binds=True)
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        version_table=version_table,
+    )
     with context.begin_transaction():
         context.run_migrations()
 
@@ -34,7 +48,11 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            version_table=version_table,
+        )
         with context.begin_transaction():
             context.run_migrations()
 

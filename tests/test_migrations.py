@@ -10,7 +10,10 @@ Guards two things that ``create_all``-only tables silently lost:
 """
 from __future__ import annotations
 
+import os
 import pathlib
+import subprocess
+import sys
 
 import pytest
 from alembic import command
@@ -67,6 +70,27 @@ def test_upgrade_head_runs_clean(migrated_db):
     tables = set(insp.get_table_names())
     for t in _MIGRATED_TABLES:
         assert t in tables, f"migration head did not create {t}"
+
+
+def test_cli_accepts_percent_encoded_database_url(tmp_path):
+    """Encoded credentials/paths must survive Alembic's ConfigParser layer."""
+    db_path = tmp_path / "encoded%2Fdatabase.db"
+    env = os.environ.copy()
+    env["QC_DB_URL"] = f"sqlite:///{db_path}"
+    env["QC_ALEMBIC_VERSION_TABLE"] = "alembic_version_qc_model"
+    completed = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=_PROJECT_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert db_path.is_file()
+    assert "alembic_version_qc_model" in inspect(
+        create_engine(f"sqlite:///{db_path}")
+    ).get_table_names()
 
 
 def test_downgrade_then_upgrade_round_trips(tmp_path, monkeypatch):
