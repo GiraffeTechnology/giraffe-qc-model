@@ -50,6 +50,7 @@ def client(session_factory):
 
     app.dependency_overrides[get_db_dep] = override
     with TestClient(app) as c:
+        c.headers.update({"X-QC-Mutation-Key": "sample-mutation-test-key", "X-QC-Sample-Surface": "sample-standard"})
         yield c
     app.dependency_overrides.clear()
 

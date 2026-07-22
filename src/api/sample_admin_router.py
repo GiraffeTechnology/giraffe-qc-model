@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from src.api.deps import get_db_dep
 from src.api.authz import effective_tenant
+from src.api.sample_security import require_sample_admin_mutation
 from src.api.uploads import validate_safe_id
 from src.storage.upload_validation import (
     UploadValidationError,
@@ -34,7 +35,11 @@ from src.db.sku_models import (
     QCStandardPhoto,
 )
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(
+    prefix="/admin",
+    tags=["admin"],
+    dependencies=[Depends(require_sample_admin_mutation)],
+)
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "web" / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))

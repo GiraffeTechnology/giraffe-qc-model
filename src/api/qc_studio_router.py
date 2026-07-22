@@ -6,7 +6,7 @@ Mounts the three-panel ``/admin/studio`` page and its backend routes:
 * ``GET  /admin/studio/skus``                — SKU list / search / status filter
 * ``GET  /admin/studio/skus/{sku_id}``       — SKU card (right panel)
 * ``POST /admin/studio/chat``                — conversational SKU create + extract
-* ``POST /admin/studio/upload``              — hardened standard-photo upload
+* ``POST /admin/samples/upload``             — hardened standard-photo upload
 * ``GET  /admin/studio/photos/{photo_id}``   — serve a stored standard photo
 * ``POST /admin/studio/confirm``             — confirm / reject detection points
 * ``POST /admin/studio/detection-points/{detection_point_id}/regions`` — set region annotations (§2)
@@ -59,6 +59,10 @@ from src.qc_model.ingestion.process_card import (
 )
 from src.api.authz import effective_actor, effective_tenant
 from src.api.admin_auth import current_admin
+from src.api.sample_security import (
+    require_sample_surface_mutation,
+    verify_sample_mutation_credential,
+)
 from src.api.uploads import validate_safe_id
 from src.api.sample_admin_router import resolve_sample_photo_path
 from src.db.sku_models import QCSkuStandardRevision
@@ -76,6 +80,7 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 install_i18n(templates)
 
 _STUDIO_DATA_DIR = Path(os.getenv("QC_STUDIO_DATA_DIR", "data/qc_studio"))
+_SAMPLE_DATA_DIR = Path(os.getenv("QC_SAMPLE_DATA_DIR", "data/qc_samples"))
 
 
 def _uid() -> str:
@@ -185,7 +190,11 @@ class CreateStudioSkuRequest(BaseModel):
     description: Optional[str] = None
 
 
-@router.post("/admin/studio/skus", status_code=201)
+@router.post(
+    "/admin/studio/skus",
+    status_code=201,
+    dependencies=[Depends(require_sample_surface_mutation)],
+)
 def create_studio_sku(body: CreateStudioSkuRequest, db: Session = Depends(get_db_dep)):
     """Create an Administrator-authored SKU at the first shared lifecycle state."""
     item_number = body.item_number.strip()
@@ -261,7 +270,10 @@ class ChatRequest(BaseModel):
     operator_id: Optional[str] = None
 
 
-@router.post("/admin/studio/chat")
+@router.post(
+    "/admin/studio/chat",
+    dependencies=[Depends(require_sample_surface_mutation)],
+)
 async def studio_chat(request: Request, body: ChatRequest, db: Session = Depends(get_db_dep)):
     tenant_id = effective_tenant(request, body.tenant_id)
     actor = effective_actor(request, body.operator_id)
@@ -312,7 +324,10 @@ async def studio_chat(request: Request, body: ChatRequest, db: Session = Depends
     )
     return payload
 
-@router.post("/admin/studio/import-standard")
+@router.post(
+    "/admin/studio/import-standard",
+    dependencies=[Depends(require_sample_surface_mutation)],
+)
 async def studio_import_standard(
     request: Request,
     sku_id: str = Form(...),
@@ -469,8 +484,11 @@ def studio_voice():
 # ── Standard photo upload (§5.3) ──────────────────────────────────────────────
 
 
-@router.post("/admin/studio/upload")
-async def studio_upload(
+@router.post(
+    "/admin/samples/upload",
+    dependencies=[Depends(require_sample_surface_mutation)],
+)
+async def sample_workbench_upload(
     request: Request,
     sku_id: str = Form(...),
     tenant_id: str = Form("default"),
@@ -494,7 +512,7 @@ async def studio_upload(
     except UploadValidationError as exc:
         return JSONResponse({"error": exc.message}, status_code=exc.status_code)
 
-    dest_dir = _STUDIO_DATA_DIR / tenant_id / sku_id / "photos"
+    dest_dir = _SAMPLE_DATA_DIR / tenant_id / sku_id / "photos"
     dest_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{_uid()}{validated.extension}"
     dest_path = dest_dir / filename
@@ -631,7 +649,10 @@ class ConfirmRequest(BaseModel):
     operator_comment: Optional[str] = None
 
 
-@router.post("/admin/studio/confirm")
+@router.post(
+    "/admin/studio/confirm",
+    dependencies=[Depends(require_sample_surface_mutation)],
+)
 def studio_confirm(request: Request, body: ConfirmRequest, db: Session = Depends(get_db_dep)):
     tenant_id = effective_tenant(request, body.tenant_id)
     actor = effective_actor(request, body.confirmed_by)
@@ -686,7 +707,10 @@ class RejectRequest(BaseModel):
     reason: Optional[str] = None
 
 
-@router.post("/admin/studio/reject")
+@router.post(
+    "/admin/studio/reject",
+    dependencies=[Depends(require_sample_surface_mutation)],
+)
 def studio_reject(request: Request, body: RejectRequest, db: Session = Depends(get_db_dep)):
     tenant_id = effective_tenant(request, body.tenant_id)
     actor = effective_actor(request, body.rejected_by)
@@ -722,7 +746,10 @@ class UpdateStudioDetectionPointRequest(BaseModel):
     pass_criteria: Optional[str] = None
 
 
-@router.patch("/admin/studio/detection-points/{detection_point_id}")
+@router.patch(
+    "/admin/studio/detection-points/{detection_point_id}",
+    dependencies=[Depends(require_sample_surface_mutation)],
+)
 def studio_update_detection_point(
     detection_point_id: str,
     body: UpdateStudioDetectionPointRequest,
@@ -790,7 +817,10 @@ def studio_update_detection_point(
     }
 
 
-@router.post("/admin/studio/detection-points/{detection_point_id}/regions")
+@router.post(
+    "/admin/studio/detection-points/{detection_point_id}/regions",
+    dependencies=[Depends(require_sample_surface_mutation)],
+)
 def studio_set_regions(
     detection_point_id: str,
     body: SetRegionsRequest,
@@ -828,7 +858,10 @@ class SetAnalysisConfigRequest(BaseModel):
     cv_config: Dict[str, Any] = {}
 
 
-@router.post("/admin/studio/detection-points/{detection_point_id}/analysis-config")
+@router.post(
+    "/admin/studio/detection-points/{detection_point_id}/analysis-config",
+    dependencies=[Depends(require_sample_surface_mutation)],
+)
 def studio_set_analysis_config(
     detection_point_id: str,
     body: SetAnalysisConfigRequest,
@@ -978,10 +1011,12 @@ class PublishRequest(BaseModel):
     tenant_id: str = "default"
     sku_id: str
     published_by: Optional[str] = None
+    mutation_credential: Optional[str] = None
 
 
 @router.post("/admin/studio/publish")
 def studio_publish(request: Request, body: PublishRequest, db: Session = Depends(get_db_dep)):
+    verify_sample_mutation_credential(request, db, body.mutation_credential)
     tenant_id = effective_tenant(request, body.tenant_id)
     actor = effective_actor(request, body.published_by)
     try:
