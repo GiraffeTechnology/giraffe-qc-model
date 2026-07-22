@@ -595,8 +595,25 @@ def _normalize_inspection(
     rejected here — fail closed via the same StudioAIError path that already
     triggers primary/fallback escalation, rather than trusting a
     self-contradictory claim.
+
+    STAGE2_QWEN_VISION_PRODUCTION_ASSESSMENT (2026-07-22): a blind 30B/4B
+    count on the raw photo got 2 of 3 items wrong with high stated
+    confidence — the vision model is not a reliable counter. CV must be the
+    counting authority; the vision model's role on a counting checkpoint is
+    limited to confirming or disputing the CV count, never substituting its
+    own freely generated number as the production observation. So for any
+    ``method_hint == "counting"`` checkpoint: if CV reports a count, that
+    count — not the model's text — becomes the recorded ``observed_value``,
+    and an honest ``"disagrees"`` downgrades the result to
+    ``low_confidence`` for human review rather than being accepted as a
+    confident pass. If CV has no detector configured for that point at all,
+    the checkpoint can never be autonomously passed on the model's own
+    guess — it is forced to ``low_confidence`` so it always reaches a human,
+    matching "CV 未可靠定位时必须停止" from the assessment's root-cause
+    analysis.
     """
     expected_codes = [item["point_code"] for item in checkpoint_contract]
+    method_hints = {item["point_code"]: item.get("method_hint") for item in checkpoint_contract}
     cv_counts = _cv_counts_by_point(cv_context)
     returned: dict[str, dict[str, Any]] = {}
     for item in value.get("checkpoint_results") or []:
@@ -620,10 +637,20 @@ def _normalize_inspection(
                 raise StudioAIError(
                     f"vision_inspection_cv_agreement_contradicts_observed_value:{code}"
                 )
+        notes = str(item.get("notes") or "").strip()[:2000] or None
+        if method_hints.get(code) == "counting":
+            if code in cv_counts:
+                observed_value = str(cv_counts[code])
+                if cv_agreement == "disagrees" and result == "pass":
+                    result = "low_confidence"
+                    notes = " ".join(filter(None, [notes, "model_disputes_cv_count_review_required"]))
+            else:
+                result = "low_confidence"
+                notes = " ".join(filter(None, [notes, "no_cv_detector_configured_for_counting_checkpoint"]))
         returned[code] = {
             "point_code": code, "result": result, "confidence": confidence,
             "observed_value": observed_value,
-            "notes": str(item.get("notes") or "").strip()[:2000] or None,
+            "notes": notes,
         }
     results = [
         returned.get(code) or {
@@ -697,6 +724,14 @@ def inspect_image(
             "cv_agreement": "agrees|disagrees|not_applicable — only when CV pre-analysis evidence is supplied for this point; state 'agrees' only if your own observed_value matches the CV count exactly, otherwise 'disagrees'",
         }],
     }
+    counting_rule = (
+        "For a checkpoint whose method_hint is 'counting': CV is the counting authority, not you. "
+        "If CV pre-analysis evidence is supplied for that point, do not invent your own count — compare "
+        "what you see to the CV count and report cv_agreement ('agrees' or 'disagrees') plus any visible "
+        "defect (damage, misalignment, discoloration) in notes; the recorded count always comes from CV, "
+        "never from your own tally. If no CV evidence is supplied for a counting checkpoint, you cannot "
+        "supply a trustworthy count yourself — use low_confidence rather than guessing a number."
+    )
     def make_prompt(
         contract: list[dict[str, Any]],
         context: dict[str, Any] | None,
@@ -708,7 +743,8 @@ def inspect_image(
             "not add new point codes. Never guess hidden properties, dimensions, tolerances, barcode "
             "content, or evidence outside the image. If a checkpoint is not clearly visible, use "
             "not_visible; if evidence is ambiguous, use low_confidence. This is a checkpoint suggestion "
-            "for operator review, not a final verdict. Return one valid JSON object only, no markdown: "
+            "for operator review, not a final verdict. " + counting_rule + " "
+            "Return one valid JSON object only, no markdown: "
             + json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
             + "\nCheckpoints: "
             + json.dumps(contract, ensure_ascii=False, separators=(",", ":"))

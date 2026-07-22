@@ -1,11 +1,12 @@
 """Regression tests for the CV model swap (Stage 2 real-sample audit,
-2026-07-22 §8): the original global-threshold blob detectors severely
-overcounted on a real prong-set flower brooch — 11 petals (true 5), 31 then
-12 rhinestones (true 7) against admin-confirmed ground truth of
-5 petals / 3 pearls / 7 rhinestones. This module fixes it with detectors
-anchored to the metal armature's shape rather than raw brightness/saturation
-thresholds, and this test proves the fix against the real photo, not a
-synthetic fixture.
+2026-07-22 §8, ground truth corrected by
+STAGE2_QWEN_VISION_PRODUCTION_ASSESSMENT_20260722): the original
+global-threshold blob detectors severely overcounted on a real prong-set
+flower brooch — 11 petals (true 4), 31 then 12 rhinestones (true 7) against
+the administrator-confirmed ground truth of 4 petals / 3 pearls /
+7 rhinestones. This module fixes it with detectors anchored to the metal
+armature's shape rather than raw brightness/saturation thresholds, and this
+test proves the fix against the real photo, not a synthetic fixture.
 """
 from __future__ import annotations
 
@@ -17,8 +18,8 @@ import pytest
 from src.cv_preanalysis import run_preanalysis
 from src.cv_preanalysis.analyzers import pearl_count, petal_segmentation, rhinestone_count
 
-FIXTURE = Path(__file__).parent / "fixtures" / "qc" / "flower_brooch_5petal_3pearl_7rhinestone.jpg"
-TRUE_PETALS = 5
+FIXTURE = Path(__file__).parent / "fixtures" / "qc" / "flower_brooch_4petal_3pearl_7rhinestone.jpg"
+TRUE_PETALS = 4
 TRUE_PEARLS = 3
 TRUE_RHINESTONES = 7
 
@@ -64,20 +65,17 @@ def test_legacy_rhinestone_backends_are_the_documented_regression(image):
     assert hough_result["count"] > TRUE_RHINESTONES
 
 
-def test_silhouette_petal_count_is_close_but_documents_occlusion_limit(image):
-    """The silhouette backend correctly counts *visually resolvable* petal
-    lobes. On this specific sample one petal is optically occluded/tucked
-    behind another from this single top-down capture angle, so the honest
-    silhouette-based count is 4, one under the physically-confirmed 5 — this
-    is a genuine, documented single-frame 2D limitation (see the analyzer's
-    docstring), not a bug to tune away by curve-fitting this one photo.
-    The regression this test guards against is the OLD failure mode
-    (138 spurious regions from saturation-masking a white/desaturated
-    petal), not perfect occlusion-proof counting."""
+def test_silhouette_petal_count_matches_ground_truth(image):
+    """The silhouette backend counts *visually resolvable* petal lobes and
+    matches the administrator-confirmed ground truth of 4 exactly on this
+    sample (STAGE2_QWEN_VISION_PRODUCTION_ASSESSMENT_20260722). A petal
+    fully occluded/tucked behind another from the capture angle would still
+    produce no silhouette notch and be undercounted in general (a genuine
+    single-frame 2D limitation documented in the analyzer's docstring), but
+    that did not occur on this sample."""
     result = petal_segmentation(image, {"backend": "silhouette"})
     assert result["backend"] == "silhouette"
-    assert TRUE_PETALS - 1 <= result["count"] <= TRUE_PETALS
-    assert result["count"] < 20  # regression guard vs the 138-region failure
+    assert result["count"] == TRUE_PETALS
 
 
 def test_legacy_hsv_petal_backend_is_the_documented_regression(image):

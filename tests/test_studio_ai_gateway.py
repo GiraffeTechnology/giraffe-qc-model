@@ -540,3 +540,136 @@ def test_cv_agreement_disagrees_is_never_treated_as_contradictory(monkeypatch, t
     assert calls == ["local-4b"]
     assert result["assistant"]["fallback_used"] is False
     assert result["checkpoint_results"][0]["result"] == "pass"
+
+
+def test_counting_checkpoint_observed_value_is_always_sourced_from_cv(monkeypatch, tmp_path):
+    """STAGE2_QWEN_VISION_PRODUCTION_ASSESSMENT_20260722: CV is the counting
+    authority, not the vision model. Even when the model reports its own
+    free-text observation, the recorded observed_value for a counting
+    checkpoint with CV coverage must be the CV count, never the model's own
+    tally."""
+    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
+    monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
+    monkeypatch.delenv("STUDIO_VISION_FALLBACK_BASE_URL", raising=False)
+    monkeypatch.delenv("STUDIO_VISION_FALLBACK_MODEL", raising=False)
+    image = tmp_path / "capture.png"
+    image.write_bytes(b"capture")
+
+    def fake_post(config, payload, path):
+        value = {
+            "summary": "review",
+            "checkpoint_results": [{
+                "point_code": "RHINESTONE_COUNT",
+                "result": "pass",
+                "confidence": 0.9,
+                "observed_value": "looks about right",
+                "notes": "matches CV",
+                "cv_agreement": "agrees",
+            }],
+        }
+        return {"choices": [{"message": {"content": json.dumps(value)}}]}, 100
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    result = ai_gateway.inspect_image(
+        image_path=image, mime_type="image/png", language="en",
+        checkpoints=[{
+            "point_code": "RHINESTONE_COUNT", "label": "Rhinestone count",
+            "method_hint": "counting",
+        }],
+        cv_context={
+            "schema_version": "1.0",
+            "points": [{
+                "point_code": "RHINESTONE_COUNT",
+                "analysis": {"analyzers": [{"analyzer": "rhinestone_count", "count": 7}]},
+            }],
+        },
+    )
+
+    assert result["checkpoint_results"][0]["observed_value"] == "7"
+    assert result["checkpoint_results"][0]["result"] == "pass"
+
+
+def test_counting_checkpoint_without_cv_detector_forces_low_confidence(monkeypatch, tmp_path):
+    """A counting checkpoint with no configured CV detector can never be
+    autonomously passed on the vision model's own guessed count — per the
+    production assessment's root-cause finding (blind 30B/4B counting was
+    wrong 2 times out of 3 with high stated confidence), it must always be
+    forced to low_confidence so a human reviews it."""
+    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
+    monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
+    monkeypatch.delenv("STUDIO_VISION_FALLBACK_BASE_URL", raising=False)
+    monkeypatch.delenv("STUDIO_VISION_FALLBACK_MODEL", raising=False)
+    image = tmp_path / "capture.png"
+    image.write_bytes(b"capture")
+
+    def fake_post(config, payload, path):
+        value = {
+            "summary": "review",
+            "checkpoint_results": [{
+                "point_code": "BUTTON_COUNT",
+                "result": "pass",
+                "confidence": 0.97,
+                "observed_value": "7 buttons",
+                "notes": "counted directly",
+            }],
+        }
+        return {"choices": [{"message": {"content": json.dumps(value)}}]}, 100
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    result = ai_gateway.inspect_image(
+        image_path=image, mime_type="image/png", language="en",
+        checkpoints=[{
+            "point_code": "BUTTON_COUNT", "label": "Button count",
+            "method_hint": "counting",
+        }],
+    )
+
+    assert result["checkpoint_results"][0]["result"] == "low_confidence"
+    assert "no_cv_detector_configured_for_counting_checkpoint" in result["checkpoint_results"][0]["notes"]
+
+
+def test_counting_checkpoint_cv_disagreement_downgrades_to_low_confidence(monkeypatch, tmp_path):
+    """An honest cv_agreement disagreement on a counting checkpoint is not
+    silently accepted as a confident pass — CV being right is the default
+    assumption for counting, so a dispute must route to a human rather than
+    being resolved by trusting the vision model's own judgment."""
+    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
+    monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
+    monkeypatch.delenv("STUDIO_VISION_FALLBACK_BASE_URL", raising=False)
+    monkeypatch.delenv("STUDIO_VISION_FALLBACK_MODEL", raising=False)
+    image = tmp_path / "capture.png"
+    image.write_bytes(b"capture")
+
+    def fake_post(config, payload, path):
+        value = {
+            "summary": "review",
+            "checkpoint_results": [{
+                "point_code": "PEARL_COUNT",
+                "result": "pass",
+                "confidence": 0.9,
+                "observed_value": "looks like a different count",
+                "notes": "uncertain",
+                "cv_agreement": "disagrees",
+            }],
+        }
+        return {"choices": [{"message": {"content": json.dumps(value)}}]}, 100
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    result = ai_gateway.inspect_image(
+        image_path=image, mime_type="image/png", language="en",
+        checkpoints=[{
+            "point_code": "PEARL_COUNT", "label": "Pearl count",
+            "method_hint": "counting",
+        }],
+        cv_context={
+            "schema_version": "1.0",
+            "points": [{
+                "point_code": "PEARL_COUNT",
+                "analysis": {"analyzers": [{"analyzer": "pearl_count", "count": 3}]},
+            }],
+        },
+    )
+
+    assert result["checkpoint_results"][0]["result"] == "low_confidence"
+    assert result["checkpoint_results"][0]["observed_value"] == "3"
+    assert "model_disputes_cv_count_review_required" in result["checkpoint_results"][0]["notes"]

@@ -37,8 +37,11 @@ def _contours(mask: np.ndarray) -> list[np.ndarray]:
 # ─── Metal-armature helpers (socket_holes / pearl_count backends) ───────────
 #
 # Real-sample audit (2026-07-22): on a prong-set jewelry SKU, the original
-# global-threshold blob detectors overcounted badly (11 vs 5 petals, 31/12 vs
-# 7 rhinestones) against actual ground truth. A metal setting's wire has a
+# global-threshold blob detectors overcounted badly (11 vs 4 petals, 31/12 vs
+# 7 rhinestones) against actual ground truth (STAGE2_QWEN_VISION_PRODUCTION_
+# ASSESSMENT_20260722: administrator-confirmed 4 petals / 3 pearls /
+# 7 rhinestones on this sample; an earlier pass had mistakenly logged 5
+# petals before the assessment's manual recount). A metal setting's wire has a
 # reliably distinct warm gold/rose-gold hue independent of the mounted
 # stones' own color or the material's translucency, so anchoring detection to
 # that mask — rather than to petal/background brightness or saturation, which
@@ -320,14 +323,17 @@ def _petal_count_silhouette(image: np.ndarray, params: dict[str, Any]) -> dict[s
     Segmenting the whole bright subject from a dark background first (which
     is robust regardless of petal color or translucency) and then counting
     convex lobes around its outline is far more robust for this material
-    class.
+    class. Validated against the committed real-sample fixture: exact match
+    against the administrator-confirmed ground truth of 4 petals
+    (STAGE2_QWEN_VISION_PRODUCTION_ASSESSMENT_20260722).
 
     Known limitation: a petal that is fully occluded by, or tucked behind,
-    another petal from the capture angle produces no silhouette notch and is
-    undercounted — this is a genuine limit of single-frame 2D silhouette
-    analysis, not a parameter to tune away. Do not treat this analyzer's
-    count as authoritative; it is supporting evidence like every other
-    analyzer in this module.
+    another petal from the capture angle would produce no silhouette notch
+    and be undercounted — this is a genuine limit of single-frame 2D
+    silhouette analysis, not a parameter to tune away, even though it did
+    not occur on the validated sample. Per the production assessment, CV is
+    the counting authority and the vision model may only confirm or dispute
+    this count — it must never substitute its own freely generated tally.
     """
     normalized = _normalize_to_working_size(image, params)
     if normalized is None:

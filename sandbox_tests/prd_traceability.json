@@ -406,7 +406,7 @@
     },
     {
       "id": "PRD-S2-37",
-      "requirement": "CV 预分析计数模型须在真实样本上可用，不得沿用对该材质系统性失准的通用阈值检测器（§8 真实样本审计：11 vs 真值5 花瓣，31/12 vs 真值7 钻石）",
+      "requirement": "CV 预分析计数模型须在真实样本上可用，不得沿用对该材质系统性失准的通用阈值检测器（§8 真实样本审计：11 vs 真值4 花瓣，31/12 vs 真值7 钻石）",
       "status": "verified",
       "requires_real_run": true,
       "code_evidence": [
@@ -414,8 +414,8 @@
         "src/cv_preanalysis/registry.py"
       ],
       "test_evidence": ["tests/test_cv_model_swap_real_sample.py", "tests/test_cv_preanalysis.py"],
-      "real_run_evidence": "tests/fixtures/qc/flower_brooch_5petal_3pearl_7rhinestone.jpg",
-      "gap": "钻石(socket_holes)与珍珠(pearl_count)在真实样本上精确匹配真值(7/7, 3/3)；花瓣(silhouette)受单帧2D遮挡限制得4/5，已在代码与测试中如实记录为已知限制而非拟合掩盖；旧全局阈值后端保留作为向后兼容但用回归测试锁定其失准表现"
+      "real_run_evidence": "tests/fixtures/qc/flower_brooch_4petal_3pearl_7rhinestone.jpg",
+      "gap": "钻石(socket_holes)、珍珠(pearl_count)、花瓣(silhouette)三项在真实样本上精确匹配 STAGE2_QWEN_VISION_PRODUCTION_ASSESSMENT_20260722 确认的真值(4/3/7)；旧全局阈值后端保留作为向后兼容但用回归测试锁定其失准表现"
     },
     {
       "id": "PRD-S2-38",
@@ -429,6 +429,24 @@
     {
       "id": "PRD-S2-39",
       "requirement": "视觉模型不得在与自身观测值矛盾的情况下宣称与 CV 结果一致（§8.1 P0：4B 曾将与自身观测不符的 CV 计数标记为 supported）",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": ["src/qc_model/studio/ai_gateway.py"],
+      "test_evidence": ["tests/test_studio_ai_gateway.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-40",
+      "requirement": "计数类检测点必须以 CV 为计数权威，VLM 仅作是否一致的对比判断，不得以自由生成的计数替代生产观测值（STAGE2_QWEN_VISION_PRODUCTION_ASSESSMENT_20260722：30B 原图盲测计数正确率仅 1/3 且高置信度报错）",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": ["src/qc_model/studio/ai_gateway.py"],
+      "test_evidence": ["tests/test_studio_ai_gateway.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-41",
+      "requirement": "计数类检测点若无可用 CV 检测器，不得凭 VLM 自行猜测的数量自动放行，须强制转人工复核（STAGE2_QWEN_VISION_PRODUCTION_ASSESSMENT_20260722 §3：CV 未可靠定位时必须停止）",
       "status": "verified",
       "requires_real_run": false,
       "code_evidence": ["src/qc_model/studio/ai_gateway.py"],
