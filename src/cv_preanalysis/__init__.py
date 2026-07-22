@@ -14,6 +14,14 @@ from .pipeline import (
     write_evidence,
     write_overlay,
 )
+from .registration import (
+    RegistrationError,
+    RegistrationResult,
+    crop_region,
+    map_region,
+    register,
+    register_and_map_regions,
+)
 from .registry import ANALYZERS, analyzer_names, get_analyzer
 
 __all__ = [
@@ -21,9 +29,15 @@ __all__ = [
     "CV_PROMPT_CLOSE",
     "CV_PROMPT_OPEN",
     "PreanalysisError",
+    "RegistrationError",
+    "RegistrationResult",
     "analyzer_names",
     "build_prompt_block",
+    "crop_region",
     "get_analyzer",
+    "map_region",
+    "register",
+    "register_and_map_regions",
     "run_preanalysis",
     "write_evidence",
     "write_overlay",
