@@ -61,36 +61,6 @@ def vision_config() -> AssistantConfig:
     )
 
 
-def vision_fallback_config() -> AssistantConfig:
-    """Optional escalation model; absence means primary-only operation."""
-    return AssistantConfig(
-        role="vision",
-        provider=os.getenv("STUDIO_VISION_FALLBACK_PROVIDER", "openai_compatible").strip(),
-        base_url=os.getenv("STUDIO_VISION_FALLBACK_BASE_URL", "").strip().rstrip("/"),
-        model=os.getenv("STUDIO_VISION_FALLBACK_MODEL", "").strip(),
-        timeout_seconds=float(os.getenv(
-            "STUDIO_VISION_FALLBACK_TIMEOUT_SECONDS",
-            os.getenv("STUDIO_AI_TIMEOUT_SECONDS", "90"),
-        )),
-    )
-
-
-def _env_enabled(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _escalation_confidence() -> float:
-    try:
-        return max(0.0, min(1.0, float(os.getenv(
-            "STUDIO_VISION_ESCALATION_CONFIDENCE", "0.75"
-        ))))
-    except ValueError:
-        return 0.75
-
-
 _CHECKPOINT_EXAMPLE = {
     "point_code": "UPPERCASE_CODE",
     "label": "short localized label",
@@ -412,7 +382,6 @@ def extract_image_text(
 ) -> dict[str, Any]:
     """Recover visible process-card text without applying QC judgment."""
     primary = vision_config()
-    fallback = vision_fallback_config()
     mime = mime_type or mimetypes.guess_type(image_path.name)[0] or "image/jpeg"
     data_url = f"data:{mime};base64,{base64.b64encode(image_path.read_bytes()).decode('ascii')}"
     schema = {
@@ -426,22 +395,9 @@ def extract_image_text(
         "or repair text that is not legible. Return one JSON object only: "
         + json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
     )
-    selected = primary
-    fallback_used = False
-    reasons: list[str] = []
-    try:
-        value, elapsed = _vision_json(
-            primary, data_url=data_url, prompt=prompt, max_tokens=2048,
-        )
-    except StudioAIError:
-        if not (_env_enabled("STUDIO_VISION_FALLBACK_ENABLED", True) and fallback.configured):
-            raise
-        reasons.append("primary_ocr_error")
-        value, elapsed = _vision_json(
-            fallback, data_url=data_url, prompt=prompt, max_tokens=2048,
-        )
-        selected = fallback
-        fallback_used = True
+    value, elapsed = _vision_json(
+        primary, data_url=data_url, prompt=prompt, max_tokens=2048,
+    )
     text = str(value.get("text") or "").strip()
     if not text:
         raise StudioAIError("vision_ocr_no_readable_text")
@@ -449,36 +405,10 @@ def extract_image_text(
         "text": text[:2_000_000],
         "language": str(value.get("language") or "").strip()[:64] or None,
         "layout_notes": str(value.get("layout_notes") or "").strip()[:2000] or None,
-        "assistant": _assistant_route(
-            selected=selected, elapsed_ms=elapsed, primary=primary, fallback=fallback,
-            fallback_used=fallback_used, reasons=reasons,
-        ),
-    }
-
-
-def _assistant_route(
-    *,
-    selected: AssistantConfig,
-    elapsed_ms: int,
-    primary: AssistantConfig,
-    fallback: AssistantConfig,
-    fallback_used: bool,
-    reasons: list[str],
-    passes: int = 1,
-) -> dict[str, Any]:
-    return {
-        "role": "vision",
-        "provider": selected.provider,
-        "model": selected.model,
-        "elapsed_ms": elapsed_ms,
-        "mode": "live",
-        "route": "fallback" if fallback_used else "primary",
-        "strategy": "cv_then_primary_then_conditional_fallback",
-        "primary_model": primary.model,
-        "fallback_model": fallback.model if fallback.configured else None,
-        "fallback_used": fallback_used,
-        "escalation_reasons": reasons,
-        "passes": passes,
+        "assistant": {
+            "role": "vision", "provider": primary.provider, "model": primary.model,
+            "elapsed_ms": elapsed, "mode": "live",
+        },
     }
 
 
@@ -493,7 +423,6 @@ def author_image(*, image_path: Path, mime_type: str, language: str, current_sku
     discarded before it can reach the confirmation flow.
     """
     primary = vision_config()
-    fallback = vision_fallback_config()
     mime = mime_type or mimetypes.guess_type(image_path.name)[0] or "image/jpeg"
     data_url = f"data:{mime};base64,{base64.b64encode(image_path.read_bytes()).decode('ascii')}"
     schema = {
@@ -514,36 +443,14 @@ def author_image(*, image_path: Path, mime_type: str, language: str, current_sku
         + "\nCurrent SKU: "
         + json.dumps(current_sku, ensure_ascii=False, separators=(",", ":"))
     )
-    reasons: list[str] = []
-    selected = primary
-    fallback_used = False
-    try:
-        value, elapsed = _vision_json(
-            primary, data_url=data_url, prompt=prompt, max_tokens=700,
-        )
-    except StudioAIError:
-        if not (_env_enabled("STUDIO_VISION_FALLBACK_ENABLED", True) and fallback.configured):
-            raise
-        reasons.append("primary_error")
-        value, elapsed = _vision_json(
-            fallback, data_url=data_url, prompt=prompt, max_tokens=700,
-        )
-        selected = fallback
-        fallback_used = True
-    result = _normalize_result(value, selected, elapsed, language)
+    value, elapsed = _vision_json(
+        primary, data_url=data_url, prompt=prompt, max_tokens=700,
+    )
+    result = _normalize_result(value, primary, elapsed, language)
     # The administrator is the only checkpoint source: discard anything the
     # model volunteered so photo analysis can never seed the confirmation flow.
     result["checkpoints"] = []
     result.pop("coverage_review", None)
-    result["assistant"] = _assistant_route(
-        selected=selected,
-        elapsed_ms=elapsed,
-        primary=primary,
-        fallback=fallback,
-        fallback_used=fallback_used,
-        reasons=reasons,
-        passes=1,
-    )
     return result
 
 
@@ -669,16 +576,15 @@ def _normalize_inspection(
     }
 
 
-def _inspection_escalation_reasons(result: dict[str, Any]) -> list[str]:
-    threshold = _escalation_confidence()
-    reasons: list[str] = []
-    for item in result["checkpoint_results"]:
-        code = item["point_code"]
-        if item["result"] in {"not_visible", "low_confidence"}:
-            reasons.append(f"{code}:{item['result']}")
-        elif item["confidence"] < threshold:
-            reasons.append(f"{code}:confidence_below_{threshold:g}")
-    return reasons
+_PRODUCTION_VLM_METHOD_HINTS = frozenset({"counting", "defect_detection"})
+
+
+def _excluded_checkpoint_result(code: str, method_hint: str | None) -> dict[str, Any]:
+    return {
+        "point_code": code, "result": "low_confidence", "confidence": 0.0,
+        "observed_value": None,
+        "notes": f"vlm_scope_excludes_method_hint:{method_hint or 'unset'}",
+    }
 
 
 def inspect_image(
@@ -688,18 +594,29 @@ def inspect_image(
     language: str,
     checkpoints: list[dict[str, Any]],
     cv_context: dict[str, Any] | None = None,
-    fallback_crops: dict[str, list[Path]] | None = None,
 ) -> dict[str, Any]:
     """Run provider-neutral visual inspection against an exact checkpoint set.
 
     The model may propose checkpoint-level observations only. It cannot
     finalize a job, and a missing checkpoint is normalized to not_visible
     so incomplete model output can never silently pass.
+
+    STAGE2_QWEN_VISION_PRODUCTION_ASSESSMENT (2026-07-22): production scopes
+    the vision model to two jobs only — counting confirmation
+    (``method_hint == "counting"``, see ``_normalize_inspection``'s CV
+    counting-authority rule) and obvious-defect detection
+    (``method_hint == "defect_detection"``, e.g. a missing/dropped stone).
+    A checkpoint typed with any other method_hint (alignment,
+    presence_check, shape_compare, readability_check) is never sent to the
+    model in production; it is returned as low_confidence so it always
+    reaches a human instead of asking the model to judge something outside
+    its validated scope. There is no escalation to a larger/remote model on
+    a low-confidence or ambiguous result — the on-device model is the only
+    vision model in this path, and operator review is the fallback.
     """
     if not checkpoints:
         raise StudioAIError("vision_inspection_has_no_checkpoints")
     primary = vision_config()
-    fallback = vision_fallback_config()
     mime = mime_type or mimetypes.guess_type(image_path.name)[0] or "image/jpeg"
     data_url = f"data:{mime};base64,{base64.b64encode(image_path.read_bytes()).decode('ascii')}"
     checkpoint_contract = [
@@ -713,6 +630,21 @@ def inspect_image(
         }
         for item in checkpoints
     ]
+    vlm_contract = [c for c in checkpoint_contract if c["method_hint"] in _PRODUCTION_VLM_METHOD_HINTS]
+    excluded_results = {
+        c["point_code"]: _excluded_checkpoint_result(c["point_code"], c["method_hint"])
+        for c in checkpoint_contract if c["method_hint"] not in _PRODUCTION_VLM_METHOD_HINTS
+    }
+    if not vlm_contract:
+        return {
+            "summary": "No checkpoints are within the production vision model's scope "
+                       "(counting or defect_detection); all require human inspection.",
+            "checkpoint_results": [excluded_results[c["point_code"]] for c in checkpoint_contract],
+            "assistant": {
+                "role": "vision", "provider": None, "model": None,
+                "elapsed_ms": 0, "mode": "not_called",
+            },
+        }
     schema = {
         "summary": f"short evidence summary in {_locale_name(language)}",
         "checkpoint_results": [{
@@ -725,18 +657,17 @@ def inspect_image(
         }],
     }
     counting_rule = (
-        "For a checkpoint whose method_hint is 'counting': CV is the counting authority, not you. "
-        "If CV pre-analysis evidence is supplied for that point, do not invent your own count — compare "
-        "what you see to the CV count and report cv_agreement ('agrees' or 'disagrees') plus any visible "
-        "defect (damage, misalignment, discoloration) in notes; the recorded count always comes from CV, "
-        "never from your own tally. If no CV evidence is supplied for a counting checkpoint, you cannot "
-        "supply a trustworthy count yourself — use low_confidence rather than guessing a number."
+        "You handle exactly two kinds of checkpoints: counting confirmation and obvious-defect "
+        "detection (e.g. a missing/dropped stone, visible damage, misalignment). For a checkpoint "
+        "whose method_hint is 'counting': CV is the counting authority, not you. If CV pre-analysis "
+        "evidence is supplied for that point, do not invent your own count — compare what you see to "
+        "the CV count and report cv_agreement ('agrees' or 'disagrees') plus any visible defect in "
+        "notes; the recorded count always comes from CV, never from your own tally. If no CV evidence "
+        "is supplied for a counting checkpoint, you cannot supply a trustworthy count yourself — use "
+        "low_confidence rather than guessing a number."
     )
-    def make_prompt(
-        contract: list[dict[str, Any]],
-        context: dict[str, Any] | None,
-        crop_manifest: list[dict[str, Any]] | None = None,
-    ) -> str:
+
+    def make_prompt(contract: list[dict[str, Any]], context: dict[str, Any] | None) -> str:
         value = (
             "You are the vision inspection assistant for Giraffe QC. Inspect only the supplied image evidence "
             "against every supplied checkpoint. Return exactly one result for every point_code and do "
@@ -749,152 +680,23 @@ def inspect_image(
             + "\nCheckpoints: "
             + json.dumps(contract, ensure_ascii=False, separators=(",", ":"))
         )
-        if crop_manifest:
-            value += (
-                "\nOnly per-checkpoint crops are supplied. Image numbers are 1-based and map as follows: "
-                + json.dumps(crop_manifest, ensure_ascii=False, separators=(",", ":"))
-            )
         if context:
             value += "\n" + build_prompt_block(context)
         return value
 
-    prompt = make_prompt(checkpoint_contract, cv_context)
-
-    def prepare_fallback(codes: list[str]):
-        wanted = set(codes)
-        contract = [c for c in checkpoint_contract if c["point_code"] in wanted]
-        if not contract:
-            return None
-        if fallback_crops is None:
-            return [data_url], contract, make_prompt(contract, cv_context), None
-        urls: list[str] = []
-        manifest: list[dict[str, Any]] = []
-        available_codes: set[str] = set()
-        for item in contract:
-            code = item["point_code"]
-            paths = fallback_crops.get(code) or []
-            for path in paths:
-                crop_path = Path(path)
-                if not crop_path.is_file():
-                    continue
-                crop_mime = mimetypes.guess_type(crop_path.name)[0] or "image/jpeg"
-                urls.append(
-                    f"data:{crop_mime};base64,"
-                    + base64.b64encode(crop_path.read_bytes()).decode("ascii")
-                )
-                available_codes.add(code)
-                manifest.append({"image_index": len(urls), "point_code": code})
-        if not urls:
-            return None
-        contract = [c for c in contract if c["point_code"] in available_codes]
-        context = None
-        if cv_context:
-            context_points = [
-                point for point in (cv_context.get("points") or [])
-                if point.get("point_code") in available_codes
-            ]
-            if context_points:
-                context = {
-                    "schema_version": cv_context.get("schema_version", "1.0"),
-                    "points": context_points,
-                    "verdict_effect": "informational_only",
-                }
-        return urls, contract, make_prompt(contract, context, manifest), manifest
-
-    reasons: list[str] = []
-    fallback_used = False
-    selected = primary
-    try:
-        value, primary_elapsed = _vision_json(
-            primary, data_url=data_url, prompt=prompt, max_tokens=1024,
-        )
-        primary_result = _normalize_inspection(
-            value, config=primary, elapsed=primary_elapsed,
-            checkpoint_contract=checkpoint_contract, cv_context=cv_context,
-        )
-    except StudioAIError as primary_error:
-        if not (_env_enabled("STUDIO_VISION_FALLBACK_ENABLED", True) and fallback.configured):
-            raise
-        reasons.append("primary_error")
-        prepared = prepare_fallback([item["point_code"] for item in checkpoint_contract])
-        if prepared is None:
-            raise primary_error
-        fallback_urls, fallback_contract, fallback_prompt, manifest = prepared
-        fallback_value, fallback_elapsed = _vision_json(
-            fallback, data_url=fallback_urls, prompt=fallback_prompt, max_tokens=1024,
-        )
-        result = _normalize_inspection(
-            fallback_value, config=fallback, elapsed=fallback_elapsed,
-            checkpoint_contract=checkpoint_contract, cv_context=cv_context,
-        )
-        result["assistant"] = _assistant_route(
-            selected=fallback, elapsed_ms=fallback_elapsed, primary=primary,
-            fallback=fallback, fallback_used=True, reasons=reasons,
-        )
-        result["routing"] = {
-            "primary": None,
-            "fallback": _normalize_inspection(
-                fallback_value, config=fallback, elapsed=fallback_elapsed,
-                checkpoint_contract=fallback_contract, cv_context=cv_context,
-            )["checkpoint_results"],
-            "fallback_payload": "full_image" if fallback_crops is None else "checkpoint_crops",
-            "crop_manifest": manifest,
-        }
-        return result
-
-    reasons.extend(_inspection_escalation_reasons(primary_result))
-    result = primary_result
-    total_elapsed = primary_elapsed
-    routing: dict[str, Any] = {
-        "primary": primary_result["checkpoint_results"], "fallback": None,
-        "fallback_payload": None, "crop_manifest": None,
-    }
-    if reasons and _env_enabled("STUDIO_VISION_FALLBACK_ENABLED", True) and fallback.configured:
-        escalated_codes = list(dict.fromkeys(reason.split(":", 1)[0] for reason in reasons))
-        prepared = prepare_fallback(escalated_codes)
-        if fallback_crops is not None:
-            available = {
-                item["point_code"] for item in (prepared[1] if prepared else [])
-            }
-            for code in escalated_codes:
-                if code not in available:
-                    reasons.append(f"{code}:no_fallback_crop")
-        try:
-            if prepared is None:
-                raise StudioAIError("no_authorized_fallback_crop")
-            fallback_urls, fallback_contract, fallback_prompt, manifest = prepared
-            fallback_value, fallback_elapsed = _vision_json(
-                fallback, data_url=fallback_urls, prompt=fallback_prompt, max_tokens=1024,
-            )
-            fallback_result = _normalize_inspection(
-                fallback_value, config=fallback, elapsed=fallback_elapsed,
-                checkpoint_contract=fallback_contract, cv_context=cv_context,
-            )
-        except StudioAIError as exc:
-            reasons.append(f"fallback_error:{exc}")
-        else:
-            fallback_by_code = {
-                item["point_code"]: item for item in fallback_result["checkpoint_results"]
-            }
-            result = dict(primary_result)
-            result["summary"] = fallback_result["summary"] or primary_result["summary"]
-            result["checkpoint_results"] = [
-                fallback_by_code.get(item["point_code"], item)
-                for item in primary_result["checkpoint_results"]
-            ]
-            total_elapsed += fallback_elapsed
-            selected = fallback
-            fallback_used = True
-            routing["fallback"] = fallback_result["checkpoint_results"]
-            routing["fallback_payload"] = (
-                "full_image" if fallback_crops is None else "checkpoint_crops"
-            )
-            routing["crop_manifest"] = manifest
-    result["assistant"] = _assistant_route(
-        selected=selected, elapsed_ms=total_elapsed, primary=primary,
-        fallback=fallback, fallback_used=fallback_used, reasons=reasons,
+    prompt = make_prompt(vlm_contract, cv_context)
+    value, elapsed = _vision_json(
+        primary, data_url=data_url, prompt=prompt, max_tokens=1024,
     )
-    result["routing"] = routing
+    result = _normalize_inspection(
+        value, config=primary, elapsed=elapsed,
+        checkpoint_contract=vlm_contract, cv_context=cv_context,
+    )
+    by_code = {item["point_code"]: item for item in result["checkpoint_results"]}
+    result["checkpoint_results"] = [
+        by_code.get(c["point_code"]) or excluded_results.get(c["point_code"])
+        for c in checkpoint_contract
+    ]
     return result
 
 
@@ -910,9 +712,4 @@ def assistant_status() -> dict[str, Any]:
     return {
         "text": view(text_config()),
         "vision": view(vision_config()),
-        "vision_fallback": view(vision_fallback_config()),
-        "vision_routing": {
-            "strategy": "cv_then_primary_then_conditional_fallback",
-            "escalation_confidence": _escalation_confidence(),
-        },
     }

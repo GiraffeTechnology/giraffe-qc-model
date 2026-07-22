@@ -1229,15 +1229,9 @@ def test_stage2_live_vision_endpoint_records_suggestions_without_auto_finalizing
     assert all(item["result"] == "not_visible" for item in data["checkpoint_results"])
     assert captured["cv_context"]["verdict_effect"] == "informational_only"
     assert captured["cv_context"]["points"][0]["point_code"] == configured_point.point_code
-    assert configured_point.point_code in captured["fallback_crops"]
-    crop_path = captured["fallback_crops"][configured_point.point_code][0]
-    assert crop_path.is_file()
-    assert crop_path.stat().st_size <= 200 * 1024
     cv_by_code = {item["point_code"]: item for item in data["cv_preanalysis"]}
     assert cv_by_code[configured_point.point_code]["cv_status"] == "completed"
     assert data["timings_ms"]["cv"] >= 0
-    assert data["fallback_crops"][0]["point_code"] == configured_point.point_code
-    assert data["fallback_crops"][0]["size_bytes"] <= 200 * 1024
 
     from src.db.execution_models import QCCheckpointResult, QCModelResult
     model_row = db_session.query(QCModelResult).filter_by(job_id=job_id).one()
@@ -1245,7 +1239,6 @@ def test_stage2_live_vision_endpoint_records_suggestions_without_auto_finalizing
     assert model_row.media_id == attached.json()["media_id"]
     stored_cv = {item["point_code"]: item for item in model_row.raw_output["cv_preanalysis"]}
     assert stored_cv[configured_point.point_code]["cv_status"] == "completed"
-    assert model_row.raw_output["fallback_crops"][0]["size_bytes"] <= 200 * 1024
     assert db_session.query(QCCheckpointResult).filter_by(job_id=job_id).count() == 0
     unchanged = auth_client.get(f"/api/v1/pad/inspection-jobs/{job_id}").json()
     assert unchanged["status"] == "pending"

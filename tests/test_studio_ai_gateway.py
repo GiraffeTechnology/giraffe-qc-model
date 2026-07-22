@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import base64
 import json
+
+import pytest
 
 from src.qc_model.studio import ai_gateway
 
@@ -55,7 +56,6 @@ def test_vision_assistant_sends_image_to_openai_compatible_route(monkeypatch, tm
     monkeypatch.setenv("STUDIO_VISION_PROVIDER", "openai_compatible")
     monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://vision.invalid")
     monkeypatch.setenv("STUDIO_VISION_MODEL", "replaceable-vision-default")
-    monkeypatch.setenv("STUDIO_VISION_AUTHOR_SELF_REVIEW", "false")
     image = tmp_path / "reference.png"
     image.write_bytes(b"not-decoded-by-the-gateway")
     captured = {}
@@ -94,7 +94,13 @@ def test_vision_assistant_sends_image_to_openai_compatible_route(monkeypatch, tm
     assert content[0]["image_url"]["url"].startswith("data:image/png;base64,")
     assert "Describe this reference photo only" in content[1]["text"]
     assert "do NOT propose" in content[1]["text"]
-    assert result["assistant"]["role"] == "vision"
+    assert result["assistant"] == {
+        "role": "vision",
+        "provider": "openai_compatible",
+        "model": "replaceable-vision-default",
+        "elapsed_ms": 300,
+        "mode": "live",
+    }
     # Checkpoints are authored by the administrator, never from the photo.
     assert result["checkpoints"] == []
 
@@ -103,8 +109,6 @@ def test_live_vision_inspection_is_checkpoint_scoped_and_fails_closed(monkeypatc
     monkeypatch.setenv("STUDIO_VISION_PROVIDER", "openai_compatible")
     monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://vision.invalid")
     monkeypatch.setenv("STUDIO_VISION_MODEL", "replaceable-vision-default")
-    monkeypatch.delenv("STUDIO_VISION_FALLBACK_BASE_URL", raising=False)
-    monkeypatch.delenv("STUDIO_VISION_FALLBACK_MODEL", raising=False)
     image = tmp_path / "capture.png"
     image.write_bytes(b"camera-frame")
     captured = {}
@@ -112,13 +116,13 @@ def test_live_vision_inspection_is_checkpoint_scoped_and_fails_closed(monkeypatc
     def fake_post(config, payload, path):
         captured.update(payload=payload, path=path)
         content = {
-            "summary": "The barcode is visible but the seal is outside the frame.",
+            "summary": "A defect is visible on one checkpoint; the other is outside the frame.",
             "checkpoint_results": [{
-                "point_code": "BARCODE_PRESENT",
+                "point_code": "SURFACE_DAMAGE",
                 "result": "pass",
                 "confidence": 0.91,
-                "observed_value": "barcode label visible",
-                "notes": "label is visible in the center",
+                "observed_value": "no visible damage",
+                "notes": "surface is intact",
             }],
         }
         return {"choices": [{"message": {"content": json.dumps(content)}}]}, 420
@@ -129,8 +133,8 @@ def test_live_vision_inspection_is_checkpoint_scoped_and_fails_closed(monkeypatc
         mime_type="image/png",
         language="en",
         checkpoints=[
-            {"point_code": "BARCODE_PRESENT", "label": "Barcode present"},
-            {"point_code": "SEAL_INTEGRITY", "label": "Seal integrity"},
+            {"point_code": "SURFACE_DAMAGE", "label": "Surface damage", "method_hint": "defect_detection"},
+            {"point_code": "SEAL_INTEGRITY", "label": "Seal integrity", "method_hint": "defect_detection"},
         ],
     )
 
@@ -149,18 +153,86 @@ def test_live_vision_inspection_is_checkpoint_scoped_and_fails_closed(monkeypatc
     assert result["assistant"]["model"] == "replaceable-vision-default"
 
 
+def test_inspection_excludes_checkpoints_outside_production_vlm_scope(monkeypatch, tmp_path):
+    """STAGE2_QWEN_VISION_PRODUCTION_ASSESSMENT_20260722: production narrows
+    the vision model to counting confirmation and obvious-defect detection
+    only. A checkpoint typed with any other method_hint must never reach the
+    model — it is returned as low_confidence so it always routes to a
+    human, instead of asking the model to judge outside its validated
+    scope."""
+    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
+    monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
+    image = tmp_path / "capture.png"
+    image.write_bytes(b"capture")
+    calls = []
+
+    def fake_post(config, payload, path):
+        calls.append(config.model)
+        contract = json.loads(
+            payload["messages"][0]["content"][1]["text"].split("Checkpoints: ", 1)[1].split("\n", 1)[0]
+        )
+        value = {
+            "summary": "review",
+            "checkpoint_results": [{
+                "point_code": item["point_code"], "result": "pass", "confidence": 0.9,
+                "observed_value": "7", "notes": "matches CV",
+            } for item in contract],
+        }
+        return {"choices": [{"message": {"content": json.dumps(value)}}]}, 100
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    result = ai_gateway.inspect_image(
+        image_path=image, mime_type="image/png", language="en",
+        checkpoints=[
+            {"point_code": "SURFACE_DAMAGE", "label": "Surface damage", "method_hint": "defect_detection"},
+            {"point_code": "CENTER_ALIGNMENT", "label": "Center alignment", "method_hint": "alignment"},
+            {"point_code": "LOGO_PRESENT", "label": "Logo present", "method_hint": "presence_check"},
+        ],
+    )
+
+    assert calls == ["local-4b"]  # exactly one call, only for the in-scope checkpoint
+    by_code = {item["point_code"]: item for item in result["checkpoint_results"]}
+    assert by_code["SURFACE_DAMAGE"]["result"] == "pass"
+    assert by_code["CENTER_ALIGNMENT"]["result"] == "low_confidence"
+    assert by_code["CENTER_ALIGNMENT"]["notes"] == "vlm_scope_excludes_method_hint:alignment"
+    assert by_code["LOGO_PRESENT"]["result"] == "low_confidence"
+    assert by_code["LOGO_PRESENT"]["notes"] == "vlm_scope_excludes_method_hint:presence_check"
+
+
+def test_inspection_skips_model_call_entirely_when_no_checkpoint_is_in_scope(monkeypatch, tmp_path):
+    """No network call at all when every checkpoint is outside production
+    scope — nothing to ask the model, so no reason to spend a call on it."""
+    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
+    monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
+    image = tmp_path / "capture.png"
+    image.write_bytes(b"capture")
+    calls = []
+
+    def fake_post(config, payload, path):
+        calls.append(config.model)
+        raise AssertionError("must not call the model when nothing is in scope")
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    result = ai_gateway.inspect_image(
+        image_path=image, mime_type="image/png", language="en",
+        checkpoints=[{"point_code": "LABEL_READABLE", "label": "Label readable", "method_hint": "readability_check"}],
+    )
+
+    assert calls == []
+    assert result["checkpoint_results"][0]["result"] == "low_confidence"
+    assert result["checkpoint_results"][0]["notes"] == "vlm_scope_excludes_method_hint:readability_check"
+    assert result["assistant"]["mode"] == "not_called"
+
+
 def test_status_never_exposes_internal_endpoint(monkeypatch):
     monkeypatch.setenv("STUDIO_TEXT_BASE_URL", "http://internal-text:11434")
     monkeypatch.setenv("STUDIO_TEXT_MODEL", "text-default")
     monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://internal-vision:8080")
     monkeypatch.setenv("STUDIO_VISION_MODEL", "vision-default")
-    monkeypatch.setenv("STUDIO_VISION_FALLBACK_BASE_URL", "http://secret-fallback:18081")
-    monkeypatch.setenv("STUDIO_VISION_FALLBACK_MODEL", "vision-fallback")
 
     serialized = json.dumps(ai_gateway.assistant_status())
     assert "internal-text" not in serialized
     assert "internal-vision" not in serialized
-    assert "secret-fallback" not in serialized
     assert '"configured": true' in serialized
 
 
@@ -207,8 +279,6 @@ def test_author_image_discards_model_volunteered_checkpoints(monkeypatch, tmp_pa
     when the model volunteers them."""
     monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
     monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
-    monkeypatch.delenv("STUDIO_VISION_FALLBACK_BASE_URL", raising=False)
-    monkeypatch.delenv("STUDIO_VISION_FALLBACK_MODEL", raising=False)
     image = tmp_path / "reference.png"
     image.write_bytes(b"reference")
     prompts = []
@@ -239,106 +309,17 @@ def test_author_image_discards_model_volunteered_checkpoints(monkeypatch, tmp_pa
     assert result["checkpoints"] == []
     assert "coverage_review" not in result
     assert result["questions"]
-    assert result["assistant"]["passes"] == 1
 
 
-def test_inspection_injects_cv_and_escalates_low_confidence_to_fallback(monkeypatch, tmp_path):
+def test_inspection_low_confidence_result_is_not_escalated_to_a_second_model(monkeypatch, tmp_path):
+    """Qwen3-VL-4B is the sole production vision model — there is no 30B or
+    remote escalation tier. A low-confidence result from the model is
+    returned as-is (for the mandatory operator review downstream), not
+    retried against a second, larger model."""
     monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
     monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
-    monkeypatch.setenv("STUDIO_VISION_FALLBACK_BASE_URL", "http://fallback.invalid")
-    monkeypatch.setenv("STUDIO_VISION_FALLBACK_MODEL", "cloud-30b")
-    monkeypatch.setenv("STUDIO_VISION_ESCALATION_CONFIDENCE", "0.8")
     image = tmp_path / "capture.png"
     image.write_bytes(b"capture")
-    calls = []
-
-    def fake_post(config, payload, path):
-        prompt = payload["messages"][0]["content"][1]["text"]
-        calls.append((config.model, prompt))
-        low = config.model == "local-4b"
-        value = {
-            "summary": "review",
-            "checkpoint_results": [{
-                "point_code": "CENTER_ALIGNMENT",
-                "result": "low_confidence" if low else "pass",
-                "confidence": 0.55 if low else 0.94,
-                "observed_value": "center visible",
-                "notes": "evidence",
-            }],
-        }
-        return {"choices": [{"message": {"content": json.dumps(value)}}]}, 120
-
-    monkeypatch.setattr(ai_gateway, "_post", fake_post)
-    result = ai_gateway.inspect_image(
-        image_path=image, mime_type="image/png", language="en",
-        checkpoints=[{"point_code": "CENTER_ALIGNMENT", "label": "Center alignment"}],
-        cv_context={
-            "schema_version": "1.0",
-            "points": [{"point_code": "CENTER_ALIGNMENT", "analysis": {"analyzers": []}}],
-        },
-    )
-
-    assert [model for model, _ in calls] == ["local-4b", "cloud-30b"]
-    assert "<CV_PREANALYSIS_JSON>" in calls[0][1]
-    assert result["checkpoint_results"][0]["result"] == "pass"
-    assert result["assistant"]["fallback_used"] is True
-    assert result["assistant"]["route"] == "fallback"
-    assert "CENTER_ALIGNMENT:low_confidence" in result["assistant"]["escalation_reasons"]
-    assert result["routing"]["primary"][0]["result"] == "low_confidence"
-
-
-def test_inspection_fallback_receives_only_authorized_checkpoint_crop(monkeypatch, tmp_path):
-    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
-    monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
-    monkeypatch.setenv("STUDIO_VISION_FALLBACK_BASE_URL", "http://fallback.invalid")
-    monkeypatch.setenv("STUDIO_VISION_FALLBACK_MODEL", "cloud-30b")
-    full_image = tmp_path / "full-frame.png"
-    crop = tmp_path / "center-crop.jpg"
-    full_image.write_bytes(b"full-frame-must-not-reach-fallback")
-    crop.write_bytes(b"authorized-checkpoint-crop")
-    calls = []
-
-    def fake_post(config, payload, path):
-        content = payload["messages"][0]["content"]
-        calls.append((config.model, content))
-        low = config.model == "local-4b"
-        value = {
-            "summary": "review",
-            "checkpoint_results": [{
-                "point_code": "CENTER_ALIGNMENT",
-                "result": "low_confidence" if low else "pass",
-                "confidence": 0.45 if low else 0.96,
-                "observed_value": "center visible",
-                "notes": "evidence",
-            }],
-        }
-        return {"choices": [{"message": {"content": json.dumps(value)}}]}, 100
-
-    monkeypatch.setattr(ai_gateway, "_post", fake_post)
-    result = ai_gateway.inspect_image(
-        image_path=full_image, mime_type="image/png", language="en",
-        checkpoints=[{"point_code": "CENTER_ALIGNMENT", "label": "Center alignment"}],
-        fallback_crops={"CENTER_ALIGNMENT": [crop]},
-    )
-
-    assert [model for model, _ in calls] == ["local-4b", "cloud-30b"]
-    fallback_images = [item["image_url"]["url"] for item in calls[1][1] if item["type"] == "image_url"]
-    assert len(fallback_images) == 1
-    assert base64.b64encode(crop.read_bytes()).decode("ascii") in fallback_images[0]
-    assert base64.b64encode(full_image.read_bytes()).decode("ascii") not in fallback_images[0]
-    assert result["routing"]["fallback_payload"] == "checkpoint_crops"
-    assert result["routing"]["crop_manifest"] == [
-        {"image_index": 1, "point_code": "CENTER_ALIGNMENT"},
-    ]
-
-
-def test_inspection_does_not_send_full_frame_when_checkpoint_has_no_crop(monkeypatch, tmp_path):
-    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
-    monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
-    monkeypatch.setenv("STUDIO_VISION_FALLBACK_BASE_URL", "http://fallback.invalid")
-    monkeypatch.setenv("STUDIO_VISION_FALLBACK_MODEL", "cloud-30b")
-    image = tmp_path / "full-frame.png"
-    image.write_bytes(b"full-frame")
     calls = []
 
     def fake_post(config, payload, path):
@@ -346,30 +327,31 @@ def test_inspection_does_not_send_full_frame_when_checkpoint_has_no_crop(monkeyp
         value = {
             "summary": "review",
             "checkpoint_results": [{
-                "point_code": "CENTER_ALIGNMENT", "result": "not_visible",
-                "confidence": 0.2, "observed_value": None, "notes": "unclear",
+                "point_code": "SURFACE_DAMAGE",
+                "result": "low_confidence",
+                "confidence": 0.4,
+                "observed_value": "unclear",
+                "notes": "glare obscures the surface",
             }],
         }
-        return {"choices": [{"message": {"content": json.dumps(value)}}]}, 100
+        return {"choices": [{"message": {"content": json.dumps(value)}}]}, 120
 
     monkeypatch.setattr(ai_gateway, "_post", fake_post)
     result = ai_gateway.inspect_image(
         image_path=image, mime_type="image/png", language="en",
-        checkpoints=[{"point_code": "CENTER_ALIGNMENT", "label": "Center alignment"}],
-        fallback_crops={},
+        checkpoints=[{"point_code": "SURFACE_DAMAGE", "label": "Surface damage", "method_hint": "defect_detection"}],
     )
 
     assert calls == ["local-4b"]
-    assert result["assistant"]["fallback_used"] is False
-    assert "CENTER_ALIGNMENT:no_fallback_crop" in result["assistant"]["escalation_reasons"]
-    assert result["routing"]["fallback"] is None
+    assert result["checkpoint_results"][0]["result"] == "low_confidence"
+    assert result["assistant"]["model"] == "local-4b"
+    assert "fallback_used" not in result["assistant"]
+    assert "routing" not in result
 
 
 def test_process_card_image_ocr_preserves_numbers_units_and_audit(monkeypatch, tmp_path):
     monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
     monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
-    monkeypatch.delenv("STUDIO_VISION_FALLBACK_BASE_URL", raising=False)
-    monkeypatch.delenv("STUDIO_VISION_FALLBACK_MODEL", raising=False)
     image = tmp_path / "card.png"
     image.write_bytes(b"card")
     captured = {}
@@ -394,71 +376,65 @@ def test_process_card_image_ocr_preserves_numbers_units_and_audit(monkeypatch, t
     assert "Preserve numbers, units, tolerances" in prompt
 
 
-def test_cv_agreement_contradicting_observed_value_escalates_to_fallback(monkeypatch, tmp_path):
-    """Audit 2026-07-22 §8.1: a live model claimed a CV count of 11 was
-    "supported" while its own observed_value said 5 for the same point — an
-    internally self-contradictory response. cv_agreement makes that claim
-    structured; asserting it while numerically disagreeing must be rejected
-    and escalated, not accepted as a confident pass."""
+def test_process_card_ocr_fails_closed_when_primary_errors(monkeypatch, tmp_path):
+    """No fallback model exists to retry against — a primary transport/parse
+    error propagates directly rather than being silently absorbed."""
     monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
     monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
-    monkeypatch.setenv("STUDIO_VISION_FALLBACK_BASE_URL", "http://fallback.invalid")
-    monkeypatch.setenv("STUDIO_VISION_FALLBACK_MODEL", "cloud-30b")
-    image = tmp_path / "capture.png"
-    image.write_bytes(b"capture")
-    calls = []
+    image = tmp_path / "card.png"
+    image.write_bytes(b"card")
 
     def fake_post(config, payload, path):
-        calls.append(config.model)
-        if config.model == "local-4b":
-            value = {
-                "summary": "review",
-                "checkpoint_results": [{
-                    "point_code": "PETAL_COUNT",
-                    "result": "pass",
-                    "confidence": 0.95,
-                    "observed_value": "5 petals visible",
-                    "notes": "matches standard",
-                    "cv_agreement": "agrees",
-                }],
-            }
-        else:
-            value = {
-                "summary": "re-verified",
-                "checkpoint_results": [{
-                    "point_code": "PETAL_COUNT",
-                    "result": "review_required" if False else "low_confidence",
-                    "confidence": 0.4,
-                    "observed_value": "5 petals visible, one occluded",
-                    "notes": "CV count unreliable on this material",
-                }],
-            }
+        raise ai_gateway.StudioAIError("vision_assistant_timeout")
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    with pytest.raises(ai_gateway.StudioAIError, match="vision_assistant_timeout"):
+        ai_gateway.extract_image_text(image_path=image, mime_type="image/png", language="en")
+
+
+def test_cv_agreement_contradicting_observed_value_fails_closed(monkeypatch, tmp_path):
+    """Audit 2026-07-22 §8.1: a live model claimed a CV count of 11 was
+    "supported" while its own observed_value said 5 for the same point — an
+    internally self-contradictory response. With no fallback model to
+    retry against, the contradiction now fails closed directly instead of
+    being accepted as a confident pass."""
+    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
+    monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
+    image = tmp_path / "capture.png"
+    image.write_bytes(b"capture")
+
+    def fake_post(config, payload, path):
+        value = {
+            "summary": "review",
+            "checkpoint_results": [{
+                "point_code": "PETAL_COUNT",
+                "result": "pass",
+                "confidence": 0.95,
+                "observed_value": "5 petals visible",
+                "notes": "matches standard",
+                "cv_agreement": "agrees",
+            }],
+        }
         return {"choices": [{"message": {"content": json.dumps(value)}}]}, 100
 
     monkeypatch.setattr(ai_gateway, "_post", fake_post)
-    result = ai_gateway.inspect_image(
-        image_path=image, mime_type="image/png", language="en",
-        checkpoints=[{"point_code": "PETAL_COUNT", "label": "Petal count"}],
-        cv_context={
-            "schema_version": "1.0",
-            "points": [{
-                "point_code": "PETAL_COUNT",
-                "analysis": {"analyzers": [{"analyzer": "petal_segmentation", "count": 11}]},
-            }],
-        },
-    )
-
-    assert calls == ["local-4b", "cloud-30b"]
-    assert result["assistant"]["fallback_used"] is True
-    assert result["checkpoint_results"][0]["result"] == "low_confidence"
-    assert "primary_error" in result["assistant"]["escalation_reasons"]
+    with pytest.raises(ai_gateway.StudioAIError, match="vision_inspection_cv_agreement_contradicts_observed_value"):
+        ai_gateway.inspect_image(
+            image_path=image, mime_type="image/png", language="en",
+            checkpoints=[{"point_code": "PETAL_COUNT", "label": "Petal count", "method_hint": "counting"}],
+            cv_context={
+                "schema_version": "1.0",
+                "points": [{
+                    "point_code": "PETAL_COUNT",
+                    "analysis": {"analyzers": [{"analyzer": "petal_segmentation", "count": 11}]},
+                }],
+            },
+        )
 
 
-def test_cv_agreement_consistent_with_observed_value_does_not_escalate(monkeypatch, tmp_path):
+def test_cv_agreement_consistent_with_observed_value_passes(monkeypatch, tmp_path):
     monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
     monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
-    monkeypatch.delenv("STUDIO_VISION_FALLBACK_BASE_URL", raising=False)
-    monkeypatch.delenv("STUDIO_VISION_FALLBACK_MODEL", raising=False)
     image = tmp_path / "capture.png"
     image.write_bytes(b"capture")
     calls = []
@@ -481,7 +457,7 @@ def test_cv_agreement_consistent_with_observed_value_does_not_escalate(monkeypat
     monkeypatch.setattr(ai_gateway, "_post", fake_post)
     result = ai_gateway.inspect_image(
         image_path=image, mime_type="image/png", language="en",
-        checkpoints=[{"point_code": "RHINESTONE_COUNT", "label": "Rhinestone count"}],
+        checkpoints=[{"point_code": "RHINESTONE_COUNT", "label": "Rhinestone count", "method_hint": "counting"}],
         cv_context={
             "schema_version": "1.0",
             "points": [{
@@ -492,19 +468,17 @@ def test_cv_agreement_consistent_with_observed_value_does_not_escalate(monkeypat
     )
 
     assert calls == ["local-4b"]
-    assert result["assistant"]["fallback_used"] is False
     assert result["checkpoint_results"][0]["result"] == "pass"
 
 
-def test_cv_agreement_disagrees_is_never_treated_as_contradictory(monkeypatch, tmp_path):
-    """An honest 'disagrees' — the model explicitly rejecting CV's unreliable
-    count — must never trigger the self-contradiction escalation; CV being
-    wrong is expected and is exactly what this field exists to let the model
-    say plainly."""
+def test_cv_agreement_disagrees_on_non_counting_checkpoint_is_not_downgraded(monkeypatch, tmp_path):
+    """The CV-authority downgrade rule (an honest 'disagrees' forcing
+    low_confidence) is scoped to method_hint == 'counting'. A defect_detection
+    checkpoint that happens to carry cv_context evidence and disagrees with
+    it is left as the model reported it — that rule does not apply outside
+    counting checkpoints."""
     monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
     monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
-    monkeypatch.delenv("STUDIO_VISION_FALLBACK_BASE_URL", raising=False)
-    monkeypatch.delenv("STUDIO_VISION_FALLBACK_MODEL", raising=False)
     image = tmp_path / "capture.png"
     image.write_bytes(b"capture")
     calls = []
@@ -514,11 +488,11 @@ def test_cv_agreement_disagrees_is_never_treated_as_contradictory(monkeypatch, t
         value = {
             "summary": "review",
             "checkpoint_results": [{
-                "point_code": "PETAL_COUNT",
+                "point_code": "SURFACE_CHECK",
                 "result": "pass",
                 "confidence": 0.95,
-                "observed_value": "5 petals visible",
-                "notes": "CV overcounted background texture",
+                "observed_value": "no visible defect",
+                "notes": "CV evidence not applicable to this defect check",
                 "cv_agreement": "disagrees",
             }],
         }
@@ -527,18 +501,17 @@ def test_cv_agreement_disagrees_is_never_treated_as_contradictory(monkeypatch, t
     monkeypatch.setattr(ai_gateway, "_post", fake_post)
     result = ai_gateway.inspect_image(
         image_path=image, mime_type="image/png", language="en",
-        checkpoints=[{"point_code": "PETAL_COUNT", "label": "Petal count"}],
+        checkpoints=[{"point_code": "SURFACE_CHECK", "label": "Surface check", "method_hint": "defect_detection"}],
         cv_context={
             "schema_version": "1.0",
             "points": [{
-                "point_code": "PETAL_COUNT",
+                "point_code": "SURFACE_CHECK",
                 "analysis": {"analyzers": [{"analyzer": "petal_segmentation", "count": 11}]},
             }],
         },
     )
 
     assert calls == ["local-4b"]
-    assert result["assistant"]["fallback_used"] is False
     assert result["checkpoint_results"][0]["result"] == "pass"
 
 
@@ -550,8 +523,6 @@ def test_counting_checkpoint_observed_value_is_always_sourced_from_cv(monkeypatc
     tally."""
     monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
     monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
-    monkeypatch.delenv("STUDIO_VISION_FALLBACK_BASE_URL", raising=False)
-    monkeypatch.delenv("STUDIO_VISION_FALLBACK_MODEL", raising=False)
     image = tmp_path / "capture.png"
     image.write_bytes(b"capture")
 
@@ -597,8 +568,6 @@ def test_counting_checkpoint_without_cv_detector_forces_low_confidence(monkeypat
     forced to low_confidence so a human reviews it."""
     monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
     monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
-    monkeypatch.delenv("STUDIO_VISION_FALLBACK_BASE_URL", raising=False)
-    monkeypatch.delenv("STUDIO_VISION_FALLBACK_MODEL", raising=False)
     image = tmp_path / "capture.png"
     image.write_bytes(b"capture")
 
@@ -635,8 +604,6 @@ def test_counting_checkpoint_cv_disagreement_downgrades_to_low_confidence(monkey
     being resolved by trusting the vision model's own judgment."""
     monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
     monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
-    monkeypatch.delenv("STUDIO_VISION_FALLBACK_BASE_URL", raising=False)
-    monkeypatch.delenv("STUDIO_VISION_FALLBACK_MODEL", raising=False)
     image = tmp_path / "capture.png"
     image.write_bytes(b"capture")
 
