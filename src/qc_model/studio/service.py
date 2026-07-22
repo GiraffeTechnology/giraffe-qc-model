@@ -43,6 +43,7 @@ from src.intake.service import (
 )
 from src.qc_model.bundle import ed25519 as _ed
 from src.qc_model.qualification import probation as _probation
+from src.qc_model.qualification.training_gate import evaluate_training_gate
 
 
 def _derive_lifecycle(db, sku_id: str, tenant_id: str) -> dict:
@@ -267,6 +268,12 @@ def sku_summary(db: Session, sku: QCSkuItem) -> Dict[str, Any]:
             "questions": draft.get("questions_for_operator") or [],
         }
 
+    training = None
+    if active is not None:
+        training = evaluate_training_gate(
+            db, tenant_id=sku.tenant_id, sku_id=sku.id, standard_revision_id=active.id,
+        ).to_dict()
+
     return {
         "id": sku.id,
         "item_number": sku.item_number,
@@ -282,6 +289,7 @@ def sku_summary(db: Session, sku: QCSkuItem) -> Dict[str, Any]:
         "detection_points": detection_points,
         "detection_point_count": len(detection_points),
         "pending_confirmation": pending_card,
+        "training": training,
         "lifecycle": _derive_lifecycle(db, sku.id, sku.tenant_id),
     }
 
@@ -778,6 +786,26 @@ def publish_bundle(
     # missing/stale photo payloads. We reuse its (validated) manifest.
     archive = build_publish_archive(db, sku_id, tenant_id)
     manifest = archive.manifest
+
+    # Training gate (PRD §9.5-9.8): the standard revision must have a
+    # qualifying rolling window of admin-reviewed CV+VLM training judgments
+    # before it may publish -- confirming/reviewing checkpoints is not the
+    # same as demonstrating the model reliably judges this standard. Checked
+    # against the exact revision this bundle publishes.
+    training_status = evaluate_training_gate(
+        db, tenant_id=tenant_id, sku_id=sku_id,
+        standard_revision_id=manifest["standard_revision"]["id"],
+    )
+    if not training_status.qualified:
+        raise ValueError(
+            "Cannot publish: this standard revision has not passed the training "
+            f"step (rolling-window gate not met: {training_status.reason}). "
+            f"{training_status.total_reviewed} reviewed training judgment(s) so far; "
+            "needs the last 29 all correct, or the last 30 with at least 29 "
+            "correct, covering both qualified and unqualified samples with "
+            "zero false passes."
+        )
+
     signed = sign_manifest(manifest)
 
     bundle_id = _uid()

@@ -458,6 +458,73 @@
       "code_evidence": ["src/qc_model/studio/ai_gateway.py"],
       "test_evidence": ["tests/test_studio_ai_gateway.py"],
       "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-43",
+      "requirement": "无检测点（仅追问）的模型草稿不得作为可确认候选卡永久挂起（UI 审计 2026-07-22 P0：空候选卡）",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": ["src/intake/service.py"],
+      "test_evidence": ["tests/test_admin_studio.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-44",
+      "requirement": "管理后台首页模块顺序：样品与标准在前、数字质检工作室在后（UI 审计 2026-07-22 §9.8 P0）",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": ["src/api/web_shell_router.py"],
+      "test_evidence": ["tests/test_web_shell.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-45",
+      "requirement": "CV 通过标准件图片配准（ORB/SIFT）+ 检测点 ROI 映射定位检测目标，替代依赖背景假设的整帧检测；配准失败须失败关闭，不得回退到未定位整帧（STAGE2_OPEN_SOURCE_CV_EVALUATION_20260722：扰动测试与绿色背景采集均使原整帧检测严重失效）",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": [
+        "src/cv_preanalysis/registration.py",
+        "src/inspection/cv_pipeline.py",
+        "src/api/pad_router.py"
+      ],
+      "test_evidence": [
+        "tests/test_cv_registration.py",
+        "tests/test_cv_registration_pipeline.py"
+      ],
+      "real_run_evidence": null,
+      "gap": "配准算法与 ROI 映射在合成扰动（旋转/缩放/平移）与失败关闭路径上有单元测试覆盖；尚未在独立实拍数据集（不同光照/背景/距离/角度）上验证配准成功率与计数准确率，需按 STAGE2_OPEN_SOURCE_CV_EVALUATION_20260722 §7 的独立实拍集要求补测"
+    },
+    {
+      "id": "PRD-S2-46",
+      "requirement": "新增\"训练\"步骤（7 步工作流：SKU→标准照片→质检要求→审核确认→训练→发布→安装），发布须由服务端按最近连续 29 次全对或最近 30 次至少 29 次正确的滚动窗口门禁校验，窗口须覆盖合格与不合格样本且 False pass 为 0（UI 审计 2026-07-22 §9.5-9.7 P0）",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": [
+        "src/db/training_models.py",
+        "src/qc_model/qualification/training.py",
+        "src/qc_model/qualification/training_gate.py",
+        "src/qc_model/studio/service.py",
+        "src/api/qc_studio_router.py",
+        "src/web/templates/admin_studio.html",
+        "src/web/static/admin_studio.js"
+      ],
+      "test_evidence": [
+        "tests/test_training_gate.py",
+        "tests/test_training_service.py",
+        "tests/test_training_api.py",
+        "tests/test_admin_studio.py"
+      ],
+      "real_run_evidence": null,
+      "gap": "滚动窗口门禁算法、发布拒绝/放行、append-only 裁决、CV+VLM 判断记录均有单元与 API 集成测试（含 mock VLM 的完整 29 次窗口通过发布的端到端验证）；尚未有真实管理员在生产环境用真实标注样本走满 29/30 次训练窗口的实测证据"
+    },
+    {
+      "id": "PRD-S2-47",
+      "requirement": "训练步骤的管理员裁决为追加式审计，不得静默覆盖已有裁决；\"不正确\"裁决必须提供完整纠错字段（UI 审计 2026-07-22 §9.7 items 1-3）",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": ["src/qc_model/qualification/training.py"],
+      "test_evidence": ["tests/test_training_service.py", "tests/test_training_api.py"],
+      "real_run_evidence": null
     }
   ]
 }

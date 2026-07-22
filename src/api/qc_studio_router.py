@@ -53,7 +53,10 @@ from src.storage.upload_validation import (
 from src.api.authz import effective_actor, effective_tenant
 from src.api.admin_auth import current_admin
 from src.api.uploads import validate_safe_id
+from src.db.sku_models import QCSkuStandardRevision
 from src.pad.session_service import get_or_create_conversation_session
+from src.qc_model.qualification import training as training_service
+from src.qc_model.qualification.training_gate import evaluate_training_gate
 from src.web.i18n import install_i18n, resolve_language
 
 router = APIRouter(tags=["admin-studio"])
@@ -665,6 +668,126 @@ def studio_set_analysis_config(
         "cv_config": point.cv_config_json or {},
         "sku": studio.sku_summary(db, sku) if sku else None,
     }
+
+
+# ── Training step (§9.5-9.8): CV+VLM judgment + per-decision admin review ────
+
+
+def _active_revision(db: Session, sku_id: str, tenant_id: str) -> Optional[QCSkuStandardRevision]:
+    return (
+        db.query(QCSkuStandardRevision)
+        .filter_by(sku_id=sku_id, tenant_id=tenant_id, status="active")
+        .order_by(QCSkuStandardRevision.revision_no.desc())
+        .first()
+    )
+
+
+@router.post("/admin/studio/skus/{sku_id}/training/judgments")
+async def studio_record_training_judgment(
+    sku_id: str,
+    request: Request,
+    tenant_id: str = Form("default"),
+    ground_truth_label: str = Form(...),
+    ground_truth_notes: Optional[str] = Form(None),
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db_dep),
+):
+    """Run one CV+VLM training judgment against a labeled sample.
+
+    The sample must be a real, independently captured image of a labeled
+    physical item (qualified or a staged defect) -- never the standard
+    photo itself or a repeated submission, per the training-compliance
+    hard gate (PRD §9.3).
+    """
+    tenant_id = effective_tenant(request, tenant_id)
+    sku = db.query(QCSkuItem).filter_by(id=sku_id, tenant_id=tenant_id).first()
+    if sku is None:
+        raise HTTPException(status_code=404, detail="SKU not found")
+    revision = _active_revision(db, sku_id, tenant_id)
+    if revision is None:
+        return JSONResponse(
+            {"error": "SKU has no active confirmed standard revision to train against"},
+            status_code=400,
+        )
+    try:
+        validated = await read_and_validate_upload(image)
+    except UploadValidationError as exc:
+        return JSONResponse({"error": exc.message}, status_code=exc.status_code)
+
+    dest_dir = _STUDIO_DATA_DIR / tenant_id / sku_id / "training"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_path = dest_dir / f"{_uid()}{validated.extension}"
+    dest_path.write_bytes(validated.content)
+    evidence_root = dest_dir / "cv-evidence"
+
+    try:
+        judgment = training_service.record_training_judgment(
+            db,
+            tenant_id=tenant_id, sku_id=sku_id, standard_revision_id=revision.id,
+            image_path=dest_path, mime_type=validated.mime_type,
+            language=resolve_language(request),
+            ground_truth_label=ground_truth_label,
+            ground_truth_notes=ground_truth_notes,
+            evidence_root=evidence_root,
+        )
+    except training_service.TrainingError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except ai_gateway.StudioAIError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=502)
+    return {"status": "awaiting_admin_review", "judgment": training_service.judgment_view(judgment)}
+
+
+@router.get("/admin/studio/skus/{sku_id}/training/judgments")
+def studio_list_training_judgments(
+    sku_id: str,
+    tenant_id: str = "default",
+    db: Session = Depends(get_db_dep),
+):
+    """The pending review queue -- unreviewed judgments only (PRD §9.7 item 7)."""
+    pending = training_service.list_pending_judgments(db, tenant_id=tenant_id, sku_id=sku_id)
+    return {"judgments": [training_service.judgment_view(j) for j in pending]}
+
+
+class TrainingDecisionRequest(BaseModel):
+    tenant_id: str = "default"
+    admin_id: Optional[str] = None
+    decision: str
+    correction: Optional[Dict[str, Any]] = None
+
+
+@router.post("/admin/studio/training/judgments/{judgment_id}/decision")
+def studio_submit_training_decision(
+    judgment_id: str,
+    request: Request,
+    body: TrainingDecisionRequest,
+    db: Session = Depends(get_db_dep),
+):
+    tenant_id = effective_tenant(request, body.tenant_id)
+    admin_id = effective_actor(request, body.admin_id)
+    try:
+        judgment = training_service.submit_training_decision(
+            db,
+            judgment_id=judgment_id, tenant_id=tenant_id, admin_id=admin_id,
+            decision=body.decision, correction=body.correction,
+        )
+    except training_service.TrainingError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    return {"status": "reviewed", "judgment": training_service.judgment_view(judgment)}
+
+
+@router.get("/admin/studio/skus/{sku_id}/training/status")
+def studio_training_status(
+    sku_id: str,
+    tenant_id: str = "default",
+    db: Session = Depends(get_db_dep),
+):
+    revision = _active_revision(db, sku_id, tenant_id)
+    if revision is None:
+        return {"status": None, "message": "no active confirmed standard revision"}
+    status = evaluate_training_gate(
+        db, tenant_id=tenant_id, sku_id=sku_id, standard_revision_id=revision.id,
+    )
+    return {"standard_revision_id": revision.id, "status": status.to_dict()}
 
 
 # ── Publish signed L2 bundle (§5.6) ───────────────────────────────────────────

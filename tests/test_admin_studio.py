@@ -26,12 +26,14 @@ import src.db.sku_models          # noqa: F401
 import src.db.execution_models    # noqa: F401
 import src.db.intake_models       # noqa: F401
 import src.db.studio_models       # noqa: F401
+import src.db.training_models     # noqa: F401
 from src.db.sku_models import QCDetectionPoint
 from src.db.studio_models import QCPublishBundle
 
 from src.api.main import app
 from src.api.deps import get_db_dep
-from src.qc_model.studio.service import verify_bundle
+from src.db.sku_models import QCSkuItem
+from src.qc_model.studio.service import process_structured_ai_turn, sku_summary, verify_bundle
 from src.qc_model.qualification import probation as probation_service
 
 
@@ -91,6 +93,46 @@ def _create_flw(client) -> str:
     assert body["action"] == "created_sku"
     assert body["sku"]["item_number"] == "FLW-001"
     return body["sku"]["id"]
+
+
+def _qualify_training(db_session_factory, sku_id: str, tenant_id: str = "default") -> None:
+    """Directly insert a qualifying rolling window (29 reviewed, alternating
+    qualified/unqualified, zero false passes) of training judgments against
+    the SKU's *current* active standard revision, so publish-focused tests
+    don't each need to mock 29 individual CV+VLM training calls -- the
+    training gate's own logic is exhaustively covered by
+    tests/test_training_gate.py."""
+    import uuid
+    from datetime import datetime, timedelta, timezone
+
+    from src.db.sku_models import QCSkuStandardRevision
+    from src.db.training_models import QCTrainingJudgment
+
+    session = db_session_factory()
+    try:
+        revision = (
+            session.query(QCSkuStandardRevision)
+            .filter_by(sku_id=sku_id, tenant_id=tenant_id, status="active")
+            .order_by(QCSkuStandardRevision.revision_no.desc())
+            .first()
+        )
+        assert revision is not None, "no active standard revision to qualify training for"
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        for i in range(29):
+            session.add(QCTrainingJudgment(
+                id=uuid.uuid4().hex, tenant_id=tenant_id, sku_id=sku_id,
+                standard_revision_id=revision.id,
+                ground_truth_label="qualified" if i % 2 == 0 else "unqualified",
+                model_overall_result="pass" if i % 2 == 0 else "fail",
+                model_checkpoint_results_json=[],
+                status="reviewed", admin_decision="correct", admin_id="test-admin",
+                reviewed_at=base + timedelta(seconds=i),
+                is_false_pass=False,
+                created_at=base + timedelta(seconds=i),
+            ))
+        session.commit()
+    finally:
+        session.close()
 
 
 # ── Page ──────────────────────────────────────────────────────────────────────
@@ -190,6 +232,48 @@ def test_counts_present_no_followup(client):
     body = resp.json()
     assert body["action"] == "extracted"
     assert body["questions"] == []
+
+
+def test_checkpoint_free_turn_never_leaves_a_confirmable_draft(db_session_factory):
+    """UI audit (2026-07-22): author_image always returns checkpoints=[]
+    (photo analysis never seeds candidates) but often returns non-empty
+    questions. That combination must not create a lingering
+    pending_confirmation intake — one used to resurface later, on an
+    unrelated sku_summary() call, as an empty confirm card with nothing
+    for the admin to accept or reject."""
+    import uuid
+    from datetime import datetime, timezone
+
+    db = db_session_factory()
+    try:
+        sku = QCSkuItem(
+            id=uuid.uuid4().hex, tenant_id="default", item_number="FLW-EMPTY",
+            name="Empty checkpoint test", status="draft",
+            created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+        )
+        db.add(sku)
+        db.commit()
+
+        ai_result = {
+            "intent": "provide_details",
+            "reply": "The photo shows a flower brooch.",
+            "sku": {},
+            "checkpoints": [],
+            "questions": [{"field": "standard", "question": "What is the item number?"}],
+        }
+        result = process_structured_ai_turn(
+            db, tenant_id="default", message="photo upload",
+            ai_result=ai_result, current_sku_id=sku.id,
+        )
+        assert result.confirmation_card is None
+        assert result.action == "follow_up"
+
+        # The regression: a later, unrelated summary call must not resurface
+        # this checkpoint-free draft as something pending confirmation.
+        summary = sku_summary(db, sku)
+        assert summary["pending_confirmation"] is None
+    finally:
+        db.close()
 
 
 def test_confirm_rejects_counting_point_without_value(client):
@@ -426,6 +510,7 @@ def test_publish_creates_signed_bundle(client, db_session_factory):
         },
     )
 
+    _qualify_training(db_session_factory, sku_id)
     resp = client.post("/admin/studio/publish", json={"sku_id": sku_id})
     assert resp.status_code == 200, resp.text
     bundle = resp.json()["bundle"]
@@ -629,7 +714,7 @@ def test_publish_archive_fails_closed_on_missing_sha256(client, db_session_facto
         session.close()
 
 
-def _publish_flw(client, sku_id):
+def _publish_flw(client, sku_id, db_session_factory):
     card = client.post(
         "/admin/studio/chat",
         json={"message": "pearl count 3, rhinestone count 8", "sku_id": sku_id},
@@ -638,6 +723,7 @@ def _publish_flw(client, sku_id):
         "/admin/studio/confirm",
         json={"intake_id": card["intake_id"], "confirmed_by": "a", "checkpoints": card["checkpoints"]},
     )
+    _qualify_training(db_session_factory, sku_id)
     return client.post("/admin/studio/publish", json={"sku_id": sku_id}).json()["bundle"]
 
 
@@ -654,7 +740,7 @@ def test_publish_persists_downloadable_verified_archive(client, db_session_facto
         data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     )
-    bundle = _publish_flw(client, sku_id)
+    bundle = _publish_flw(client, sku_id, db_session_factory)
     assert bundle["download_url"].startswith(f"/admin/studio/bundles/{bundle['id']}/download")
 
     dl = client.get(bundle["download_url"])
@@ -678,7 +764,7 @@ def test_download_bundle_is_tenant_scoped(client, db_session_factory):
         data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     )
-    bundle = _publish_flw(client, sku_id)
+    bundle = _publish_flw(client, sku_id, db_session_factory)
     resp = client.get(f"/admin/studio/bundles/{bundle['id']}/download?tenant_id=other")
     assert resp.status_code == 404
 
@@ -693,7 +779,7 @@ def test_download_bundle_fails_closed_on_tampered_payload(client, db_session_fac
         data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     )
-    bundle = _publish_flw(client, sku_id)
+    bundle = _publish_flw(client, sku_id, db_session_factory)
 
     # Corrupt the archive on disk (simulate at-rest tampering).
     path = _bundle_archive_path("default", bundle["id"])
@@ -706,7 +792,7 @@ def test_download_bundle_fails_closed_on_tampered_payload(client, db_session_fac
 # ── §5.1 Minimum Admin Happy Path (FLW-001) end-to-end ────────────────────────
 
 
-def test_minimum_admin_happy_path_flw001(client):
+def test_minimum_admin_happy_path_flw001(client, db_session_factory):
     # 1. Create SKU by chat.
     sku_id = _create_flw(client)
 
@@ -743,6 +829,7 @@ def test_minimum_admin_happy_path_flw001(client):
     assert conf.status_code == 200
 
     # 6. Publish signed bundle.
+    _qualify_training(db_session_factory, sku_id)
     pub = client.post("/admin/studio/publish", json={"sku_id": sku_id})
     assert pub.status_code == 200
     assert pub.json()["bundle"]["detection_point_count"] == 2
@@ -849,6 +936,7 @@ def test_published_bundle_manifest_contains_authored_regions(client, db_session_
     )
     assert set_resp.status_code == 200, set_resp.text
 
+    _qualify_training(db_session_factory, sku_id)
     pub = client.post("/admin/studio/publish", json={"sku_id": sku_id})
     assert pub.status_code == 200, pub.text
     bundle_id = pub.json()["bundle"]["id"]
@@ -862,7 +950,7 @@ def test_published_bundle_manifest_contains_authored_regions(client, db_session_
     assert dp_manifest["regions"] == [region]
 
 
-def test_analysis_config_real_endpoint_persists_and_bundle_carries_hooks(client):
+def test_analysis_config_real_endpoint_persists_and_bundle_carries_hooks(client, db_session_factory):
     """WS6 v2: authored expected_features/cv_config reach the signed manifest."""
     import io
     import json
@@ -887,6 +975,7 @@ def test_analysis_config_real_endpoint_persists_and_bundle_carries_hooks(client)
     assert saved.json()["expected_features"] == expected
     assert saved.json()["cv_config"] == cv_config
 
+    _qualify_training(db_session_factory, sku_id)
     published = client.post("/admin/studio/publish", json={"sku_id": sku_id})
     assert published.status_code == 200, published.text
     bundle_id = published.json()["bundle"]["id"]
@@ -909,7 +998,7 @@ def test_analysis_config_rejects_unknown_analyzer(client):
     assert "unsupported analyzer" in response.json()["error"]
 
 
-def test_analysis_config_change_after_publish_requires_new_revision(client):
+def test_analysis_config_change_after_publish_requires_new_revision(client, db_session_factory):
     sku_id = _create_flw(client)
     client.post(
         "/admin/studio/upload",
@@ -917,6 +1006,7 @@ def test_analysis_config_change_after_publish_requires_new_revision(client):
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     )
     dp_id = _confirm_one_point(client, sku_id)
+    _qualify_training(db_session_factory, sku_id)
     assert client.post("/admin/studio/publish", json={"sku_id": sku_id}).status_code == 200
     response = client.post(
         f"/admin/studio/detection-points/{dp_id}/analysis-config",
@@ -926,7 +1016,7 @@ def test_analysis_config_change_after_publish_requires_new_revision(client):
     assert "new revision" in response.json()["error"]
 
 
-def test_published_detection_point_semantic_edit_requires_new_revision(client):
+def test_published_detection_point_semantic_edit_requires_new_revision(client, db_session_factory):
     sku_id = _create_flw(client)
     client.post(
         "/admin/studio/upload",
@@ -934,6 +1024,7 @@ def test_published_detection_point_semantic_edit_requires_new_revision(client):
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     )
     dp_id = _confirm_one_point(client, sku_id)
+    _qualify_training(db_session_factory, sku_id)
     assert client.post("/admin/studio/publish", json={"sku_id": sku_id}).status_code == 200
     point = client.get(f"/admin/studio/skus/{sku_id}").json()["detection_points"][0]
     semantic = client.patch(f"/admin/studio/detection-points/{dp_id}", json={
@@ -945,7 +1036,7 @@ def test_published_detection_point_semantic_edit_requires_new_revision(client):
     assert "new qualified revision" in semantic.json()["detail"]
 
 
-def test_published_detection_point_description_edit_preserves_revision(client):
+def test_published_detection_point_description_edit_preserves_revision(client, db_session_factory):
     sku_id = _create_flw(client)
     client.post(
         "/admin/studio/upload",
@@ -953,6 +1044,7 @@ def test_published_detection_point_description_edit_preserves_revision(client):
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     )
     dp_id = _confirm_one_point(client, sku_id)
+    _qualify_training(db_session_factory, sku_id)
     assert client.post("/admin/studio/publish", json={"sku_id": sku_id}).status_code == 200
     point = client.get(f"/admin/studio/skus/{sku_id}").json()["detection_points"][0]
     preserved = client.patch(f"/admin/studio/detection-points/{dp_id}", json={
@@ -973,6 +1065,7 @@ def test_publish_starts_probation(client, db_session_factory):
     standalone service function."""
     sku_id = _create_flw(client)
     _confirm_one_point(client, sku_id)
+    _qualify_training(db_session_factory, sku_id)
     pub = client.post("/admin/studio/publish", json={"sku_id": sku_id})
     assert pub.status_code == 200, pub.text
     rev_id = pub.json()["bundle"]["standard_revision_id"]
@@ -990,6 +1083,7 @@ def test_republish_same_revision_preserves_probation_progress(client, db_session
     -- get-or-create must return the existing probation record, not reset it."""
     sku_id = _create_flw(client)
     _confirm_one_point(client, sku_id)
+    _qualify_training(db_session_factory, sku_id)
     pub1 = client.post("/admin/studio/publish", json={"sku_id": sku_id}).json()["bundle"]
     rev_id = pub1["standard_revision_id"]
 
@@ -1000,6 +1094,7 @@ def test_republish_same_revision_preserves_probation_progress(client, db_session
     finally:
         session.close()
 
+    # Same active revision as pub1 -- its training window still qualifies.
     pub2 = client.post("/admin/studio/publish", json={"sku_id": sku_id}).json()["bundle"]
     assert pub2["standard_revision_id"] == rev_id  # no new confirm -> same active revision
 
@@ -1014,6 +1109,7 @@ def test_new_revision_after_reconfirm_gets_fresh_probation(client, db_session_fa
     reset codepath needed."""
     sku_id = _create_flw(client)
     _confirm_one_point(client, sku_id)
+    _qualify_training(db_session_factory, sku_id)
     pub1 = client.post("/admin/studio/publish", json={"sku_id": sku_id}).json()["bundle"]
     rev1 = pub1["standard_revision_id"]
 
@@ -1025,6 +1121,7 @@ def test_new_revision_after_reconfirm_gets_fresh_probation(client, db_session_fa
         session.close()
 
     _confirm_one_point(client, sku_id)  # a fresh confirm -> a brand-new revision
+    _qualify_training(db_session_factory, sku_id)  # the new revision needs its own qualifying window
     pub2 = client.post("/admin/studio/publish", json={"sku_id": sku_id}).json()["bundle"]
     rev2 = pub2["standard_revision_id"]
     assert rev2 != rev1
@@ -1036,6 +1133,7 @@ def test_new_revision_after_reconfirm_gets_fresh_probation(client, db_session_fa
 def test_probation_pause_resume_via_real_studio_endpoints(client, db_session_factory):
     sku_id = _create_flw(client)
     _confirm_one_point(client, sku_id)
+    _qualify_training(db_session_factory, sku_id)
     pub = client.post("/admin/studio/publish", json={"sku_id": sku_id}).json()["bundle"]
     rev_id = pub["standard_revision_id"]
     probation_id = client.get(f"/api/qc/probation/by-revision/{rev_id}").json()["probation_id"]
@@ -1049,6 +1147,7 @@ def test_probation_pause_resume_via_real_studio_endpoints(client, db_session_fac
 def test_probation_disagreement_report_endpoint(client, db_session_factory):
     sku_id = _create_flw(client)
     _confirm_one_point(client, sku_id)
+    _qualify_training(db_session_factory, sku_id)
     pub = client.post("/admin/studio/publish", json={"sku_id": sku_id}).json()["bundle"]
     rev_id = pub["standard_revision_id"]
     probation_id = client.get(f"/api/qc/probation/by-revision/{rev_id}").json()["probation_id"]
