@@ -265,9 +265,16 @@ def ingest_model_output(
 # ── Finalization ──────────────────────────────────────────────────────────────
 
 
-def finalize_inspection_job(db: Session, job_id: str, tenant_id: Optional[str] = None) -> QCFinalReport:
+def finalize_inspection_job(
+    db: Session,
+    job_id: str,
+    tenant_id: Optional[str] = None,
+    require_human_review: bool = False,
+) -> QCFinalReport:
     """Apply no-guess policy and write final report.  Delegates to domain service."""
-    return finalize_job(db, job_id, tenant_id=tenant_id)
+    return finalize_job(
+        db, job_id, tenant_id=tenant_id, require_human_review=require_human_review
+    )
 
 
 # ── Report retrieval ──────────────────────────────────────────────────────────

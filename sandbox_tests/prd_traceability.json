@@ -1,0 +1,316 @@
+{
+  "schema_version": "prd-traceability-v1",
+  "source_audit": "STAGE2_PRD_DELIVERABLE_GAP_AUDIT_2026-07-22.md",
+  "status_legend": {
+    "verified": "implemented, automated tests pass, and (when requires_real_run) a named real-run evidence artifact exists",
+    "implemented_unverified": "code + automated tests exist; the current real product-flow verification has not been performed",
+    "partial": "partially implemented or evidence outdated",
+    "missing": "not implemented or in conflict with the PRD"
+  },
+  "rules": "Enforced by scripts/ci/prd_traceability_check.py: 'verified' requires existing code_evidence and test_evidence paths, and when requires_real_run is true also an existing real_run_evidence artifact. Green unit tests alone can never flip a requires_real_run row to 'verified'.",
+  "requirements": [
+    {
+      "id": "PRD-S2-01",
+      "requirement": "通用固定 SKU 视觉质检，不得做单 SKU 硬编码",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": ["src/db/sku_models.py"],
+      "test_evidence": ["tests/test_multi_tenant.py", "tests/test_sku_api.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-02",
+      "requirement": "Qwen 为默认模型但产品保持 provider-neutral",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": ["src/qc_model/studio/ai_gateway.py"],
+      "test_evidence": [
+        "tests/test_provider_abstraction.py",
+        "tests/test_dual_default_qwen_profiles_not_product_lockin.py"
+      ],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-03",
+      "requirement": "首页 Administrator / Operator 分流",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": ["src/api/web_shell_router.py"],
+      "test_evidence": ["tests/test_web_shell.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-04",
+      "requirement": "所有页面可随时切换中/英/日文",
+      "status": "partial",
+      "requires_real_run": true,
+      "code_evidence": ["src/web/i18n.py"],
+      "test_evidence": ["tests/test_web_shell.py"],
+      "real_run_evidence": null,
+      "gap": "无“每一页面、登录前后、工作台内”的完整三语言实测矩阵"
+    },
+    {
+      "id": "PRD-S2-05",
+      "requirement": "Pad/工作站横屏和规定的 4:3 布局",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": ["apps/android-qc/app/src/main/AndroidManifest.xml"],
+      "test_evidence": ["tests/test_web_shell.py"],
+      "real_run_evidence": null,
+      "gap": "浏览器链路缺完整视觉尺寸与全页面验收证据"
+    },
+    {
+      "id": "PRD-S2-06",
+      "requirement": "管理员 chat-first 创建/选择 SKU",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": ["src/qc_model/studio/service.py"],
+      "test_evidence": ["tests/test_admin_studio.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-07",
+      "requirement": "标准件支持 USB 摄像头、相册、文件夹（确认上传/重拍）",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": ["src/web/static/admin_studio.js"],
+      "test_evidence": ["tests/test_admin_studio.py"],
+      "real_run_evidence": null,
+      "gap": "已入库（PR #74）；新一轮交互验收未执行"
+    },
+    {
+      "id": "PRD-S2-08",
+      "requirement": "上传校验 MIME、大小和文件可读性",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": ["src/storage/upload_validation.py", "src/api/uploads.py"],
+      "test_evidence": ["tests/test_sample_admin.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-09",
+      "requirement": "检测点由管理员通过对话流或工艺卡输入；AI 仅结构化提取与追问，不得从标准照生成检测点（2026-07-22 需求修正）",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": ["src/qc_model/studio/ai_gateway.py", "src/intake/service.py"],
+      "test_evidence": ["tests/test_studio_ai_gateway.py", "tests/test_admin_studio.py"],
+      "real_run_evidence": null,
+      "gap": "照片分析已改为纯描述+追问，模型自发的检查点列表被强制丢弃；对话流/工艺卡编制的真实验收未执行"
+    },
+    {
+      "id": "PRD-S2-10",
+      "requirement": "缺少数量、公差、阈值时主动追问，不得猜测",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": ["src/qc_model/studio/service.py"],
+      "test_evidence": ["tests/test_admin_studio.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-11",
+      "requirement": "管理员审核、编辑、确认结构化检查点",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": ["src/api/qc_studio_router.py"],
+      "test_evidence": ["tests/test_admin_studio.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-12",
+      "requirement": "标准图区域标注：每点 0/1/多矩形区域",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": ["src/qc_model/studio/regions.py"],
+      "test_evidence": ["tests/test_region_annotation.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-13",
+      "requirement": "工艺卡支持图片、PDF、Word、Excel，统一提取流",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": ["src/qc_model/authoring"],
+      "test_evidence": ["tests/test_process_card_ingestion.py"],
+      "real_run_evidence": null,
+      "gap": "真实抽取已覆盖 text/CSV/DOCX/XLSX/PDF + VLM OCR（PR #74）；真实文档验收未执行"
+    },
+    {
+      "id": "PRD-S2-14",
+      "requirement": "发布签名 L2 标准包",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": ["src/qc_model/bundle"],
+      "test_evidence": ["tests/test_bundle_ed25519.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-15",
+      "requirement": "工作站注册、分配、安装/同步状态",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": ["src/api/qc_bundle_router.py"],
+      "test_evidence": ["tests/test_qc_workstation_management.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-16",
+      "requirement": "新发布标准进入 Probation",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": ["src/qc_model/qualification/probation.py"],
+      "test_evidence": ["tests/test_probation_qualification.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-17",
+      "requirement": "Probation 每单人工确认、30 单后按 +10 单检查、≥90% 转 Active",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": [
+        "src/qc_model/qualification/probation.py",
+        "src/inspection/probation_bridge.py"
+      ],
+      "test_evidence": [
+        "tests/test_probation_qualification.py",
+        "tests/test_preset_workflow_enforcement.py"
+      ],
+      "real_run_evidence": null,
+      "gap": "Web/Pad 检测链路 finalize 已接 (ai, human, agreed) 记录;真实 30 单转正流程待验收"
+    },
+    {
+      "id": "PRD-S2-18",
+      "requirement": "CV 在每次 VLM 前运行，输出注入提示词并保存证据",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": ["src/cv_preanalysis"],
+      "test_evidence": ["tests/test_cv_preanalysis.py"],
+      "real_run_evidence": null,
+      "gap": "Web author/inspect 路径已接 CV（PR #74）；真实链路验收未执行"
+    },
+    {
+      "id": "PRD-S2-19",
+      "requirement": "CV → 4B 先行 → 必要时升级 30B 的路由策略",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": ["src/qc_model/studio/ai_gateway.py"],
+      "test_evidence": ["tests/test_studio_ai_gateway.py"],
+      "real_run_evidence": null,
+      "gap": "4B 主判 + 条件升级已实现（PR #74）；双模型真实证据待新验收"
+    },
+    {
+      "id": "PRD-S2-20",
+      "requirement": "管理员侧 4B 使用 MNN；上海 30B 使用 GPU；Jetson 加速留待 Stage 3",
+      "status": "partial",
+      "requires_real_run": true,
+      "code_evidence": ["src/qc_model/studio/ai_gateway.py"],
+      "test_evidence": ["tests/test_studio_ai_gateway.py"],
+      "real_run_evidence": null,
+      "gap": "abcdYi 4B CPU 仅为 Stage 2 模拟边界；Jetson 4B/MNN 硬件加速待 Stage 3 真机"
+    },
+    {
+      "id": "PRD-S2-21",
+      "requirement": "操作员侧只上传 QC 点 crop，不上传完整帧",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": ["src/qc_model/studio/ai_gateway.py"],
+      "test_evidence": ["tests/test_studio_ai_gateway.py", "tests/test_pad_conversational_ui.py"],
+      "real_run_evidence": null,
+      "gap": "自动化测试已证明 fallback 只见 crop、无 crop 不上传（PR #74）；真实链路验收未执行"
+    },
+    {
+      "id": "PRD-S2-22",
+      "requirement": "操作员选择已安装 SKU，支持离线搜索",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": [
+        "src/api/pad_router.py",
+        "apps/android-qc/app/src/test/kotlin/com/giraffetechnology/qc/store/BundleImporterTest.kt"
+      ],
+      "test_evidence": [
+        "tests/test_pad_conversational_ui.py",
+        "apps/android-qc/app/src/test/kotlin/com/giraffetechnology/qc/store/BundleImporterTest.kt"
+      ],
+      "real_run_evidence": null,
+      "gap": "未发布标准已被服务端拒绝(409);会话绑定工作站后强制\"已安装\"级门槛(未安装 409);断网搜索实测待做"
+    },
+    {
+      "id": "PRD-S2-23",
+      "requirement": "USB 摄像头采集待检件并运行真实推理",
+      "status": "partial",
+      "requires_real_run": true,
+      "code_evidence": ["src/api/pad_router.py"],
+      "test_evidence": ["tests/test_pad_conversational_ui.py"],
+      "real_run_evidence": null,
+      "gap": "旧流程曾跑通一次；按新流程（先采集确认标准件）的完整验收未执行"
+    },
+    {
+      "id": "PRD-S2-24",
+      "requirement": "每检查点显示判断、置信度、证据并要求人工复核",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": ["src/api/pad_router.py", "src/inspection/workflow.py"],
+      "test_evidence": [
+        "tests/test_pad_conversational_ui.py",
+        "tests/test_preset_workflow_enforcement.py"
+      ],
+      "real_run_evidence": null,
+      "gap": "服务端已强制:模型结果不能自证 pass,操作员未逐点复核则封顶 review_required;真实链路验收未执行"
+    },
+    {
+      "id": "PRD-S2-25",
+      "requirement": "服务端按任务实际 revision/bundle 重算，不信任 Pad PASS",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": ["src/qc_model/verdict"],
+      "test_evidence": ["tests/test_server_verdict_recompute.py", "tests/test_server_verdict_results_api.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-26",
+      "requirement": "模型超时、格式错误、缺点、低置信度、未知版本 fail-closed",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": ["src/qwen/parser.py", "src/qwen/router.py"],
+      "test_evidence": ["tests/test_qwen_parser.py", "tests/test_qwen_router.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-27",
+      "requirement": "False pass 为 P0，触发暂停/降级/重新资格认证",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": ["src/qc_model/feedback_escalation.py"],
+      "test_evidence": ["tests/test_false_pass_escalation.py", "tests/test_qc_false_pass_incident_requalification.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-28",
+      "requirement": "记录 capture/CV/upload/inference/render 分阶段耗时，10 秒 SLO",
+      "status": "partial",
+      "requires_real_run": true,
+      "code_evidence": ["src/api/pad_router.py"],
+      "test_evidence": ["tests/test_pad_conversational_ui.py"],
+      "real_run_evidence": null,
+      "gap": "capture/upload(客户端上报)+ CV/inference/server_total 已随模型结果持久化，含 10s SLO 判定；render 在响应之后发生、前端尚未回传;真实链路 SLO 证据待验收"
+    },
+    {
+      "id": "PRD-S2-29",
+      "requirement": "Mock 显式标注",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": ["scripts/ci/mock_labeling_lint.py"],
+      "test_evidence": ["scripts/ci/mock_labeling_lint.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-30",
+      "requirement": "Stage 2 完成后才进入 Stage 3；旧准入结论撤销",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": ["sandbox_tests/reports/stage2_web_control_report.md"],
+      "test_evidence": ["scripts/ci/report_evidence_check.py"],
+      "real_run_evidence": null,
+      "gap": "旧 passed_for_stage3_entry 已撤销；Stage 3 准入需要全新 Stage 2 验收报告"
+    }
+  ]
+}

@@ -178,7 +178,7 @@
       `<div class="sku-sub">${esc(sku.item_number)}${sku.category ? " · " + esc(sku.category) : ""}</div>` +
       preview +
       `<div class="standard-facts">` +
-      `<span><small>${esc(t("lifecycle"))}</small><strong>${esc(statusLabel(sku.status))}</strong></span>` +
+      `<span><small>${esc(t("lifecycle"))}</small><strong>${esc(statusLabel((sku.lifecycle && sku.lifecycle.stage) || sku.status))}</strong></span>` +
       `<span><small>${esc(t("revision"))}</small><strong>${esc(sku.active_revision_no || "—")}</strong></span>` +
       `<span><small>${esc(t("confirmedPoints"))}</small><strong>${esc(sku.detection_point_count || 0)}</strong></span>` +
       `</div>` +
@@ -526,12 +526,24 @@
         if (res.sku) setActiveSku(res.sku);
         if (res.action === "created_sku" || res.action === "selected_sku") loadSkus();
         if (res.confirmation_card) renderConfirmCard(res.confirmation_card);
+        else renderQuestions(res.questions);
       })
       .catch((err) => {
         pending.remove();
         addBubble(t("error", { message: err.message }), "system");
       })
       .finally(() => setAssistantState(t("assistantReady"), false));
+  }
+
+  // Assistant follow-up questions arrive without a confirmation card when the
+  // administrator has not defined checkpoints yet (checkpoints are authored by
+  // the administrator; photo analysis only describes and asks). Surface them
+  // as chat bubbles so they are never silently dropped.
+  function renderQuestions(questions) {
+    (questions || []).forEach((q) => {
+      const text = typeof q === "string" ? q : q && q.question;
+      if (text) addBubble(text, "system");
+    });
   }
 
   // ── Confirmation card (§5.5) ────────────────────────────────────────────
@@ -658,6 +670,7 @@
           if (res.analysis.reply) addBubble(res.analysis.reply, "system");
           showAssistantMeta(res.analysis.assistant);
           if (res.analysis.confirmation_card) renderConfirmCard(res.analysis.confirmation_card);
+          else renderQuestions(res.analysis.questions);
         }
         if (res.analysis && res.analysis.sku) setActiveSku(res.analysis.sku);
         else if (res.sku) setActiveSku(res.sku);

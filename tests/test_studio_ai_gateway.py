@@ -88,13 +88,15 @@ def test_vision_assistant_sends_image_to_openai_compatible_route(monkeypatch, tm
     )
 
     assert captured["path"] == "/v1/chat/completions"
-    assert captured["payload"]["max_tokens"] == 1100
+    assert captured["payload"]["max_tokens"] == 700
     content = captured["payload"]["messages"][0]["content"]
     assert content[0]["type"] == "image_url"
     assert content[0]["image_url"]["url"].startswith("data:image/png;base64,")
-    assert "comprehensive but concise set" in content[1]["text"]
-    assert "do not wait for the administrator" in content[1]["text"]
+    assert "Describe this reference photo only" in content[1]["text"]
+    assert "do NOT propose" in content[1]["text"]
     assert result["assistant"]["role"] == "vision"
+    # Checkpoints are authored by the administrator, never from the photo.
+    assert result["checkpoints"] == []
 
 
 def test_live_vision_inspection_is_checkpoint_scoped_and_fails_closed(monkeypatch, tmp_path):
@@ -199,10 +201,12 @@ def test_clean_json_still_rejects_truncated_object():
         raise AssertionError("truncated assistant JSON must fail closed")
 
 
-def test_author_image_runs_primary_self_review_and_keeps_all_visible_points(monkeypatch, tmp_path):
+def test_author_image_discards_model_volunteered_checkpoints(monkeypatch, tmp_path):
+    """Correction 2026-07-22: checkpoints are authored by the administrator
+    (chat or process card). Photo analysis must never seed candidates, even
+    when the model volunteers them."""
     monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
     monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
-    monkeypatch.setenv("STUDIO_VISION_AUTHOR_SELF_REVIEW", "true")
     monkeypatch.delenv("STUDIO_VISION_FALLBACK_BASE_URL", raising=False)
     monkeypatch.delenv("STUDIO_VISION_FALLBACK_MODEL", raising=False)
     image = tmp_path / "reference.png"
@@ -210,28 +214,16 @@ def test_author_image_runs_primary_self_review_and_keeps_all_visible_points(monk
     prompts = []
 
     def fake_post(config, payload, path):
-        prompt = payload["messages"][0]["content"][1]["text"]
-        prompts.append(prompt)
-        points = [{
-            "point_code": "PETAL_SHAPE", "label": "Petal shape",
-            "method_hint": "shape_compare", "severity": "major",
-            "pass_criteria": "Visible petals are symmetric",
-        }]
-        if "first-pass candidate" in prompt:
-            points.append({
-                "point_code": "CENTER_ALIGNMENT", "label": "Center alignment",
-                "method_hint": "alignment", "severity": "major",
-                "pass_criteria": "The center is visually centered",
-                "cv_config": {"analyzers": [{"name": "pistil_localization", "params": {}}]},
-            })
+        prompts.append(payload["messages"][0]["content"][1]["text"])
         value = {
-            "intent": "define_requirements", "reply": "Candidate draft", "sku": {},
-            "checkpoints": points, "questions": [],
-            "coverage_review": {
-                "complete": True,
-                "checked_dimensions": ["alignment/centering/symmetry", "shape"],
-                "omissions": [],
-            },
+            "intent": "define_requirements", "reply": "Photo shows a flower.", "sku": {},
+            "checkpoints": [{
+                "point_code": "PETAL_SHAPE", "label": "Petal shape",
+                "method_hint": "shape_compare", "severity": "major",
+                "pass_criteria": "Visible petals are symmetric",
+            }],
+            "questions": [{"field": "standard", "question": "Which features must be checked?"}],
+            "coverage_review": {"complete": True, "checked_dimensions": ["shape"], "omissions": []},
         }
         return {"choices": [{"message": {"content": json.dumps(value)}}]}, 100
 
@@ -241,16 +233,13 @@ def test_author_image_runs_primary_self_review_and_keeps_all_visible_points(monk
         current_sku={"item_number": "FLOWER-1"},
     )
 
-    assert len(prompts) == 2
-    assert {point["point_code"] for point in result["checkpoints"]} == {
-        "PETAL_SHAPE", "CENTER_ALIGNMENT",
-    }
-    center = next(p for p in result["checkpoints"] if p["point_code"] == "CENTER_ALIGNMENT")
-    assert center["cv_config"]["analyzers"][0]["name"] == "pistil_localization"
-    assert result["assistant"]["primary_model"] == "local-4b"
-    assert result["assistant"]["passes"] == 2
-    assert result["coverage_review"]["complete"] is True
-    assert "alignment/centering/symmetry" in result["coverage_review"]["checked_dimensions"]
+    # Single descriptive pass; no candidate generation, no coverage machinery.
+    assert len(prompts) == 1
+    assert "do NOT propose" in prompts[0]
+    assert result["checkpoints"] == []
+    assert "coverage_review" not in result
+    assert result["questions"]
+    assert result["assistant"]["passes"] == 1
 
 
 def test_inspection_injects_cv_and_escalates_low_confidence_to_fallback(monkeypatch, tmp_path):
@@ -403,52 +392,3 @@ def test_process_card_image_ocr_preserves_numbers_units_and_audit(monkeypatch, t
     assert result["assistant"]["model"] == "local-4b"
     prompt = captured["payload"]["messages"][0]["content"][1]["text"]
     assert "Preserve numbers, units, tolerances" in prompt
-
-
-def test_author_image_escalates_incomplete_primary_coverage_to_30b(monkeypatch, tmp_path):
-    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
-    monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
-    monkeypatch.setenv("STUDIO_VISION_FALLBACK_BASE_URL", "http://fallback.invalid")
-    monkeypatch.setenv("STUDIO_VISION_FALLBACK_MODEL", "cloud-30b")
-    monkeypatch.setenv("STUDIO_VISION_AUTHOR_SELF_REVIEW", "false")
-    monkeypatch.setenv("STUDIO_VISION_AUTHOR_COVERAGE_FALLBACK", "true")
-    image = tmp_path / "reference.png"
-    image.write_bytes(b"reference")
-    calls = []
-
-    def fake_post(config, payload, path):
-        calls.append(config.model)
-        points = [{
-            "point_code": "PETAL_SHAPE", "label": "Petal shape",
-            "method_hint": "shape_compare", "severity": "major",
-            "pass_criteria": "Petals are symmetric",
-        }]
-        complete = config.model == "cloud-30b"
-        if complete:
-            points.append({
-                "point_code": "CENTER_ALIGNMENT", "label": "Center alignment",
-                "method_hint": "alignment", "severity": "major",
-                "pass_criteria": "Center is visually centered",
-            })
-        value = {
-            "intent": "define_requirements", "reply": "Candidate", "sku": {},
-            "checkpoints": points, "questions": [],
-            "coverage_review": {
-                "complete": complete, "checked_dimensions": ["shape", "alignment"],
-                "omissions": [] if complete else ["alignment needs review"],
-            },
-        }
-        return {"choices": [{"message": {"content": json.dumps(value)}}]}, 100
-
-    monkeypatch.setattr(ai_gateway, "_post", fake_post)
-    result = ai_gateway.author_image(
-        image_path=image, mime_type="image/png", language="en", current_sku={},
-    )
-
-    assert calls == ["local-4b", "cloud-30b"]
-    assert result["coverage_review"]["complete"] is True
-    assert {p["point_code"] for p in result["checkpoints"]} == {
-        "PETAL_SHAPE", "CENTER_ALIGNMENT",
-    }
-    assert result["assistant"]["fallback_used"] is True
-    assert "primary_coverage_incomplete" in result["assistant"]["escalation_reasons"]

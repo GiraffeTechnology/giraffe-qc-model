@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import os
 from datetime import datetime
 from typing import Optional
@@ -27,7 +28,7 @@ def _verify_password(password: str, stored_hash: str) -> bool:
         salt, hashed = stored_hash.split("$", 1)
     except ValueError:
         return False
-    return _hash_password(password, salt) == hashed
+    return hmac.compare_digest(_hash_password(password, salt), hashed)
 
 
 _DEMO_OPERATORS = [
@@ -58,7 +59,21 @@ _DEMO_OPERATORS = [
 ]
 
 
+def demo_seed_allowed() -> bool:
+    """Whether the weak demo accounts (password == username) may be created.
+
+    Demo seeding is a development/test convenience only. Outside APP_ENV=test
+    it must be explicitly opted into with QC_SEED_DEMO_OPERATORS=true; a
+    production deployment must never auto-create guessable credentials.
+    """
+    if os.getenv("APP_ENV", "production").lower() == "test":
+        return True
+    return os.getenv("QC_SEED_DEMO_OPERATORS", "").lower() in {"1", "true", "yes"}
+
+
 def seed_demo_operators(db: Session, tenant_id: str = "demo") -> None:
+    if not demo_seed_allowed():
+        return
     for demo in _DEMO_OPERATORS:
         exists = (
             db.query(QCOperatorProfile)

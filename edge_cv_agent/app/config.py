@@ -9,6 +9,31 @@ def _bool(name: str, default: bool) -> bool:
     return os.getenv(name, "true" if default else "false").lower() == "true"
 
 
+class MockModeNotAllowedInProduction(RuntimeError):
+    """Raised when the NON-PRODUCTION MOCK CV pipeline would run under
+    APP_ENV=production. This guard refuses the mock; it does not retain one.
+
+    Fail-closed: the mock pipeline (deterministic, no camera, no real CV) must
+    never be selectable in a deployment explicitly marked production — neither
+    via EDGE_AGENT_MOCK_MODE=true nor via the historical mock default. A
+    misconfigured production agent must refuse to start, not silently register
+    itself and upload simulated results.
+    """
+
+
+def _resolve_mock_mode() -> bool:
+    if os.getenv("APP_ENV", "").lower() == "production":
+        explicit = os.getenv("EDGE_AGENT_MOCK_MODE")
+        if explicit is None or explicit.lower() != "false":
+            raise MockModeNotAllowedInProduction(
+                "EDGE_AGENT_MOCK_MODE must be explicitly 'false' under "
+                "APP_ENV=production; the mock CV pipeline cannot serve "
+                "production results."
+            )
+        return False
+    return _bool("EDGE_AGENT_MOCK_MODE", True)
+
+
 @dataclass
 class AgentConfig:
     device_name: str = field(default_factory=lambda: os.getenv("EDGE_AGENT_DEVICE_NAME", "jetson-nano-2gb-lab-001"))
@@ -20,7 +45,7 @@ class AgentConfig:
     max_concurrent_jobs: int = field(default_factory=lambda: int(os.getenv("EDGE_AGENT_MAX_CONCURRENT_JOBS", "1")))
     model_dir: str = field(default_factory=lambda: os.getenv("EDGE_AGENT_MODEL_DIR", "/opt/giraffe/models"))
     output_dir: str = field(default_factory=lambda: os.getenv("EDGE_AGENT_OUTPUT_DIR", "/opt/giraffe/cv_outputs"))
-    mock_mode: bool = field(default_factory=lambda: _bool("EDGE_AGENT_MOCK_MODE", True))
+    mock_mode: bool = field(default_factory=_resolve_mock_mode)
     bootstrap_token: str = field(default_factory=lambda: os.getenv("EDGE_AGENT_BOOTSTRAP_TOKEN", ""))
     agent_version: str = "0.1.0"
 

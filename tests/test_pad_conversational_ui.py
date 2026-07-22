@@ -84,11 +84,43 @@ def client(db_session):
     app.dependency_overrides.clear()
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def seeded_sku(db_session):
-    """Shirt SKU with an active standard revision — available for confirm/job tests."""
+    """Shirt SKU with an active, *published* standard revision.
+
+    The preset workflow requires publish before operator inspection, so the
+    fixture records the publish-bundle row an admin publish would create.
+    """
     from src.db.seed_data import seed_shirt_custom
-    return seed_shirt_custom(db_session, tenant_id="demo")
+    from src.db.sku_models import QCSkuStandardRevision
+    from src.db.studio_models import QCPublishBundle
+
+    sku = seed_shirt_custom(db_session, tenant_id="demo")
+    active = (
+        db_session.query(QCSkuStandardRevision)
+        .filter_by(sku_id=sku.id, tenant_id="demo", status="active")
+        .first()
+    )
+    if active is not None and (
+        db_session.query(QCPublishBundle)
+        .filter_by(tenant_id="demo", sku_id=sku.id, standard_revision_id=active.id)
+        .first()
+        is None
+    ):
+        db_session.add(
+            QCPublishBundle(
+                id="test-bundle-" + active.id,
+                tenant_id="demo",
+                sku_id=sku.id,
+                standard_revision_id=active.id,
+                revision_no=active.revision_no,
+                manifest_json={"test_fixture": True},
+                bundle_hash="0" * 64,
+                signature="test-signature",
+            )
+        )
+        db_session.commit()
+    return sku
 
 
 @pytest.fixture
@@ -337,6 +369,7 @@ def test_19_confirm_standard_requires_intake_id(auth_client, db_session, seeded_
     assert "revision_id" in data
 
 
+
 # ---------------------------------------------------------------------------
 # Test 20: Create inspection job (real DB write via create_inspection_job_from_api)
 # ---------------------------------------------------------------------------
@@ -350,6 +383,31 @@ def test_20_create_inspection_job(auth_client, seeded_sku):
     assert data["status"] == "job_created"
     assert data["sku_id"] == seeded_sku.id
     assert "job_id" in data
+
+
+# ---------------------------------------------------------------------------
+# Test 20b: Preset workflow ordering — unpublished standard blocks operator job
+# ---------------------------------------------------------------------------
+def test_20b_unpublished_standard_blocks_operator_job(auth_client, db_session):
+    from uuid import uuid4
+    from src.db.sku_models import QCSkuItem, QCSkuStandardRevision
+
+    sku = QCSkuItem(
+        id=uuid4().hex, tenant_id="demo", item_number="UNPUB-1",
+        name="Unpublished standard", status="active",
+    )
+    db_session.add(sku)
+    db_session.add(QCSkuStandardRevision(
+        id=uuid4().hex, sku_id=sku.id, tenant_id="demo",
+        revision_no=1, status="active",
+    ))
+    db_session.commit()
+
+    resp = auth_client.post(
+        "/api/v1/pad/create_inspection_job", json={"sku_id": sku.id}
+    )
+    assert resp.status_code == 409
+    assert "not published" in resp.json()["error"]
 
 
 # ---------------------------------------------------------------------------
@@ -1206,3 +1264,131 @@ def test_stage2_control_assets_include_camera_and_real_report():
     assert "/checkpoint-results" in inspection_js
     assert "/finalize" in inspection_js
     assert "/api/v1/pad/inspection-jobs/" in report_js
+
+
+# ---------------------------------------------------------------------------
+# Stage timings: capture/upload (client) + cv/inference (server) + 10s SLO
+# ---------------------------------------------------------------------------
+def test_vision_analyze_records_stage_timings_and_slo(
+    auth_client, db_session, seeded_sku, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("QC_STORAGE_ROOT", str(tmp_path))
+    created = auth_client.post(
+        "/api/v1/pad/create_inspection_job", json={"sku_id": seeded_sku.id}
+    )
+    job_id = created.json()["job_id"]
+    fixture = Path(__file__).parent / "fixtures" / "qc" / "capture_red_square_pass.png"
+    attached = auth_client.post(
+        f"/api/v1/pad/inspection-jobs/{job_id}/media",
+        data={"capture_source": "mac_usb_camera"},
+        files={"image": ("mac-usb-camera.png", fixture.read_bytes(), "image/png")},
+    )
+    assert attached.status_code == 201
+
+    from src.qc_model.studio import ai_gateway
+
+    state = auth_client.get(f"/api/v1/pad/inspection-jobs/{job_id}").json()
+
+    def fake_inspect(**kwargs):
+        return {
+            "summary": "Operator review required.",
+            "checkpoint_results": [
+                {
+                    "point_code": point["point_code"],
+                    "result": "not_visible",
+                    "confidence": 0.25,
+                    "observed_value": None,
+                    "notes": "fixture",
+                }
+                for point in state["checkpoints"]
+            ],
+            "assistant": {
+                "role": "vision", "provider": "openai_compatible",
+                "model": "replaceable-vision-default", "elapsed_ms": 321, "mode": "live",
+            },
+        }
+
+    monkeypatch.setattr(ai_gateway, "inspect_image", fake_inspect)
+    response = auth_client.post(
+        f"/api/v1/pad/inspection-jobs/{job_id}/vision-analyze",
+        json={"client_timings": {"capture_ms": 800, "upload_ms": 400, "bogus": "x"}},
+    )
+    assert response.status_code == 200
+
+    from src.db.execution_models import QCModelResult
+
+    row = (
+        db_session.query(QCModelResult)
+        .filter_by(job_id=job_id)
+        .order_by(QCModelResult.created_at.desc())
+        .first()
+    )
+    timings = row.raw_output["timings_ms"]
+    assert timings["capture_ms"] == 800
+    assert timings["upload_ms"] == 400
+    assert timings["inference"] == 321
+    assert "cv" in timings and "server_total" in timings
+    slo = timings["slo"]
+    assert slo["budget_ms"] == 10000
+    assert slo["render_included"] is False
+    assert slo["measured_ms"] == 800 + 400 + timings["cv"] + 321
+    assert slo["met"] is True
+    assert "bogus" not in timings
+
+
+# ---------------------------------------------------------------------------
+# Workstation binding enables the install-level gate (PRD: inspect installed SKUs)
+# ---------------------------------------------------------------------------
+def test_workstation_binding_enforces_install_gate(auth_client, db_session, seeded_sku):
+    from uuid import uuid4
+    from src.db.qc_bundle_models import QCBundle, QCBundleAssignment, QCWorkstation
+    from src.db.sku_models import QCSkuStandardRevision
+
+    resp = auth_client.post(
+        "/api/v1/pad/workstation", json={"workstation_id": "WS-UNKNOWN"}
+    )
+    assert resp.status_code == 404
+
+    ws = QCWorkstation(
+        id=uuid4().hex, tenant_id="demo",
+        workstation_id="WS-1", display_name="Line 1 Pad",
+    )
+    db_session.add(ws)
+    db_session.commit()
+
+    resp = auth_client.post("/api/v1/pad/workstation", json={"workstation_id": "WS-1"})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "workstation_bound"
+
+    # Published (fixture publishes) but NOT installed on WS-1 → 409.
+    resp = auth_client.post(
+        "/api/v1/pad/create_inspection_job", json={"sku_id": seeded_sku.id}
+    )
+    assert resp.status_code == 409
+    assert "not installed" in resp.json()["error"]
+
+    active = (
+        db_session.query(QCSkuStandardRevision)
+        .filter_by(sku_id=seeded_sku.id, tenant_id="demo", status="active")
+        .first()
+    )
+    bundle = QCBundle(
+        id=uuid4().hex, tenant_id="demo", bundle_version="v-ws-test-1",
+        manifest_json={"standard_revisions": [active.id]},
+        manifest_sha256="0" * 64, signature="test-signature",
+    )
+    db_session.add(bundle)
+    db_session.add(QCBundleAssignment(
+        id=uuid4().hex, tenant_id="demo", workstation_pk=ws.id,
+        bundle_pk=bundle.id, bundle_version="v-ws-test-1",
+    ))
+    ws.installed_bundle_version = "v-ws-test-1"
+    db_session.commit()
+
+    resp = auth_client.post(
+        "/api/v1/pad/create_inspection_job", json={"sku_id": seeded_sku.id}
+    )
+    assert resp.status_code == 200
+
+    # Clear the binding so later sessions are unaffected.
+    auth_client.post("/pad/logout")

@@ -29,6 +29,42 @@ install_i18n(templates)
 router = APIRouter()
 
 
+_SLO_BUDGET_MS = 10_000
+
+
+def _stage_timings(
+    client_timings: Dict[str, int], *, cv_ms: int, inference_ms: int, server_total_ms: int
+) -> Dict[str, Any]:
+    """Per-stage timing record (PRD: capture/CV/upload/inference/render + 10s SLO).
+
+    capture/upload are client-reported and optional; render happens after the
+    response, so the SLO measurement covers the stages known at response time
+    and says so instead of guessing.
+    """
+    timings: Dict[str, Any] = {
+        "cv": cv_ms,
+        "inference": inference_ms,
+        "server_total": server_total_ms,
+        # kept for backward compatibility with earlier records
+        "vision_total": inference_ms,
+    }
+    timings.update(client_timings)
+    measured = (
+        client_timings.get("capture_ms", 0)
+        + client_timings.get("upload_ms", 0)
+        + cv_ms
+        + inference_ms
+    )
+    timings["slo"] = {
+        "budget_ms": _SLO_BUDGET_MS,
+        "measured_ms": measured,
+        "met": measured <= _SLO_BUDGET_MS,
+        "stages_measured": sorted(["cv", "inference", *client_timings]),
+        "render_included": False,
+    }
+    return timings
+
+
 def _get_bridge() -> QCAgentBridge:
     return get_bridge()
 
@@ -394,6 +430,51 @@ async def pad_create_inspection_job(
     sku_id: Optional[str] = body.get("sku_id")
     if not sku_id:
         return JSONResponse({"error": "sku_id required"}, status_code=400)
+
+    # Preset workflow ordering: an operator may only inspect a standard that
+    # has been published (signed L2 bundle exists for the active revision).
+    # Publish → install precede inspection; an unpublished draft/confirmed
+    # standard is not inspectable from the operator surface.
+    from src.db.studio_models import QCPublishBundle
+    from src.inspection.service import get_active_standard_revision
+
+    active_revision = get_active_standard_revision(db, str(sku_id), tenant_id)
+    if active_revision is not None:
+        published = (
+            db.query(QCPublishBundle)
+            .filter_by(
+                tenant_id=tenant_id,
+                sku_id=str(sku_id),
+                standard_revision_id=active_revision.id,
+            )
+            .first()
+        )
+        if published is None:
+            return JSONResponse(
+                {
+                    "error": (
+                        "standard revision is not published; publish the signed "
+                        "bundle before operator inspection"
+                    )
+                },
+                status_code=409,
+            )
+        # Install-level gate (PRD: operators inspect installed standards).
+        # Active only when the session declared its workstation — the browser
+        # Pad has no device identity, so binding is what enables this check.
+        workstation_pk = request.session.get("workstation_pk")
+        if workstation_pk and not _workstation_has_revision_installed(
+            db, workstation_pk, tenant_id, active_revision.id
+        ):
+            return JSONResponse(
+                {
+                    "error": (
+                        "standard revision is not installed on the bound "
+                        "workstation; assign and install the bundle first"
+                    )
+                },
+                status_code=409,
+            )
     try:
         from src.inspection.api_service import create_inspection_job_from_api
         job = create_inspection_job_from_api(
@@ -412,6 +493,63 @@ async def pad_create_inspection_job(
         "sku_id": job.sku_id,
         "operator_id": operator_id,
     })
+
+
+@router.post("/api/v1/pad/workstation")
+async def pad_bind_workstation(
+    request: Request,
+    db: Session = Depends(get_db_dep),
+):
+    """Bind this operator session to a registered workstation.
+
+    The PRD requires operators to inspect only standards *installed* on their
+    workstation. The browser Pad has no device identity of its own, so the
+    operator declares the registered workstation they are working at; job
+    creation then enforces install-level gating for this session.
+    """
+    operator_id = _require_operator(request)
+    if operator_id is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    tenant_id = request.session.get("tenant_id", "demo")
+    body: Dict[str, Any] = await request.json()
+    workstation_id = str(body.get("workstation_id") or "").strip()
+    if not workstation_id:
+        return JSONResponse({"error": "workstation_id required"}, status_code=400)
+    from src.db.qc_bundle_models import QCWorkstation
+
+    ws = (
+        db.query(QCWorkstation)
+        .filter_by(tenant_id=tenant_id, workstation_id=workstation_id)
+        .first()
+    )
+    if ws is None:
+        return JSONResponse({"error": "workstation not registered"}, status_code=404)
+    request.session["workstation_pk"] = ws.id
+    return JSONResponse({
+        "status": "workstation_bound",
+        "workstation_id": ws.workstation_id,
+        "display_name": ws.display_name,
+        "installed_bundle_version": ws.installed_bundle_version,
+    })
+
+
+def _workstation_has_revision_installed(db, workstation_pk: str, tenant_id: str, revision_id: str) -> bool:
+    """Best-effort install check: the workstation reports the same bundle
+    version it was assigned, and that bundle's manifest carries the revision."""
+    from src.db.qc_bundle_models import QCBundle, QCBundleAssignment, QCWorkstation
+
+    rows = (
+        db.query(QCBundleAssignment, QCBundle)
+        .join(QCWorkstation, QCBundleAssignment.workstation_pk == QCWorkstation.id)
+        .join(QCBundle, QCBundleAssignment.bundle_pk == QCBundle.id)
+        .filter(
+            QCBundleAssignment.tenant_id == tenant_id,
+            QCBundleAssignment.workstation_pk == workstation_pk,
+            QCWorkstation.installed_bundle_version == QCBundleAssignment.bundle_version,
+        )
+        .all()
+    )
+    return any(revision_id in str(bundle.manifest_json) for _, bundle in rows)
 
 
 @router.get("/api/v1/pad/skus")
@@ -527,6 +665,25 @@ async def pad_inspection_job_state(
     )
 
 
+@router.get("/api/v1/pad/inspection-jobs/{job_id}/workflow")
+async def pad_inspection_workflow_state(
+    request: Request,
+    job_id: str,
+    db: Session = Depends(get_db_dep),
+):
+    """Preset-workflow checklist for a job: which ordered steps are done."""
+    operator_id = _require_operator(request)
+    if operator_id is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    tenant_id = request.session.get("tenant_id", "demo")
+    job = _pad_job(db, job_id, tenant_id)
+    if job is None:
+        return JSONResponse({"error": "inspection job not found"}, status_code=404)
+    from src.inspection.workflow import derive_workflow_state
+
+    return JSONResponse(derive_workflow_state(db, job, tenant_id=tenant_id))
+
+
 @router.post("/api/v1/pad/inspection-jobs/{job_id}/media")
 async def pad_attach_inspection_media(
     request: Request,
@@ -597,6 +754,23 @@ async def pad_run_vision_analysis(
         return JSONResponse({"error": "inspection job not found"}, status_code=404)
     if job.final_report is not None:
         return JSONResponse({"error": "inspection job already finalized"}, status_code=409)
+
+    # Optional client-reported stage timings (capture/upload happen on the
+    # Pad/browser before this request; render happens after the response).
+    request_started = time.monotonic()
+    try:
+        req_body: Dict[str, Any] = await request.json()
+    except Exception:
+        req_body = {}
+    client_timings: Dict[str, int] = {}
+    for stage in ("capture_ms", "upload_ms"):
+        raw_value = (req_body.get("client_timings") or {}).get(stage)
+        try:
+            value = int(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= value <= 3_600_000:
+            client_timings[stage] = value
 
     from src.db.execution_models import QCInspectionMedia, QCModelResult
     from src.cv_preanalysis import PreanalysisError, run_preanalysis, write_evidence
@@ -716,10 +890,12 @@ async def pad_run_vision_analysis(
         "fallback_crops": crop_metadata,
         "routing": result.get("routing"),
         "assistant": result["assistant"],
-        "timings_ms": {
-            "cv": cv_elapsed_ms,
-            "vision_total": result["assistant"]["elapsed_ms"],
-        },
+        "timings_ms": _stage_timings(
+            client_timings,
+            cv_ms=cv_elapsed_ms,
+            inference_ms=result["assistant"]["elapsed_ms"],
+            server_total_ms=int((time.monotonic() - request_started) * 1000),
+        ),
     }
     from uuid import uuid4
     model_result = QCModelResult(
@@ -767,7 +943,9 @@ async def pad_submit_checkpoint_batch(
     from src.inspection.service import submit_checkpoint_results_batch
 
     try:
-        rows = submit_checkpoint_results_batch(db, job_id, results, tenant_id=tenant_id)
+        rows = submit_checkpoint_results_batch(
+            db, job_id, results, tenant_id=tenant_id, reviewed_by=str(operator_id)
+        )
     except (ValueError, TypeError) as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     return JSONResponse(
@@ -792,11 +970,19 @@ async def pad_finalize_inspection_job(
     if _pad_job(db, job_id, tenant_id) is None:
         return JSONResponse({"error": "inspection job not found"}, status_code=404)
     from src.inspection.api_service import finalize_inspection_job
+    from src.inspection.probation_bridge import record_probation_outcome
 
     try:
-        report = finalize_inspection_job(db, job_id, tenant_id=tenant_id)
+        # Preset workflow: the operator flow can never finalize a pass from
+        # model-only results — every checkpoint needs human review first.
+        report = finalize_inspection_job(
+            db, job_id, tenant_id=tenant_id, require_human_review=True
+        )
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
+    # Probation loop (PRD Authoring Extension §3.2): a revision under
+    # probation records this job's (ai, human, agreed) pair.
+    probation_record = record_probation_outcome(db, _pad_job(db, job_id, tenant_id), report, tenant_id)
     return JSONResponse(
         {
             "status": "finalized",
@@ -804,5 +990,6 @@ async def pad_finalize_inspection_job(
             "checkpoint_results_count": report.checkpoint_results_count,
             "findings_count": report.findings_count,
             "summary_text": report.summary_text,
+            "probation": probation_record,
         }
     )

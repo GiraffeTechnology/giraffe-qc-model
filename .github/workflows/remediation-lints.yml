@@ -18,6 +18,28 @@ jobs:
       - name: Fail on unlabeled mock/fake patterns in production paths
         run: python scripts/ci/mock_labeling_lint.py
 
+  prd-traceability:
+    name: PRD traceability gate (hard)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify PRD matrix statuses are backed by existing evidence
+        run: python scripts/ci/prd_traceability_check.py
+
+  report-evidence:
+    name: Report evidence gate (hard)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Reject acceptance claims without real model-call evidence
+        run: python scripts/ci/report_evidence_check.py
+
   no-unverified-claims:
     name: No-unverified-claims check (§1.4, soft)
     runs-on: ubuntu-latest
