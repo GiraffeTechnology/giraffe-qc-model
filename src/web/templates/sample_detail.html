@@ -52,15 +52,46 @@
 
   <details class="collapsible" {% if not sku.photos %}open{% endif %}>
     <summary>{{ t('sample.detail.add_photo') }}</summary>
-    <form class="form-card" method="post" action="/admin/samples/{{ sku.id }}/photos" enctype="multipart/form-data">
+    <form id="sample-photo-form" class="form-card" method="post" action="/admin/samples/{{ sku.id }}/photos" enctype="multipart/form-data">
       <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
 
       <div class="form-tabs">
-        <label><input type="radio" name="_photo_mode" value="upload" checked onchange="togglePhotoMode(this.value)"> {{ t('sample.detail.upload_file') }}</label>
+        <label><input type="radio" name="_photo_mode" value="camera" checked onchange="togglePhotoMode(this.value)"> {{ t('sample.detail.capture_usb') }}</label>
+        <label><input type="radio" name="_photo_mode" value="upload" onchange="togglePhotoMode(this.value)"> {{ t('sample.detail.upload_file') }}</label>
         <label><input type="radio" name="_photo_mode" value="url" onchange="togglePhotoMode(this.value)"> {{ t('sample.detail.register_url') }}</label>
       </div>
 
-      <div id="mode-upload">
+      <section id="mode-camera" class="sample-camera-panel"
+               data-default="{{ t('sample.camera.default') }}"
+               data-ready="{{ t('sample.camera.ready') }}"
+               data-denied="{{ t('sample.camera.denied') }}"
+               data-timeout="{{ t('sample.camera.timeout') }}"
+               data-required="{{ t('sample.camera.required') }}"
+               data-captured="{{ t('sample.camera.captured') }}"
+               data-failed="{{ t('sample.camera.capture_failed') }}"
+               data-uploading="{{ t('sample.camera.uploading') }}">
+        <div class="sample-camera-grid">
+          <video id="sample-camera-preview" class="sample-camera-preview" autoplay playsinline muted></video>
+          <canvas id="sample-camera-canvas" class="sample-camera-preview" hidden></canvas>
+          <div class="sample-camera-actions">
+            <label for="sample-camera-device">{{ t('sample.camera.source') }}</label>
+            <select id="sample-camera-device"><option value="">{{ t('sample.camera.default') }}</option></select>
+            <button type="button" id="sample-camera-start" class="btn">{{ t('sample.camera.start') }}</button>
+            <button type="button" id="sample-camera-capture" class="btn btn-primary" disabled>{{ t('sample.camera.capture') }}</button>
+            <button type="button" id="sample-camera-stop" class="btn" disabled>{{ t('sample.camera.stop') }}</button>
+            <p id="sample-camera-status" class="sample-camera-status" aria-live="polite"></p>
+            <div id="sample-camera-confirm" class="sample-camera-confirm" hidden role="group" aria-label="{{ t('sample.camera.confirm') }}">
+              <strong>{{ t('sample.camera.confirm') }}</strong>
+              <div>
+                <button type="button" id="sample-camera-upload-confirm" class="btn btn-primary">{{ t('sample.camera.upload_yes') }}</button>
+                <button type="button" id="sample-camera-retake" class="btn">{{ t('sample.camera.retake') }}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div id="mode-upload" style="display:none">
         <div class="form-group">
           <label for="photo_file">{{ t('sample.detail.image_file') }}</label>
           <input type="file" id="photo_file" name="photo_file" accept="image/*">
@@ -90,10 +121,10 @@
       </div>
 
       <div class="form-group">
-        <label><input type="checkbox" name="is_primary" value="true"> {{ t('sample.detail.set_as_primary') }}</label>
+        <label><input type="checkbox" name="is_primary" value="true" {% if not sku.photos %}checked{% endif %}> {{ t('sample.detail.set_as_primary') }}</label>
       </div>
 
-      <div class="form-actions">
+      <div id="photo-form-actions" class="form-actions" style="display:none">
         <button type="submit" class="btn btn-primary">{{ t('sample.detail.add_photo') }}</button>
       </div>
     </form>
@@ -246,8 +277,10 @@
 <script src="/static/roi_editor.js"></script>
 <script>
 function togglePhotoMode(mode) {
+  document.getElementById('mode-camera').style.display = mode === 'camera' ? '' : 'none';
   document.getElementById('mode-upload').style.display = mode === 'upload' ? '' : 'none';
   document.getElementById('mode-url').style.display = mode === 'url' ? '' : 'none';
+  document.getElementById('photo-form-actions').style.display = mode === 'camera' ? 'none' : '';
 }
 
 function copyRoiToForm() {
@@ -278,4 +311,5 @@ function validateRoi() {
   }
 }
 </script>
+<script src="/static/sample_camera.js"></script>
 {% endblock %}

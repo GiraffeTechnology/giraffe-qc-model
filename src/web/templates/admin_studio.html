@@ -94,10 +94,10 @@
 
       <form id="chat-form" class="chat-input">
         <button type="button" id="voice-toggle" class="icon-btn" title="{{ t('studio.voice.title') }}">🎤</button>
-        <button type="button" id="standard-camera-toggle" class="icon-btn" title="{{ t('studio.camera.toggle') }}">📷</button>
-        <button type="button" id="photo-album-toggle" class="icon-btn" title="{{ t('studio.album.title') }}">🖼️</button>
+        <button type="button" id="standard-camera-toggle" class="icon-btn" title="{{ t('studio.camera.toggle') }}" hidden>📷</button>
+        <button type="button" id="photo-album-toggle" class="icon-btn" title="{{ t('studio.album.title') }}" hidden>🖼️</button>
         <input type="file" id="photo-input" accept="image/*" hidden>
-        <button type="button" id="photo-file-toggle" class="icon-btn" title="{{ t('studio.file.title') }}">📁</button>
+        <button type="button" id="photo-file-toggle" class="icon-btn" title="{{ t('studio.file.title') }}" hidden>📁</button>
         <input type="file" id="photo-file-input" accept="image/*" hidden>
         <input type="text" id="chat-text" placeholder="{{ t('studio.chat.placeholder') }}" autocomplete="off">
         <button type="submit" class="send-btn">{{ t('studio.send') }}</button>

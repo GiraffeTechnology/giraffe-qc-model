@@ -165,6 +165,17 @@ class TestAdminDetailPage:
         resp = client.get(f"/admin/samples/{self.sku_id}?tenant_id={TENANT}")
         assert "ADMIN-DETAIL-001" in resp.text
 
+    def test_detail_owns_manual_usb_standard_sample_capture(self, client):
+        resp = client.get(f"/admin/samples/{self.sku_id}?tenant_id={TENANT}")
+        html = resp.text
+        assert 'id="sample-camera-start"' in html
+        assert 'id="sample-camera-capture"' in html
+        assert 'id="sample-camera-upload-confirm"' in html
+        assert 'id="sample-camera-retake"' in html
+        assert 'value="camera" checked' in html
+        assert "/static/sample_camera.js" in html
+        assert translate("sample.detail.capture_usb", "en") in html
+
 
 class TestAdminSampleI18n:
     def test_sample_workspace_renders_and_switches_to_chinese(self, client):
@@ -186,6 +197,7 @@ class TestAdminSampleI18n:
             assert translate("sample.list.subtitle", "zh-CN") in list_body
             assert translate("sample.new.title", "zh-CN") in new_body
             assert translate("sample.detail.standard_photos", "zh-CN") in detail_body
+            assert translate("sample.detail.capture_usb", "zh-CN") in detail_body
             assert translate("sample.detail.inspection_requirements", "zh-CN") in detail_body
             assert translate("sample.detail.detection_points", "zh-CN") in detail_body
         finally:
