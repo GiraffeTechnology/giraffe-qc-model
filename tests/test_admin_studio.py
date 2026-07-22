@@ -381,6 +381,10 @@ def test_admin_studio_assets_capture_usb_standard_sample_through_upload_contract
     html = (root / "src/web/templates/admin_studio.html").read_text()
     javascript = (root / "src/web/static/admin_studio.js").read_text()
 
+    assert 'title="{{ t(\'studio.camera.toggle\') }}" hidden' in html
+    assert 'title="{{ t(\'studio.album.title\') }}" hidden' in html
+    assert 'title="{{ t(\'studio.file.title\') }}" hidden' in html
+
     assert 'id="standard-camera-toggle"' in html
     assert 'id="standard-camera-preview"' in html
     assert 'id="standard-camera-capture"' in html
