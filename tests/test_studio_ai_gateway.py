@@ -48,8 +48,20 @@ def test_text_assistant_uses_configured_ollama_route_and_strict_draft(monkeypatc
         "elapsed_ms": 1250,
         "mode": "live",
     }
+    assert captured["payload"]["options"]["num_predict"] == 1024
     assert result["checkpoints"][0]["point_code"] == "PEARL_COUNT"
+
     assert result["questions"][0]["field"] == "PEARL_COUNT.expected_value"
+def test_text_output_budget_is_configurable_and_bounded(monkeypatch):
+    monkeypatch.setenv("STUDIO_TEXT_NUM_PREDICT", "1536")
+    assert ai_gateway.text_output_tokens() == 1536
+    monkeypatch.setenv("STUDIO_TEXT_NUM_PREDICT", "100")
+    assert ai_gateway.text_output_tokens() == 768
+    monkeypatch.setenv("STUDIO_TEXT_NUM_PREDICT", "99999")
+    assert ai_gateway.text_output_tokens() == 4096
+    monkeypatch.setenv("STUDIO_TEXT_NUM_PREDICT", "invalid")
+    assert ai_gateway.text_output_tokens() == 1024
+
 
 
 def test_vision_assistant_sends_image_to_openai_compatible_route(monkeypatch, tmp_path):
