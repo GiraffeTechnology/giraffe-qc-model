@@ -30,6 +30,7 @@ import src.db.intake_models       # noqa: F401
 import src.db.studio_models       # noqa: F401
 import src.db.training_models     # noqa: F401
 from src.db.sku_models import QCDetectionPoint
+from src.db.intake_models import QCOperatorConfirmation, QCStandardIntake
 from src.db.studio_models import QCPublishBundle
 
 from src.api.main import app
@@ -183,7 +184,9 @@ def test_sample_confirmation_shows_questions_and_blocks_unresolved_draft():
     source = Path("src/web/static/sample_standard_authoring.js").read_text()
     assert "showQuestions(result.questions);" in source
     assert "const unresolvedQuestions = (card.questions || [])" in source
-    assert "confirmButton.disabled = true;" in source
+    assert "confirmButton.disabled = !isComplete();" in source
+    assert "sample-confirm-question-input" in source
+    assert "question_answers: questionAnswers" in source
     assert "resolveQuestionsBeforeConfirm" in source
 
 
@@ -469,6 +472,57 @@ def test_confirm_rejects_counting_point_without_value(client):
     )
     assert resp.status_code == 400
     assert "expected count" in resp.json()["error"].lower()
+
+
+def test_confirm_accepts_answered_question_and_audits_answers(client, db_session_factory, monkeypatch):
+    from src.qc_model.studio import ai_gateway
+
+    sku_id = _create_flw(client)
+    monkeypatch.setenv("STUDIO_TEXT_PROVIDER", "ollama_compatible")
+    monkeypatch.setenv("STUDIO_TEXT_BASE_URL", "http://assistant.invalid")
+    monkeypatch.setenv("STUDIO_TEXT_MODEL", "replaceable-text-default")
+
+    def fake_post(config, payload, path):
+        content = {
+            "intent": "define_requirements", "reply": "draft", "sku": {},
+            "checkpoints": [{
+                "point_code": "STAMEN_CENTER", "label": "花蕊居中",
+                "method_hint": "alignment", "severity": "critical",
+                "expected_value": None, "pass_criteria": None,
+            }],
+            "questions": [],
+        }
+        return {"message": {"content": json.dumps(content, ensure_ascii=False)}}, 1
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    body = client.post(
+        "/admin/studio/chat",
+        json={"message": "花蕊必须居中", "sku_id": sku_id},
+    ).json()
+    card = body["confirmation_card"]
+    question = card["questions"][0]
+    answer = {question["field"]: "≤0.5 mm"}
+    response = client.post(
+        "/admin/studio/confirm",
+        json={
+            "intake_id": body["intake_id"],
+            "confirmed_by": "alice",
+            "checkpoints": card["checkpoints"],
+            "question_answers": answer,
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    session = db_session_factory()
+    try:
+        intake = session.query(QCStandardIntake).filter_by(id=body["intake_id"]).one()
+        confirmation = session.query(QCOperatorConfirmation).filter_by(
+            intake_id=body["intake_id"], status="confirmed"
+        ).one()
+        assert intake.confirmation_payload_json["question_answers"] == answer
+        assert confirmation.confirmed_json["question_answers"] == answer
+    finally:
+        session.close()
 
 
 def test_confirm_rejects_non_counting_unresolved_question(client, monkeypatch):

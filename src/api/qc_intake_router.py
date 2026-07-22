@@ -61,6 +61,7 @@ class ConfirmIntakeRequest(BaseModel):
     tenant_id: Optional[str] = None
     confirmed_by: str
     checkpoints: List[CheckpointDraft]
+    question_answers: Dict[str, str] = {}
     operator_comment: Optional[str] = None
 
 
@@ -215,6 +216,7 @@ def confirm_intake(
             intake_id=intake_id,
             confirmed_by=body.confirmed_by,
             confirmed_checkpoints=checkpoints,
+            question_answers=body.question_answers,
             operator_comment=body.operator_comment,
             tenant_id=body.tenant_id,
         )

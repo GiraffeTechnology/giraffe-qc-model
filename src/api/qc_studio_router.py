@@ -627,6 +627,7 @@ class ConfirmRequest(BaseModel):
     intake_id: str
     confirmed_by: Optional[str] = None
     checkpoints: List[ConfirmCheckpoint]
+    question_answers: Dict[str, str] = {}
     operator_comment: Optional[str] = None
 
 
@@ -656,6 +657,7 @@ def studio_confirm(request: Request, body: ConfirmRequest, db: Session = Depends
             intake_id=body.intake_id,
             confirmed_by=actor,
             confirmed_checkpoints=checkpoints,
+            question_answers=body.question_answers,
             operator_comment=body.operator_comment,
             tenant_id=tenant_id,
         )
