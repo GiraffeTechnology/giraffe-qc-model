@@ -269,6 +269,84 @@ def test_explicit_bound_is_normalized_without_guessing():
     assert unknown["expected_value"] is None
 
 
+def test_live_text_draft_preserves_explicit_counts_and_coalesces_complements(monkeypatch):
+    """Explicit administrator facts remain authoritative over model typing."""
+    monkeypatch.setenv("STUDIO_TEXT_PROVIDER", "ollama_compatible")
+    monkeypatch.setenv("STUDIO_TEXT_BASE_URL", "http://assistant.invalid")
+    monkeypatch.setenv("STUDIO_TEXT_MODEL", "replaceable-text-default")
+
+    def fake_post(config, payload, path):
+        content = {
+            "intent": "define_requirements",
+            "reply": "draft",
+            "sku": {},
+            "checkpoints": [
+                {"point_code": "PETAL_COUNT_CHECK", "label": "花瓣数量检查", "method_hint": "defect_detection", "severity": "critical", "pass_criteria": "检测到且仅检测到4个花瓣"},
+                {"point_code": "PEARL_COUNT_CHECK", "label": "珍珠数量检查", "method_hint": "defect_detection", "severity": "critical", "pass_criteria": "检测到且仅检测到3颗珍珠"},
+                {"point_code": "PEARL_MISSING_CHECK", "label": "珍珠缺失检查", "method_hint": "defect_detection", "severity": "major", "pass_criteria": "不得缺失"},
+                {"point_code": "RHINESTONE_COUNT_CHECK", "label": "水钻数量检查", "method_hint": "defect_detection", "severity": "critical", "pass_criteria": "检测到且仅检测到7颗水钻"},
+                {"point_code": "STIGMA_CENTER_CHECK", "label": "花蕊居中检查", "method_hint": "defect_detection", "severity": "critical", "pass_criteria": "花蕊必须居中"},
+                {"point_code": "STIGMA_OFFSET_CHECK", "label": "花蕊偏移检查", "method_hint": "defect_detection", "severity": "major", "pass_criteria": "不得偏离中心"},
+            ],
+            "questions": [
+                {
+                    "field": "cv_config.analyzers[0].params.threshold_for_centering",
+                    "question": "请提供用于判定花蕊居中的最大允许偏移量。",
+                },
+                {
+                    "field": "cv_config.analyzers[1].name",
+                    "question": "是否需要为花瓣、珍珠和水钻分别指定不同的分析器名称？",
+                },
+            ],
+        }
+        return {"message": {"content": json.dumps(content, ensure_ascii=False)}}, 207400
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    result = ai_gateway.author_text(
+        message="花瓣数量必须为4；珍珠数量必须为3；水钻数量必须为7；花蕊必须居中。",
+        language="zh-CN",
+        current_sku={"item_number": "STAGE2-FLOWER-001"},
+    )
+
+    assert [item["point_code"] for item in result["checkpoints"]] == [
+        "PETAL_COUNT_CHECK", "PEARL_COUNT_CHECK", "RHINESTONE_COUNT_CHECK", "STIGMA_CENTER_CHECK",
+    ]
+    by_code = {item["point_code"]: item for item in result["checkpoints"]}
+    assert by_code["PETAL_COUNT_CHECK"]["method_hint"] == "counting"
+    assert by_code["PETAL_COUNT_CHECK"]["expected_value"] == "4"
+    assert by_code["PETAL_COUNT_CHECK"]["cv_config"] == {
+        "analyzers": [{"name": "petal_segmentation", "params": {"backend": "silhouette"}}]
+    }
+    assert by_code["PEARL_COUNT_CHECK"]["expected_features"] == {"pearl_count": 3}
+    assert by_code["PEARL_COUNT_CHECK"]["cv_config"] == {
+        "analyzers": [{"name": "pearl_count", "params": {}}]
+    }
+    assert by_code["RHINESTONE_COUNT_CHECK"]["expected_value"] == "7"
+    assert by_code["RHINESTONE_COUNT_CHECK"]["cv_config"] == {
+        "analyzers": [{"name": "rhinestone_count", "params": {"backend": "socket_holes"}}]
+    }
+    assert by_code["STIGMA_CENTER_CHECK"]["method_hint"] == "alignment"
+    assert by_code["STIGMA_CENTER_CHECK"]["cv_config"] == {
+        "analyzers": [{"name": "pistil_localization", "params": {}}]
+    }
+    assert result["questions"] == [{
+        "field": "cv_config.analyzers[0].params.threshold_for_centering",
+        "question": "请提供用于判定花蕊居中的最大允许偏移量。",
+    }]
+
+
+def test_count_is_not_inferred_when_administrator_did_not_supply_one():
+    checkpoint = ai_gateway._validate_checkpoint({
+        "point_code": "PEARL_COUNT",
+        "label": "珍珠数量",
+        "method_hint": "counting",
+        "pass_criteria": "数量必须符合确认值",
+    })
+    result = ai_gateway._enforce_authoritative_text([checkpoint], "请检查珍珠数量")
+    assert result[0]["expected_value"] is None
+    assert result[0]["cv_config"] == {}
+
+
 def test_clean_json_accepts_complete_object_with_model_suffix():
     value = ai_gateway._clean_json(
         '```json\n{"intent":"help","reply":"ready"}\n```}'

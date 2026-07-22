@@ -81,15 +81,34 @@ _CHECKPOINT_EXAMPLE = {
     "expected_features": {},
     "cv_config": {
         "analyzers": [{
-            "name": "rhinestone_count|petal_segmentation|pistil_localization",
+            "name": "rhinestone_count|pearl_count|petal_segmentation|pistil_localization",
             "params": {},
         }],
     },
 }
 
 _ALLOWED_CV_ANALYZERS = frozenset({
-    "rhinestone_count", "petal_segmentation", "pistil_localization",
+    "rhinestone_count", "pearl_count", "petal_segmentation", "pistil_localization",
 })
+
+_COUNT_CONCEPTS = {
+    "petal": {
+        "terms": ("花瓣", "petal", "petals"),
+        "analyzer": "petal_segmentation",
+        "params": {"backend": "silhouette"},
+    },
+    "pearl": {
+        "terms": ("珍珠", "pearl", "pearls"),
+        "analyzer": "pearl_count",
+        "params": {},
+    },
+    "rhinestone": {
+        "terms": ("水钻", "rhinestone", "rhinestones"),
+        "analyzer": "rhinestone_count",
+        "params": {"backend": "socket_holes"},
+    },
+}
+_CENTER_TERMS = ("花蕊", "stamen", "pistil", "stigma")
 
 
 def _locale_name(language: str) -> str:
@@ -175,6 +194,21 @@ def _validate_checkpoint(value: Any) -> dict[str, Any]:
             analyzers.append({"name": name, "params": params})
         if analyzers:
             checkpoint["cv_config"] = {"analyzers": analyzers}
+    evidence = " ".join(filter(None, (
+        point_code, label, checkpoint["description"], checkpoint["pass_criteria"],
+    )))
+    count_identity = bool(re.search(r"(?:COUNT|数量|数目|计数)", evidence, re.IGNORECASE))
+    if count_identity:
+        exact_count = re.search(
+            r"(?:恰好|正好|仅[^0-9]{0,16}|必须(?:为|是|等于)?|应(?:为|是|等于)?|"
+            r"exactly|must\s+(?:be|equal)?|shall\s+(?:be|equal)?)\s*(\d+)",
+            evidence,
+            flags=re.IGNORECASE,
+        )
+        if exact_count:
+            checkpoint["method_hint"] = "counting"
+            if not checkpoint["expected_value"]:
+                checkpoint["expected_value"] = str(int(exact_count.group(1)))
     if not checkpoint["expected_value"]:
         # Normalize an explicit bound that the assistant already placed in the
         # description/criterion. This is not inference: both number and unit
@@ -195,11 +229,92 @@ def _validate_checkpoint(value: Any) -> dict[str, Any]:
     return checkpoint
 
 
+def _mentions(text: str, terms: tuple[str, ...]) -> bool:
+    lowered = text.lower()
+    return any(term.lower() in lowered for term in terms)
+
+
+def _explicit_count(text: str, terms: tuple[str, ...]) -> int | None:
+    """Recover only a count explicitly written by the administrator."""
+    alternatives = "|".join(sorted((re.escape(term) for term in terms), key=len, reverse=True))
+    patterns = (
+        rf"(?:{alternatives})(?:\s*(?:数量|数目|个数|count))?[^0-9]{{0,16}}(\d+)",
+        rf"(\d+)\s*(?:个|颗|枚|pcs?)?\s*(?:{alternatives})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def _enforce_authoritative_text(
+    checkpoints: list[dict[str, Any]], source_text: str | None,
+) -> list[dict[str, Any]]:
+    """Make explicit administrator facts authoritative over model typing.
+
+    The text model is still called and authors the draft. This post-validation
+    layer only preserves facts that are literally present in the administrator
+    input, assigns the matching allow-listed CV hook, and removes complementary
+    duplicates (for example, an exact pearl-count checkpoint plus a second
+    "missing pearl" checkpoint). It never invents an absent count or tolerance.
+    """
+    if not source_text:
+        return checkpoints
+    explicit_counts = {
+        concept: count
+        for concept, spec in _COUNT_CONCEPTS.items()
+        if (count := _explicit_count(source_text, spec["terms"])) is not None
+    }
+    center_requested = _mentions(source_text, _CENTER_TERMS) and bool(
+        re.search(
+            r"居中|中心|偏离|center(?:ed|ing)?|centre(?:d|ing)?|offset",
+            source_text,
+            re.IGNORECASE,
+        )
+    )
+    seen_counts: set[str] = set()
+    seen_center = False
+    result: list[dict[str, Any]] = []
+    for checkpoint in checkpoints:
+        identity = " ".join(filter(None, (
+            checkpoint.get("point_code"), checkpoint.get("label"),
+            checkpoint.get("description"), checkpoint.get("pass_criteria"),
+        )))
+        concept = next((
+            name for name, spec in _COUNT_CONCEPTS.items()
+            if name in explicit_counts and _mentions(identity, spec["terms"])
+        ), None)
+        if concept:
+            if concept in seen_counts:
+                continue
+            spec = _COUNT_CONCEPTS[concept]
+            expected = explicit_counts[concept]
+            checkpoint["method_hint"] = "counting"
+            checkpoint["expected_value"] = str(expected)
+            checkpoint["expected_features"] = {spec["analyzer"]: expected}
+            checkpoint["cv_config"] = {
+                "analyzers": [{"name": spec["analyzer"], "params": dict(spec["params"])}]
+            }
+            seen_counts.add(concept)
+        elif center_requested and _mentions(identity, _CENTER_TERMS):
+            if seen_center:
+                continue
+            checkpoint["method_hint"] = "alignment"
+            checkpoint["cv_config"] = {
+                "analyzers": [{"name": "pistil_localization", "params": {}}]
+            }
+            seen_center = True
+        result.append(checkpoint)
+    return result
+
+
 def _normalize_result(
     value: dict[str, Any],
     config: AssistantConfig,
     elapsed_ms: int,
     language: str,
+    source_text: str | None = None,
 ) -> dict[str, Any]:
     intent = str(value.get("intent") or "define_requirements").strip()
     if intent not in {"create_sku", "define_requirements", "provide_details", "select_sku", "help"}:
@@ -217,6 +332,7 @@ def _normalize_result(
         "category": str(raw_sku.get("category") or "").strip()[:128] or None,
     }
     checkpoints = [_validate_checkpoint(item) for item in (value.get("checkpoints") or [])]
+    checkpoints = _enforce_authoritative_text(checkpoints, source_text)
     questions = []
     for item in value.get("questions") or value.get("questions_for_operator") or []:
         if isinstance(item, str):
@@ -246,6 +362,22 @@ def _normalize_result(
             or cp["point_code"] in q["question"].upper()
             or cp["label"].lower() in q["question"].lower()
             for cp in resolved
+        )]
+    if source_text:
+        configured_terms = tuple(
+            term
+            for spec in _COUNT_CONCEPTS.values()
+            if _explicit_count(source_text, spec["terms"]) is not None
+            for term in spec["terms"]
+        )
+        questions = [q for q in questions if not (
+            configured_terms
+            and _mentions(q["question"], configured_terms)
+            and re.search(
+                r"analyzers?\[?\d*\]?\.name|analyzer\s+name|分析器名称",
+                f"{q['field']} {q['question']}",
+                re.IGNORECASE,
+            )
         )]
     coverage_review = None
     raw_coverage = value.get("coverage_review")
@@ -315,6 +447,10 @@ def author_text(*, message: str, language: str, current_sku: dict[str, Any] | No
         "Never claim that a draft is confirmed, published, installed, or inspecting; those require explicit human actions. "
         "Never guess counts, tolerances, units, or pass thresholds: use null and ask a precise question. "
         "For create_sku, return both item_number and name. For requirements, return every independently testable checkpoint. "
+        "Use method_hint=counting and copy the exact number into expected_value for every explicit count. "
+        "Use method_hint=alignment for centered or offset criteria. One criterion must produce exactly one checkpoint: "
+        "do not add a separate missing/absence checkpoint when an exact-count checkpoint already covers it, and do not "
+        "duplicate a centered criterion as a second offset checkpoint. "
         "Keep labels, descriptions, criteria, and replies concise. Omit empty optional fields. "
         "Return exactly one complete JSON object, with no markdown. Never stop before closing the JSON object. "
         "Required schema: "
@@ -357,7 +493,9 @@ def author_text(*, message: str, language: str, current_sku: dict[str, Any] | No
             raw = _content_text(body["choices"][0]["message"]["content"])
         except (KeyError, IndexError, TypeError) as exc:
             raise StudioAIError("text_assistant_envelope_invalid") from exc
-    return _normalize_result(_clean_json(str(raw)), config, elapsed, language)
+    return _normalize_result(
+        _clean_json(str(raw)), config, elapsed, language, source_text=message,
+    )
 
 
 def _vision_json(

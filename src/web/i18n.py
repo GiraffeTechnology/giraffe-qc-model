@@ -848,9 +848,9 @@ _STRINGS = {
         LANG_JA: '期待特徴 JSON（例：{"rhinestone_count":24}）',
     },
     "studio.js.cv_config_prompt": {
-        LANG_EN: "CV config JSON (analyzers: rhinestone_count, petal_segmentation, pistil_localization)",
-        LANG_ZH: "CV 配置 JSON（分析器：rhinestone_count、petal_segmentation、pistil_localization）",
-        LANG_JA: "CV 設定 JSON（アナライザー：rhinestone_count、petal_segmentation、pistil_localization）",
+        LANG_EN: "CV config JSON (analyzers: rhinestone_count, pearl_count, petal_segmentation, pistil_localization)",
+        LANG_ZH: "CV 配置 JSON（分析器：rhinestone_count、pearl_count、petal_segmentation、pistil_localization）",
+        LANG_JA: "CV 設定 JSON（アナライザー：rhinestone_count、pearl_count、petal_segmentation、pistil_localization）",
     },
     "studio.js.invalid_analysis_json": {
         LANG_EN: "Analysis config must be valid JSON: {message}", LANG_ZH: "分析配置必须是有效 JSON：{message}",
