@@ -1,4 +1,6 @@
-/* Admin Studio — three-panel chat-first SKU + standard training (S2). */
+/* Admin Studio — three-panel SKU training and publish workspace (S2).
+   Standard authoring (chat, region annotation, CV config) lives on the
+   sample page; this workspace only trains, qualifies, and publishes. */
 
 :root {
   --bg: #f3f0e9;
@@ -46,7 +48,7 @@ body {
 .workflow-copy { min-width: 260px; display: flex; flex-direction: column; gap: 3px; }
 .workflow-copy strong { font-family: Georgia, serif; font-size: 18px; color: #173f35; }
 .workflow-copy span { color: var(--muted); font-size: 12px; }
-.workflow-steps { flex: 1; display: grid; grid-template-columns: repeat(6, 1fr); list-style: none; margin: 0; padding: 0; }
+.workflow-steps { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); list-style: none; margin: 0; padding: 0; }
 .workflow-steps li { position: relative; padding: 9px 7px; text-align: center; font-size: 11px; color: #395c53; background: #eaf2ee; border-right: 2px solid #fff; }
 .workflow-steps li:first-child { border-radius: 18px 0 0 18px; }
 .workflow-steps li:last-child { border-radius: 0 18px 18px 0; }
@@ -76,8 +78,6 @@ body {
 }
 .panel-head h2 { font-size: 14px; margin: 0; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 .panel-link { margin-left: auto; color: #173f35; text-decoration: none; font-size: 12px; font-weight: 600; }
-.assistant-state { margin-left: auto; font-size: 11px; color: #067647; background: #ecfdf3; border-radius: 999px; padding: 4px 8px; }
-.assistant-state.busy { color: #92400e; background: #fef3c7; }
 
 /* LEFT ------------------------------------------------------------------ */
 .sku-controls { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; }
@@ -108,63 +108,8 @@ body {
 .bubble.meta { padding: 3px 8px; border: 0; background: transparent; color: var(--muted); font-size: 11px; }
 @keyframes pulse { to { opacity: .2; transform: scale(.7); } }
 .bubble.system img.chat-photo { max-width: 220px; border-radius: 8px; display: block; margin-top: 6px; }
-.standard-import-toolbar {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
-  padding: 8px 12px 0; border-top: 1px solid var(--border);
-}
-.standard-import-toolbar .muted { font-size: 11px; }
-
-.chat-input {
-  display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border);
-}
-.chat-input input[type="text"] { flex: 1; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; }
-.icon-btn {
-  display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px;
-  border: 1px solid var(--border); border-radius: 10px; background: #fff; cursor: pointer; font-size: 16px;
-}
-.icon-btn:hover { background: #f3f4f6; }
-.send-btn { padding: 10px 16px; background: #000; color: #fff; border: none; border-radius: 10px; cursor: pointer; font-size: 14px; }
-.send-btn:hover { background: #333; }
-.human-gate-note { padding: 0 14px 10px; text-align: center; color: var(--muted); font-size: 10px; }
-
-/* Standard-sample USB camera ------------------------------------------------ */
-.standard-camera-panel {
-  margin: 0 12px 10px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #fffdf8;
-}
-.standard-camera-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.standard-camera-head strong { color: #173f35; font-size: 14px; }
-.camera-close { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 22px; line-height: 1; }
-.standard-camera-grid { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(210px, .6fr); gap: 12px; }
-.standard-camera-preview { width: 100%; min-height: 220px; max-height: 360px; border-radius: 8px; background: #0f172a; object-fit: contain; }
-.standard-camera-actions { display: flex; flex-direction: column; gap: 8px; }
-.standard-camera-actions label { color: var(--muted); font-size: 12px; }
-.standard-camera-actions select { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
-.standard-camera-status { min-height: 34px; margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
-.standard-camera-status.is-error { color: var(--danger); }
-.standard-camera-status.is-success { color: var(--ok); }
-.standard-camera-confirm { padding: 9px; border: 1px solid #d5c58f; border-radius: 8px; background: #fff9e8; }
-.standard-camera-confirm strong { display: block; margin-bottom: 8px; color: #6b4f00; font-size: 12px; }
-.standard-camera-confirm > div { display: flex; gap: 8px; }
-.standard-camera-confirm .btn { flex: 1; }
-
-/* Confirmation card inside conversation */
-.confirm-card { align-self: flex-start; max-width: 92%; background: #fff; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-.confirm-head { padding: 8px 12px; background: #f3f4f6; font-weight: 600; font-size: 13px; }
-.confirm-body { padding: 4px 12px; }
-.cp-coverage { margin: 8px 0; padding: 10px 12px; border-radius: 8px; font-size: 12px; line-height: 1.45; }
-.cp-coverage.is-complete { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
-.cp-coverage.needs-review { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
-.cp-row { padding: 8px 0; border-bottom: 1px solid #f0f1f3; font-size: 13px; }
-.cp-row:last-child { border-bottom: none; }
-.cp-code { font-weight: 600; }
-.cp-fields { color: var(--muted); font-size: 12px; margin-top: 2px; }
-.cp-missing { color: var(--danger); font-weight: 600; }
-.cp-input { margin-top: 4px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; width: 120px; }
-.confirm-actions { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); }
+.studio-operations-note { align-items: center; justify-content: center; text-align: center; gap: 10px; }
+.studio-operations-note p { color: var(--muted); font-size: 14px; max-width: 320px; }
 
 .btn { padding: 7px 14px; border: 1px solid var(--border); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
 .btn:hover { background: #f3f4f6; }
@@ -198,9 +143,6 @@ body {
 .bundle-note { font-size: 12px; color: var(--muted); margin-top: 8px; word-break: break-all; }
 .install-next { font-size: 11px; line-height: 1.4; color: var(--muted); padding: 10px; background: #f6f5f1; border-radius: 8px; }
 .install-next a { color: #173f35; font-weight: 600; }
-.engineering-settings { margin-top: 7px; }
-.engineering-settings summary { cursor: pointer; color: var(--muted); font-size: 11px; }
-.engineering-settings .btn { margin-right: 5px; }
 
 /* Probation / qualification (§3, WS7) */
 .probation-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
@@ -216,21 +158,6 @@ body {
 .hidden { display: none !important; }
 .chip { padding: 3px 10px; border-radius: 999px; background: #111; color: #fff; font-size: 12px; }
 
-/* Region annotation editor (§2) */
-.dp-regions-btn { margin-top: 6px; }
-.region-editor { margin-top: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: #fafafa; }
-.region-editor__controls { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 12px; }
-.region-editor__controls select { padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
-.region-hint { font-size: 11px; }
-.region-canvas-wrap { position: relative; width: 100%; max-width: 100%; }
-.region-image { width: 100%; display: block; border-radius: 6px; border: 1px solid var(--border); user-select: none; }
-.region-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: crosshair; }
-.region-list { list-style: none; margin: 8px 0; padding: 0; font-size: 12px; }
-.region-list li { display: flex; justify-content: space-between; align-items: center; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 4px; background: #fff; }
-.region-list .region-remove { border: none; background: none; color: var(--danger); cursor: pointer; font-size: 12px; }
-.region-editor__actions { display: flex; gap: 8px; margin-top: 8px; }
-.region-error { font-size: 12px; color: var(--danger); margin-top: 6px; }
-
 @media (max-width: 1100px) {
   .workflow-copy { display: none; }
   .studio-layout { grid-template-columns: 230px minmax(420px, 1fr) 300px; }
@@ -239,7 +166,5 @@ body {
 @media (max-width: 820px) {
   .studio-layout { grid-template-columns: 1fr; height: auto; }
   .panel { min-height: 420px; }
-  .workflow-steps { grid-template-columns: repeat(3, 1fr); row-gap: 2px; }
   .studio-nav { display: none; }
-  .standard-camera-grid { grid-template-columns: 1fr; }
 }

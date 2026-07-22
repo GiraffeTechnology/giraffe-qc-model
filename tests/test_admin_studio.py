@@ -177,6 +177,29 @@ def test_sample_workbench_owns_three_authoring_inputs_and_confirmation(client):
     assert 'id="confirm-card-template"' not in page.text
 
 
+def test_sample_page_owns_detection_point_confirmation_studio_does_not(client):
+    # Workflow (2026-07-22 correction): sample entry + detection point
+    # confirmation (region annotation, CV/analysis config) live on the
+    # sample page; Studio only trains and publishes.
+    created = client.post(
+        "/admin/samples",
+        follow_redirects=False,
+        data={"tenant_id": "demo", "item_number": "HANDOFF-003", "name": "Split workflow"},
+    )
+    sku_id = created.headers["location"].split("/")[-1].split("?")[0]
+    detail = client.get(created.headers["location"])
+    assert 'id="sample-detection-points"' in detail.text
+    assert 'id="sample-region-editor-template"' in detail.text
+
+    studio_page = client.get(f"/admin/studio?tenant_id=demo&sku_id={sku_id}")
+    assert 'id="region-editor-template"' not in studio_page.text
+    assert 'dp-regions-btn' not in studio_page.text
+    assert 'dp-analysis-btn' not in studio_page.text
+    # Studio's workflow bar reflects training/publish/install only.
+    assert '>1 SKU<' not in studio_page.text
+    assert '>2 Reference photo<' not in studio_page.text
+
+
 def _structured_import_result():
     return {
         "intent": "define_requirements",

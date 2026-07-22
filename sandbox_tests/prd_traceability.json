@@ -525,6 +525,23 @@
       "code_evidence": ["src/qc_model/qualification/training.py"],
       "test_evidence": ["tests/test_training_service.py", "tests/test_training_api.py"],
       "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-48",
+      "requirement": "两工作室边界修正（2026-07-22）：样品录入与检测点确认（对话式创建、工艺卡/文件导入、确认卡、区域标注、CV/分析配置）全部归属样品页面；数字质检工作室仅负责训练与发布，不得重复或保留检测点编辑能力（此前存在的区域标注/CV配置误留在工作室内，属工作流理解错误，已迁移并从工作室移除死代码）",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": [
+        "src/web/templates/admin_studio.html",
+        "src/web/templates/sample_detail.html",
+        "src/web/static/admin_studio.js",
+        "src/web/static/sample_standard_authoring.js"
+      ],
+      "test_evidence": [
+        "tests/test_admin_studio.py",
+        "tests/test_web_shell.py"
+      ],
+      "real_run_evidence": null
     }
   ]
 }

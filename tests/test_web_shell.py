@@ -206,31 +206,50 @@ def test_admin_studio_uses_persisted_language_for_static_and_js_copy(client):
     assert translate("studio.header.title", "zh-CN") in body
     assert translate("studio.search.placeholder", "zh-CN") in body
     assert translate("studio.empty.standard", "zh-CN") in body
-    assert "welcome:" in body
-    # Jinja's tojson safely escapes the complete localized welcome copy in the
-    # injected JS payload (copy can evolve with the Studio product design).
-    expected_welcome = json.dumps(
-        translate("studio.js.welcome", "zh-CN"), ensure_ascii=True
+    assert "bundleNote:" in body
+    # Jinja's tojson safely escapes the complete localized bundle-note copy in
+    # the injected JS payload (copy can evolve with the Studio product design).
+    expected_bundle_note = json.dumps(
+        translate("studio.js.bundle_note", "zh-CN"), ensure_ascii=True
     )[1:-1]
-    assert expected_welcome in body
+    assert expected_bundle_note in body
     assert "Admin Studio" not in body
     assert "Create a SKU or describe QC requirements" not in body
 
 
 @pytest.mark.parametrize("lang", ["en", "zh-CN", "ja"])
-def test_admin_studio_ws6_ws7_controls_have_complete_locale_payload(client, lang):
+def test_admin_studio_ws7_controls_have_complete_locale_payload(client, lang):
+    # WS6 (region annotation, CV config) moved to the sample page (2026-07-22
+    # workflow correction); Studio only retains WS7 (probation/qualification).
     client.cookies.set(LANGUAGE_COOKIE, lang)
     body = client.get("/admin/studio").text
     required = [
-        "studio.region.photo", "studio.region.save", "studio.js.add_regions",
-        "studio.js.add_cv_config", "studio.js.probation_active",
-        "studio.js.disagreement_report", "studio.js.regions_saved",
+        "studio.js.probation_active", "studio.js.disagreement_report",
         "studio.standard_status.standard_active",
     ]
     for key in required:
         expected = translate(key, lang)
         assert expected != key
         # Static labels render directly; JS strings are JSON escaped.
+        assert expected in body or json.dumps(expected, ensure_ascii=True)[1:-1] in body
+
+
+@pytest.mark.parametrize("lang", ["en", "zh-CN", "ja"])
+def test_sample_page_ws6_controls_have_complete_locale_payload(client, lang):
+    created = client.post(
+        "/admin/samples",
+        follow_redirects=False,
+        data={"tenant_id": "demo", "item_number": f"WS6-{lang}", "name": "WS6 locale"},
+    )
+    client.cookies.set(LANGUAGE_COOKIE, lang)
+    body = client.get(created.headers["location"]).text
+    required = [
+        "studio.region.photo", "studio.region.save", "studio.js.add_regions",
+        "studio.js.add_cv_config", "studio.js.regions_saved",
+    ]
+    for key in required:
+        expected = translate(key, lang)
+        assert expected != key
         assert expected in body or json.dumps(expected, ensure_ascii=True)[1:-1] in body
 
 
