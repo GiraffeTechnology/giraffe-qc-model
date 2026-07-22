@@ -214,7 +214,7 @@
   {% endif %}
 
   <p class="hint">{{ t('sample.detail.studio_detection_hint') }}</p>
-  <a class="btn btn-primary" href="/admin/studio?tenant_id={{ tenant_id }}">{{ t('sample.detail.open_studio') }}</a>
+  <a class="btn btn-primary" href="/admin/studio?tenant_id={{ tenant_id }}&amp;sku_id={{ sku.id }}">{{ t('sample.detail.open_studio') }}</a>
 </section>
 {% endblock %}
 

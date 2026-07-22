@@ -235,6 +235,22 @@ class TestAdminSampleI18n:
             client.cookies.delete(LANGUAGE_COOKIE)
 
 
+def test_legacy_relative_photo_path_uses_persistent_root(tmp_path, monkeypatch):
+    from src.api import sample_admin_router
+
+    root = tmp_path / "persistent-qc-samples"
+    target = root / "demo" / "sku1" / "photos" / "sample.jpg"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"sample")
+    monkeypatch.setattr(sample_admin_router, "_DATA_DIR", root)
+
+    resolved = sample_admin_router.resolve_sample_photo_path(
+        "data/qc_samples/demo/sku1/photos/sample.jpg"
+    )
+    assert resolved == target.resolve()
+    assert sample_admin_router.resolve_sample_photo_path("/etc/passwd") is None
+
+
 # ─── Photo upload / registration ────────────────────────────────────────────────
 
 

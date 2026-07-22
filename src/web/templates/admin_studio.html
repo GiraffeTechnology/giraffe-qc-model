@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ t('studio.page.title') }}</title>
-  <link rel="stylesheet" href="/static/admin_studio.css?v=stage2-cv4b-routing-1">
+  <link rel="stylesheet" href="/static/admin_studio.css?v=stage2-standard-import-1">
 </head>
-<body data-tenant="{{ tenant_id }}">
+<body data-tenant="{{ tenant_id }}" data-initial-sku="{{ initial_sku_id }}">
   <header class="studio-header">
     <a href="/admin" class="brand">{{ t('app.title') }}</a>
     <span class="studio-title">{{ t('studio.header.title') }}</span>
@@ -91,6 +91,14 @@
           </div>
         </div>
       </section>
+
+      <div class="standard-import-toolbar" aria-label="{{ t('studio.import.toolbar') }}">
+        <button type="button" id="process-card-toggle" class="btn">{{ t('studio.import.process_card') }}</button>
+        <input type="file" id="process-card-input" accept="image/jpeg,image/png,.pdf" hidden>
+        <button type="button" id="standard-file-toggle" class="btn">{{ t('studio.import.file') }}</button>
+        <input type="file" id="standard-file-input" accept="image/jpeg,image/png,.pdf,.docx,.xlsx,.txt,.md,.csv" hidden>
+        <span class="muted">{{ t('studio.import.hint') }}</span>
+      </div>
 
       <form id="chat-form" class="chat-input">
         <button type="button" id="voice-toggle" class="icon-btn" title="{{ t('studio.voice.title') }}">🎤</button>
@@ -241,6 +249,13 @@
       visionThinking: {{ t('studio.assistant.vision_thinking') | tojson }},
       assistantMeta: {{ t('studio.assistant.meta') | tojson }},
       visionFailed: {{ t('studio.js.vision_failed') | tojson }},
+      selectBeforeImport: {{ t('studio.js.select_before_import') | tojson }},
+      importOpening: {{ t('studio.js.import_opening') | tojson }},
+      importReading: {{ t('studio.js.import_reading') | tojson }},
+      importSending: {{ t('studio.js.import_sending') | tojson }},
+      importComplete: {{ t('studio.js.import_complete') | tojson }},
+      importFailed: {{ t('studio.js.import_failed') | tojson }},
+      ocrComplete: {{ t('studio.js.ocr_complete') | tojson }},
       cameraDefault: {{ t('studio.camera.default') | tojson }},
       cameraReady: {{ t('studio.camera.ready') | tojson }},
       cameraDenied: {{ t('studio.camera.denied') | tojson }},
@@ -278,6 +293,6 @@
       }
     };
   </script>
-  <script src="/static/admin_studio.js?v=stage2-cv4b-routing-1"></script>
+  <script src="/static/admin_studio.js?v=stage2-standard-import-1"></script>
 </body>
 </html>

@@ -6,6 +6,7 @@ Sample DB logic does not branch by edition.
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,7 +40,8 @@ _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "web" / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 install_i18n(templates)
 
-_DATA_DIR = Path("data/qc_samples")
+_DATA_DIR = Path(os.getenv("QC_SAMPLE_DATA_DIR", "data/qc_samples"))
+_LEGACY_DATA_DIR = Path("data/qc_samples")
 
 
 def _new_id() -> str:
@@ -64,6 +66,22 @@ def _photo_display_url(photo: QCStandardPhoto, tenant_id: str) -> Optional[str]:
     if photo.local_path:
         return f"/admin/samples/photos/{photo.id}?tenant_id={quote(tenant_id, safe='')}"
     return None
+
+
+def resolve_sample_photo_path(local_path: str) -> Optional[Path]:
+    """Resolve old relative paths inside the configured persistent data root."""
+    path = Path(local_path)
+    if not path.is_absolute():
+        try:
+            suffix = path.relative_to(_LEGACY_DATA_DIR)
+        except ValueError:
+            return None
+        path = _DATA_DIR / suffix
+    resolved = path.resolve()
+    data_root = _DATA_DIR.resolve()
+    if resolved != data_root and data_root not in resolved.parents:
+        return None
+    return resolved
 
 
 def _duplicate_item_error(request: Request, item_number: str) -> str:
@@ -210,9 +228,8 @@ def serve_sample_photo(
     )
     if photo is None or not photo.local_path:
         raise HTTPException(status_code=404, detail="Photo not found")
-    path = Path(photo.local_path).resolve()
-    data_root = _DATA_DIR.resolve()
-    if data_root not in path.parents or not path.is_file():
+    path = resolve_sample_photo_path(photo.local_path)
+    if path is None or not path.is_file():
         raise HTTPException(status_code=404, detail="Photo file missing")
     return FileResponse(str(path), media_type=photo.mime_type or "application/octet-stream")
 
