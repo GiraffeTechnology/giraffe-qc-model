@@ -119,6 +119,7 @@ def _record_message(
 @router.get("/admin/studio", response_class=HTMLResponse)
 def studio_page(request: Request, tenant_id: str = "default"):
     from src.db.sku_models import SKU_LIFECYCLE_STATES
+    tenant_id = effective_tenant(request, tenant_id)
 
     return templates.TemplateResponse(
         request,
@@ -202,11 +203,13 @@ def create_studio_sku(body: CreateStudioSkuRequest, db: Session = Depends(get_db
 
 @router.get("/admin/studio/skus")
 def list_skus(
+    request: Request,
     q: str = "",
     status: str = "",
     tenant_id: str = "default",
     db: Session = Depends(get_db_dep),
 ):
+    tenant_id = effective_tenant(request, tenant_id)
     query = db.query(QCSkuItem).filter(QCSkuItem.tenant_id == tenant_id)
     if status:
         query = query.filter(QCSkuItem.status == status)
@@ -224,9 +227,11 @@ def list_skus(
 @router.get("/admin/studio/skus/{sku_id}")
 def get_sku(
     sku_id: str,
+    request: Request,
     tenant_id: str = "default",
     db: Session = Depends(get_db_dep),
 ):
+    tenant_id = effective_tenant(request, tenant_id)
     sku = db.query(QCSkuItem).filter_by(id=sku_id, tenant_id=tenant_id).first()
     if sku is None:
         raise HTTPException(status_code=404, detail="SKU not found")

@@ -23,12 +23,11 @@
   <div class="photo-list">
     {% for photo in sku.photos %}
     <div class="photo-card {% if photo.is_primary %}photo-primary{% endif %}">
-      {% if photo.image_url %}
-      <img src="{{ photo.image_url }}" alt="{{ t('sample.detail.photo') }}" class="photo-thumb">
-      {% elif photo.local_path %}
-      <div class="photo-path">{{ photo.local_path }}</div>
+      {% set display_url = sample_photo_url(photo, tenant_id) %}
+      {% if display_url %}
+      <img src="{{ display_url }}" alt="{{ t('sample.detail.photo') }}" class="photo-thumb">
       {% else %}
-      <div class="photo-path">{{ t('sample.detail.uploaded_file') }}</div>
+      <div class="photo-path">{{ t('sample.detail.photo_unavailable') }}</div>
       {% endif %}
       <div class="photo-meta">
         <span class="badge {% if photo.is_primary %}badge-primary{% endif %}">
@@ -131,22 +130,6 @@
   </details>
 </section>
 
-<!-- ROI Editor -->
-{% if primary_photo and primary_photo.image_url %}
-<section class="card">
-  <h2>{{ t('sample.detail.roi_editor') }}</h2>
-  <p class="hint">{{ t('sample.detail.roi_help') }}</p>
-  <div class="roi-container">
-    <img id="roi-image" src="{{ primary_photo.image_url }}" alt="{{ t('sample.detail.primary_photo') }}" class="roi-image">
-    <canvas id="roi-canvas" class="roi-canvas"></canvas>
-  </div>
-  <div class="form-group" style="margin-top:8px">
-    <label for="roi-json-display">{{ t('sample.field.roi_json') }}</label>
-    <textarea id="roi-json-display" rows="3" class="roi-json-output" readonly placeholder="{{ t('sample.detail.roi_drag') }}"></textarea>
-  </div>
-</section>
-{% endif %}
-
 <!-- Inspection Requirements -->
 <section class="card">
   <h2>{{ t('sample.detail.inspection_requirements') }}</h2>
@@ -230,51 +213,12 @@
   </table>
   {% endif %}
 
-  <details class="collapsible">
-    <summary>{{ t('sample.detail.add_detection_point') }}</summary>
-    <form class="form-card" method="post" action="/admin/samples/{{ sku.id }}/detection-points">
-      <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
-      <div class="form-row">
-        <div class="form-group">
-          <label for="dp-code">{{ t('sample.field.point_code') }} <span class="required">*</span></label>
-          <input type="text" id="dp-code" name="point_code" required placeholder="DP-FRONT-001">
-        </div>
-        <div class="form-group">
-          <label for="dp-severity">{{ t('sample.field.severity') }}</label>
-          <select id="dp-severity" name="severity">
-            <option value="minor">{{ t('sample.severity.minor') }}</option>
-            <option value="major" selected>{{ t('sample.severity.major') }}</option>
-            <option value="critical">{{ t('sample.severity.critical') }}</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-group">
-        <label for="dp-label">{{ t('sample.field.label') }} <span class="required">*</span></label>
-        <input type="text" id="dp-label" name="label" required placeholder="{{ t('sample.placeholder.point_label') }}">
-      </div>
-      <div class="form-group">
-        <label for="dp-description">{{ t('sample.field.description') }}</label>
-        <textarea id="dp-description" name="description" rows="2" placeholder="{{ t('sample.placeholder.optional_description') }}"></textarea>
-      </div>
-      <div class="form-group">
-        <label for="dp-roi">{{ t('sample.field.roi_json') }}</label>
-        <textarea id="dp-roi" name="roi_json_text" rows="2"
-                  placeholder='{"x":0.1,"y":0.2,"w":0.3,"h":0.25}'></textarea>
-        <div style="margin-top:4px;display:flex;align-items:center;gap:8px">
-          <button type="button" class="btn btn-sm" onclick="copyRoiToForm()">{{ t('sample.detail.paste_roi') }}</button>
-          <span id="roi-validation-error" class="validation-error" style="display:none"></span>
-        </div>
-      </div>
-      <div class="form-actions">
-        <button type="submit" class="btn btn-primary" onclick="return validateRoi()">{{ t('sample.detail.add_detection_point') }}</button>
-      </div>
-    </form>
-  </details>
+  <p class="hint">{{ t('sample.detail.studio_detection_hint') }}</p>
+  <a class="btn btn-primary" href="/admin/studio?tenant_id={{ tenant_id }}">{{ t('sample.detail.open_studio') }}</a>
 </section>
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/roi_editor.js"></script>
 <script>
 function togglePhotoMode(mode) {
   document.getElementById('mode-camera').style.display = mode === 'camera' ? '' : 'none';
@@ -283,33 +227,6 @@ function togglePhotoMode(mode) {
   document.getElementById('photo-form-actions').style.display = mode === 'camera' ? 'none' : '';
 }
 
-function copyRoiToForm() {
-  var src = document.getElementById('roi-json-display');
-  if (src && src.value) {
-    document.getElementById('dp-roi').value = src.value;
-  }
-}
-
-function validateRoi() {
-  var textarea = document.getElementById('dp-roi');
-  var errSpan = document.getElementById('roi-validation-error');
-  if (!textarea || !textarea.value.trim()) return true;
-  try {
-    var parsed = JSON.parse(textarea.value);
-    if (parsed.x === undefined || parsed.y === undefined ||
-        parsed.w === undefined || parsed.h === undefined) {
-      errSpan.textContent = {{ t('sample.validation.roi_fields') | tojson }};
-      errSpan.style.display = '';
-      return false;
-    }
-    errSpan.style.display = 'none';
-    return true;
-  } catch(e) {
-    errSpan.textContent = {{ t('sample.validation.invalid_json') | tojson }} + ' ' + e.message;
-    errSpan.style.display = '';
-    return false;
-  }
-}
 </script>
 <script src="/static/sample_camera.js"></script>
 {% endblock %}

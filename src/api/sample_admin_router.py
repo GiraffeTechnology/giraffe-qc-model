@@ -10,9 +10,10 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -54,6 +55,15 @@ def _primary_photo(sku: QCSkuItem) -> Optional[QCStandardPhoto]:
         if p.is_primary:
             return p
     return sku.photos[0] if sku.photos else None
+
+
+def _photo_display_url(photo: QCStandardPhoto, tenant_id: str) -> Optional[str]:
+    """Return a browser-safe photo URL without exposing a server path."""
+    if photo.image_url:
+        return photo.image_url
+    if photo.local_path:
+        return f"/admin/samples/photos/{photo.id}?tenant_id={quote(tenant_id, safe='')}"
+    return None
 
 
 def _duplicate_item_error(request: Request, item_number: str) -> str:
@@ -178,8 +188,33 @@ def sample_detail(
             "sku": sku,
             "primary_photo": _primary_photo(sku),
             "tenant_id": tenant_id,
+            "sample_photo_url": _photo_display_url,
         },
     )
+
+
+@router.get("/samples/photos/{photo_id}")
+def serve_sample_photo(
+    photo_id: str,
+    request: Request,
+    tenant_id: str = "default",
+    db: Session = Depends(get_db_dep),
+):
+    """Serve an uploaded sample image to the authenticated owning tenant."""
+    tenant_id = effective_tenant(request, tenant_id)
+    validate_safe_id(photo_id, "photo_id")
+    photo = (
+        db.query(QCStandardPhoto)
+        .filter_by(id=photo_id, tenant_id=tenant_id)
+        .first()
+    )
+    if photo is None or not photo.local_path:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    path = Path(photo.local_path).resolve()
+    data_root = _DATA_DIR.resolve()
+    if data_root not in path.parents or not path.is_file():
+        raise HTTPException(status_code=404, detail="Photo file missing")
+    return FileResponse(str(path), media_type=photo.mime_type or "application/octet-stream")
 
 
 # POST /admin/samples/{sku_id}/photos

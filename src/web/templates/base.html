@@ -11,7 +11,7 @@
   <header>
     <nav>
       <a href="/admin/samples" class="nav-brand">{{ t('sample.admin.title') if t is defined else 'QC Sample Admin' }}</a>
-      <a href="/admin/studio" class="btn">{{ t('sample.nav.studio') if t is defined else 'Admin Studio' }}</a>
+      <a href="/admin/studio?tenant_id={{ tenant_id }}" class="btn">{{ t('sample.nav.studio') if t is defined else 'Admin Studio' }}</a>
       <a href="/admin/qc-model" class="btn">{{ t('sample.nav.visual_model') if t is defined else 'Visual QC Model' }}</a>
       <a href="/admin/samples/new" class="btn btn-primary">{{ t('sample.nav.new') if t is defined else '+ New Sample' }}</a>
       {% if current_language is defined %}
