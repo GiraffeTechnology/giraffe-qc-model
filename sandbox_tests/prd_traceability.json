@@ -403,6 +403,37 @@
       "test_evidence": ["scripts/ci/sensitive_info_lint.py"],
       "real_run_evidence": null,
       "gap": "当前工作树内容已清理，回归门禁已上线（scripts/ci/sensitive_info_lint.py）；git 历史中较早提交仍保留原始字符串，未做历史改写（改写需强制推送，属破坏性操作，未经用户授权不执行）"
+    },
+    {
+      "id": "PRD-S2-37",
+      "requirement": "CV 预分析计数模型须在真实样本上可用，不得沿用对该材质系统性失准的通用阈值检测器（§8 真实样本审计：11 vs 真值5 花瓣，31/12 vs 真值7 钻石）",
+      "status": "verified",
+      "requires_real_run": true,
+      "code_evidence": [
+        "src/cv_preanalysis/analyzers.py",
+        "src/cv_preanalysis/registry.py"
+      ],
+      "test_evidence": ["tests/test_cv_model_swap_real_sample.py", "tests/test_cv_preanalysis.py"],
+      "real_run_evidence": "tests/fixtures/qc/flower_brooch_5petal_3pearl_7rhinestone.jpg",
+      "gap": "钻石(socket_holes)与珍珠(pearl_count)在真实样本上精确匹配真值(7/7, 3/3)；花瓣(silhouette)受单帧2D遮挡限制得4/5，已在代码与测试中如实记录为已知限制而非拟合掩盖；旧全局阈值后端保留作为向后兼容但用回归测试锁定其失准表现"
+    },
+    {
+      "id": "PRD-S2-38",
+      "requirement": "检测点 CV 配置不得接受未识别/未授权的分析器参数（§8.1 P0：9B 组织证据时曾注入未授权的 confidence_threshold 参数）",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": ["src/qc_model/studio/analysis_config.py"],
+      "test_evidence": ["tests/test_admin_studio.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-39",
+      "requirement": "视觉模型不得在与自身观测值矛盾的情况下宣称与 CV 结果一致（§8.1 P0：4B 曾将与自身观测不符的 CV 计数标记为 supported）",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": ["src/qc_model/studio/ai_gateway.py"],
+      "test_evidence": ["tests/test_studio_ai_gateway.py"],
+      "real_run_evidence": null
     }
   ]
 }

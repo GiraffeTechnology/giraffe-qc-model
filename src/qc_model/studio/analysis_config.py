@@ -8,7 +8,39 @@ from sqlalchemy.orm import Session
 from src.db.sku_models import QCDetectionPoint
 from src.db.studio_models import QCPublishBundle
 
-ALLOWED_ANALYZERS = frozenset({"rhinestone_count", "petal_segmentation", "pistil_localization"})
+ALLOWED_ANALYZERS = frozenset(
+    {"rhinestone_count", "petal_segmentation", "pistil_localization", "pearl_count"}
+)
+
+# Audit 2026-07-22 (§8.1, P0): a live model organizing CV+4B evidence into a
+# checkpoint config invented an unauthorized `confidence_threshold` parameter
+# that no analyzer reads. Nothing previously rejected an unknown parameter
+# key, so a mistaken or over-eager AI/admin edit could silently attach
+# meaningless config to a detection point. Each analyzer's allowed parameter
+# keys mirror exactly what src.cv_preanalysis.analyzers reads for it via
+# params.get(...) — an unrecognized key is refused rather than silently
+# ignored, so the rejection is visible at confirmation time, not discovered
+# later as a parameter with no effect.
+ALLOWED_PARAMS: dict[str, frozenset[str]] = {
+    "rhinestone_count": frozenset({
+        "backend", "min_radius_px", "max_radius_px", "dp", "min_distance_px",
+        "edge_threshold", "accumulator_threshold", "highlight_threshold",
+        "morphology_kernel_px", "min_area_px", "max_area_px", "min_circularity",
+        "working_size_px", "gold_hsv_lower", "gold_hsv_upper",
+        "armature_close_kernel_px", "armature_close_iterations", "min_hole_area_px",
+    }),
+    "petal_segmentation": frozenset({
+        "backend", "hsv_lower", "hsv_upper", "morphology_kernel_px", "min_area_px",
+        "polygon_epsilon", "working_size_px", "min_notch_depth_px",
+    }),
+    "pistil_localization": frozenset({"hsv_lower", "hsv_upper", "min_area_px"}),
+    "pearl_count": frozenset({
+        "working_size_px", "gold_hsv_lower", "gold_hsv_upper",
+        "armature_close_kernel_px", "armature_close_iterations",
+        "search_radius_fraction", "brightness_threshold",
+        "open_kernel_px", "close_kernel_px", "min_area_px",
+    }),
+}
 
 
 class InvalidAnalysisConfig(ValueError):
@@ -40,6 +72,11 @@ def normalize_analysis_config(expected_features: Any, cv_config: Any) -> tuple[d
         params = analyzer.get("params", {})
         if not isinstance(params, dict):
             raise InvalidAnalysisConfig(f"params for {name!r} must be an object")
+        unknown = sorted(set(params) - ALLOWED_PARAMS.get(name, frozenset()))
+        if unknown:
+            raise InvalidAnalysisConfig(
+                f"unsupported params for {name!r}: {unknown}"
+            )
         seen.add(name)
         clean_analyzers.append({"name": name, "params": params})
     return dict(expected_features), {"analyzers": clean_analyzers} if clean_analyzers else {}

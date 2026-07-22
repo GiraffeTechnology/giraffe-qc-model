@@ -392,3 +392,151 @@ def test_process_card_image_ocr_preserves_numbers_units_and_audit(monkeypatch, t
     assert result["assistant"]["model"] == "local-4b"
     prompt = captured["payload"]["messages"][0]["content"][1]["text"]
     assert "Preserve numbers, units, tolerances" in prompt
+
+
+def test_cv_agreement_contradicting_observed_value_escalates_to_fallback(monkeypatch, tmp_path):
+    """Audit 2026-07-22 §8.1: a live model claimed a CV count of 11 was
+    "supported" while its own observed_value said 5 for the same point — an
+    internally self-contradictory response. cv_agreement makes that claim
+    structured; asserting it while numerically disagreeing must be rejected
+    and escalated, not accepted as a confident pass."""
+    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
+    monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
+    monkeypatch.setenv("STUDIO_VISION_FALLBACK_BASE_URL", "http://fallback.invalid")
+    monkeypatch.setenv("STUDIO_VISION_FALLBACK_MODEL", "cloud-30b")
+    image = tmp_path / "capture.png"
+    image.write_bytes(b"capture")
+    calls = []
+
+    def fake_post(config, payload, path):
+        calls.append(config.model)
+        if config.model == "local-4b":
+            value = {
+                "summary": "review",
+                "checkpoint_results": [{
+                    "point_code": "PETAL_COUNT",
+                    "result": "pass",
+                    "confidence": 0.95,
+                    "observed_value": "5 petals visible",
+                    "notes": "matches standard",
+                    "cv_agreement": "agrees",
+                }],
+            }
+        else:
+            value = {
+                "summary": "re-verified",
+                "checkpoint_results": [{
+                    "point_code": "PETAL_COUNT",
+                    "result": "review_required" if False else "low_confidence",
+                    "confidence": 0.4,
+                    "observed_value": "5 petals visible, one occluded",
+                    "notes": "CV count unreliable on this material",
+                }],
+            }
+        return {"choices": [{"message": {"content": json.dumps(value)}}]}, 100
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    result = ai_gateway.inspect_image(
+        image_path=image, mime_type="image/png", language="en",
+        checkpoints=[{"point_code": "PETAL_COUNT", "label": "Petal count"}],
+        cv_context={
+            "schema_version": "1.0",
+            "points": [{
+                "point_code": "PETAL_COUNT",
+                "analysis": {"analyzers": [{"analyzer": "petal_segmentation", "count": 11}]},
+            }],
+        },
+    )
+
+    assert calls == ["local-4b", "cloud-30b"]
+    assert result["assistant"]["fallback_used"] is True
+    assert result["checkpoint_results"][0]["result"] == "low_confidence"
+    assert "primary_error" in result["assistant"]["escalation_reasons"]
+
+
+def test_cv_agreement_consistent_with_observed_value_does_not_escalate(monkeypatch, tmp_path):
+    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
+    monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
+    monkeypatch.delenv("STUDIO_VISION_FALLBACK_BASE_URL", raising=False)
+    monkeypatch.delenv("STUDIO_VISION_FALLBACK_MODEL", raising=False)
+    image = tmp_path / "capture.png"
+    image.write_bytes(b"capture")
+    calls = []
+
+    def fake_post(config, payload, path):
+        calls.append(config.model)
+        value = {
+            "summary": "review",
+            "checkpoint_results": [{
+                "point_code": "RHINESTONE_COUNT",
+                "result": "pass",
+                "confidence": 0.95,
+                "observed_value": "7 rhinestones",
+                "notes": "matches CV",
+                "cv_agreement": "agrees",
+            }],
+        }
+        return {"choices": [{"message": {"content": json.dumps(value)}}]}, 100
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    result = ai_gateway.inspect_image(
+        image_path=image, mime_type="image/png", language="en",
+        checkpoints=[{"point_code": "RHINESTONE_COUNT", "label": "Rhinestone count"}],
+        cv_context={
+            "schema_version": "1.0",
+            "points": [{
+                "point_code": "RHINESTONE_COUNT",
+                "analysis": {"analyzers": [{"analyzer": "rhinestone_count", "count": 7}]},
+            }],
+        },
+    )
+
+    assert calls == ["local-4b"]
+    assert result["assistant"]["fallback_used"] is False
+    assert result["checkpoint_results"][0]["result"] == "pass"
+
+
+def test_cv_agreement_disagrees_is_never_treated_as_contradictory(monkeypatch, tmp_path):
+    """An honest 'disagrees' — the model explicitly rejecting CV's unreliable
+    count — must never trigger the self-contradiction escalation; CV being
+    wrong is expected and is exactly what this field exists to let the model
+    say plainly."""
+    monkeypatch.setenv("STUDIO_VISION_BASE_URL", "http://primary.invalid")
+    monkeypatch.setenv("STUDIO_VISION_MODEL", "local-4b")
+    monkeypatch.delenv("STUDIO_VISION_FALLBACK_BASE_URL", raising=False)
+    monkeypatch.delenv("STUDIO_VISION_FALLBACK_MODEL", raising=False)
+    image = tmp_path / "capture.png"
+    image.write_bytes(b"capture")
+    calls = []
+
+    def fake_post(config, payload, path):
+        calls.append(config.model)
+        value = {
+            "summary": "review",
+            "checkpoint_results": [{
+                "point_code": "PETAL_COUNT",
+                "result": "pass",
+                "confidence": 0.95,
+                "observed_value": "5 petals visible",
+                "notes": "CV overcounted background texture",
+                "cv_agreement": "disagrees",
+            }],
+        }
+        return {"choices": [{"message": {"content": json.dumps(value)}}]}, 100
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    result = ai_gateway.inspect_image(
+        image_path=image, mime_type="image/png", language="en",
+        checkpoints=[{"point_code": "PETAL_COUNT", "label": "Petal count"}],
+        cv_context={
+            "schema_version": "1.0",
+            "points": [{
+                "point_code": "PETAL_COUNT",
+                "analysis": {"analyzers": [{"analyzer": "petal_segmentation", "count": 11}]},
+            }],
+        },
+    )
+
+    assert calls == ["local-4b"]
+    assert result["assistant"]["fallback_used"] is False
+    assert result["checkpoint_results"][0]["result"] == "pass"
