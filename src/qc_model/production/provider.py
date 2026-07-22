@@ -238,6 +238,18 @@ def _server_profile_model() -> str:
 # Provider names that select the real server VLM path.
 _SERVER_PROVIDER_NAMES = {"server_vlm", "qwen", "qwen3_5_vl", "qwen35vl"}
 
+# Stage 3 Group B (docs/STAGE3_AB_TESTING_SPEC.md §2): Jetson-local CV + a
+# remote VLM reached only through an OpenAI-compatible /v1/chat/completions
+# endpoint. Distinct from _SERVER_PROVIDER_NAMES (which speak the repo's own
+# /v1/inspect contract) so the two wire protocols are never conflated.
+_REMOTE_CHAT_PROVIDER_NAMES = {"remote_chat_vlm", "stage3_group_b"}
+
+
+def _remote_chat_provider():
+    from src.qc_model.production.remote_chat_provider import RemoteChatVlmInspectionProvider
+
+    return RemoteChatVlmInspectionProvider()
+
 
 def production_provider_status() -> dict:
     """Report the configured production inspection provider's eligibility.
@@ -252,6 +264,11 @@ def production_provider_status() -> dict:
     name = os.getenv("QC_PRODUCTION_INSPECTION_PROVIDER", "mock").strip().lower()
     if name in _SERVER_PROVIDER_NAMES:
         p = ServerVLMInspectionProvider()
+        configured = p.is_configured
+        eligible = bool(configured and p.production_eligible and is_production_eligible_provider(p.provider_name))
+        provider_name, model = p.provider_name, p.model_name
+    elif name in _REMOTE_CHAT_PROVIDER_NAMES:
+        p = _remote_chat_provider()
         configured = p.is_configured
         eligible = bool(configured and p.production_eligible and is_production_eligible_provider(p.provider_name))
         provider_name, model = p.provider_name, p.model_name
@@ -277,6 +294,8 @@ def get_production_inspection_provider() -> ProductionInspectionProvider:
     name = os.getenv("QC_PRODUCTION_INSPECTION_PROVIDER", "mock").strip().lower()
     if name in _SERVER_PROVIDER_NAMES:
         return ServerVLMInspectionProvider()
+    if name in _REMOTE_CHAT_PROVIDER_NAMES:
+        return _remote_chat_provider()
     # mock / unknown → L0 only.
     if app_env() == "production":
         raise ProductionProviderNotConfigured(

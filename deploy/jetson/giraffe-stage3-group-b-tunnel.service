@@ -1,0 +1,56 @@
+# Stage 3 Group B remote-VLM tunnel — systemd unit (Jetson side).
+#
+# Forwards a local loopback port to the remote chat-completions service's own
+# loopback port through a restricted SSH key (see
+# docs/STAGE3_GROUP_B_REMOTE_ADAPTER.md §2.1 for the required
+# authorized_keys restrictions on the remote host). The Jetson-side bind
+# stays on 127.0.0.1 as well — VLM_BASE_URL in the adapter's environment file
+# must point at this local forwarded port, never at the remote host directly.
+#
+# Install:
+#   sudo cp deploy/jetson/giraffe-stage3-group-b-tunnel.service /etc/systemd/system/
+#   sudo cp deploy/jetson/stage3-group-b-tunnel.env.example /etc/giraffe/stage3-group-b-tunnel.env
+#   # fill every <...> placeholder, then:
+#   sudo chown root:giraffe /etc/giraffe/stage3-group-b-tunnel.env
+#   sudo chmod 640 /etc/giraffe/stage3-group-b-tunnel.env
+#   sudo systemctl daemon-reload && sudo systemctl enable --now giraffe-stage3-group-b-tunnel
+#
+# Prefers autossh (auto-reconnect + built-in keepalive monitoring port) when
+# installed; falls back to plain ssh with systemd Restart=always otherwise.
+
+[Unit]
+Description=Giraffe QC Stage 3 Group B remote-VLM SSH tunnel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=giraffe
+Group=giraffe
+EnvironmentFile=/etc/giraffe/stage3-group-b-tunnel.env
+# AUTOSSH_GATETIME=0 makes autossh treat an immediate post-start failure the
+# same as a later one, so a bad key/host never spins into a restart loop that
+# looks alive. The monitoring port (-M) lets autossh detect a silently dead
+# connection, not just a closed one.
+ExecStart=/usr/bin/autossh -M 0 -N \
+  -o "ExitOnForwardFailure=yes" \
+  -o "ServerAliveInterval=15" \
+  -o "ServerAliveCountMax=3" \
+  -o "StrictHostKeyChecking=yes" \
+  -i ${TUNNEL_SSH_KEY_PATH} \
+  -L 127.0.0.1:${TUNNEL_LOCAL_PORT}:127.0.0.1:${TUNNEL_REMOTE_PORT} \
+  ${TUNNEL_SSH_USER}@${TUNNEL_REMOTE_HOST}
+Restart=always
+RestartSec=5
+
+# Note: systemd directives (unlike ExecStart=) do not expand
+# EnvironmentFile variables, so the SSH key path cannot be declared here as
+# ReadOnlyPaths=$TUNNEL_SSH_KEY_PATH. Keep the key file itself at a fixed,
+# root:giraffe-owned, mode-600 path and rely on filesystem permissions.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

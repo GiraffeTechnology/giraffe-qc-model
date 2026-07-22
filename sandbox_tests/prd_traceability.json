@@ -199,13 +199,13 @@
     },
     {
       "id": "PRD-S2-20",
-      "requirement": "管理员侧 4B 使用 MNN；上海 30B 使用 GPU；Jetson 加速留待 Stage 3",
+      "requirement": "管理员侧 4B 使用 MNN；远程 30B 使用 GPU；Jetson 加速留待 Stage 3",
       "status": "partial",
       "requires_real_run": true,
       "code_evidence": ["src/qc_model/studio/ai_gateway.py"],
       "test_evidence": ["tests/test_studio_ai_gateway.py"],
       "real_run_evidence": null,
-      "gap": "abcdYi 4B CPU 仅为 Stage 2 模拟边界；Jetson 4B/MNN 硬件加速待 Stage 3 真机"
+      "gap": "on-site 4B CPU 仅为 Stage 2 模拟边界；Jetson 4B/MNN 硬件加速待 Stage 3 真机"
     },
     {
       "id": "PRD-S2-21",
@@ -307,10 +307,102 @@
       "requirement": "Stage 2 完成后才进入 Stage 3；旧准入结论撤销",
       "status": "implemented_unverified",
       "requires_real_run": true,
-      "code_evidence": ["sandbox_tests/reports/stage2_web_control_report.md"],
+      "code_evidence": [
+        "sandbox_tests/reports/stage2_web_control_report.md",
+        "scripts/ci/stage3_authorization_gate.py"
+      ],
       "test_evidence": ["scripts/ci/report_evidence_check.py"],
       "real_run_evidence": null,
-      "gap": "旧 passed_for_stage3_entry 已撤销；Stage 3 准入需要全新 Stage 2 验收报告"
+      "gap": "旧 passed_for_stage3_entry 已撤销；Stage 3 准入需要全新 Stage 2 验收报告；机读门禁已实现（scripts/ci/stage3_authorization_gate.py），当前读取本条目仍判定为 CLOSED"
+    },
+    {
+      "id": "PRD-S3-01",
+      "requirement": "Stage 3 A/B 定义统一、命名不与历史 Capability A/B 冲突（GAP-01/02）",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": [
+        "docs/STAGE3_AB_TESTING_SPEC.md",
+        "sandbox_tests/stage3/README.md",
+        "sandbox_tests/reports/stage3_ab_report.schema.json",
+        "scripts/run_capability_a_demo.py",
+        "scripts/run_capability_b_demo.py"
+      ],
+      "test_evidence": ["scripts/ci/stage3_ab_report_check.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S3-02",
+      "requirement": "Group A 可复现部署包：钉版 MNN SDK lockfile + 模型 manifest 校验（GAP-03/04）",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": [
+        "deploy/jetson/mnn-sdk.lock.json",
+        "deploy/jetson/model-manifest.example.json",
+        "scripts/jetson_verify_mnn_lock.py",
+        "scripts/jetson_verify_model_manifest.py"
+      ],
+      "test_evidence": ["tests/test_jetson_stage3_asset_verification.py"],
+      "real_run_evidence": null,
+      "gap": "校验机制已实现且拒绝占位符/未批准值；实际经批准的 SDK 与模型细节（source_url/commit/sha256）待团队填入并在真机验证"
+    },
+    {
+      "id": "PRD-S3-03",
+      "requirement": "Group B 远程 adapter + 受限隧道 + 严格 schema + 失败关闭（GAP-05/06/07）",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": [
+        "src/qc_model/production/remote_chat_provider.py",
+        "docs/STAGE3_GROUP_B_REMOTE_ADAPTER.md",
+        "deploy/jetson/giraffe-stage3-group-b-tunnel.service",
+        "deploy/jetson/stage3-group-b-tunnel.env.example"
+      ],
+      "test_evidence": ["tests/test_remote_chat_vlm_provider.py"],
+      "real_run_evidence": null,
+      "gap": "adapter 契约、图片大小限制、断网/超时/坏 JSON/缺字段失败关闭均有单测覆盖；真机隧道与远程真实调用待验收。GAP-08（远程 /model-info 身份证据）是仓库外部依赖，见 STAGE3_GROUP_B_REMOTE_ADAPTER.md §3"
+    },
+    {
+      "id": "PRD-S3-04",
+      "requirement": "Stage 3 A/B 真机 harness：授权门禁前置、真实签名请求、不得伪造结果（GAP-02 harness 部分）",
+      "status": "implemented_unverified",
+      "requires_real_run": true,
+      "code_evidence": [
+        "scripts/jetson_stage3_run_group_a.py",
+        "scripts/jetson_stage3_run_group_b.py"
+      ],
+      "test_evidence": [
+        "tests/test_jetson_stage3_group_a_harness.py",
+        "tests/test_jetson_stage3_group_b_harness.py"
+      ],
+      "real_run_evidence": null,
+      "gap": "Group A 签名已用真实 AdminAuthenticator 验证兼容；两个 harness 的门禁拒绝路径、传输失败不伪造 pass 均有单测；真机连通性与真实模型调用待验收"
+    },
+    {
+      "id": "PRD-S3-05",
+      "requirement": "部署清单不得硬编码会过期的 commit（GAP-09）",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": [
+        "docs/STAGE3_JETSON_PREDEPLOY_CHECKLIST.md",
+        "scripts/jetson_stage3_predeploy_check.py"
+      ],
+      "test_evidence": ["scripts/jetson_stage3_predeploy_check.py"],
+      "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S3-06",
+      "requirement": "仓库文档/脚本/报告不得暴露真实设备主机名、内部 LAN 地址等敏感部署信息（P0）",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": [
+        "PHASE1_BASELINE.md",
+        "JETSON_NX_RUNTIME_FEASIBILITY.md",
+        "docs/STAGE2_P0_REMEDIATION_2026-07-22.md",
+        "docs/V3_ON_DEVICE_QWEN_QC_PRODUCT.md",
+        "src/db/models.py"
+      ],
+      "test_evidence": ["scripts/ci/sensitive_info_lint.py"],
+      "real_run_evidence": null,
+      "gap": "当前工作树内容已清理，回归门禁已上线（scripts/ci/sensitive_info_lint.py）；git 历史中较早提交仍保留原始字符串，未做历史改写（改写需强制推送，属破坏性操作，未经用户授权不执行）"
     }
   ]
 }
