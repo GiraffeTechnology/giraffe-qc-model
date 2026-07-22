@@ -6,11 +6,12 @@ from typing import Any
 
 import numpy as np
 
-from .analyzers import petal_segmentation, pistil_localization, rhinestone_count
+from .analyzers import pearl_count, petal_segmentation, pistil_localization, rhinestone_count
 
 Analyzer = Callable[[np.ndarray, dict[str, Any]], dict[str, Any]]
 
 ANALYZERS: dict[str, Analyzer] = {
+    "pearl_count": pearl_count,
     "petal_segmentation": petal_segmentation,
     "pistil_localization": pistil_localization,
     "rhinestone_count": rhinestone_count,
