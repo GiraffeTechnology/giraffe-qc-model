@@ -66,16 +66,15 @@ def welcome(request: Request):
 
 @router.get("/admin", response_class=HTMLResponse)
 def admin_home(request: Request, db: Session = Depends(get_db_dep)):
-    """`/admin` home: five cards, each with description and (where available) a count."""
+    """`/admin` home: five cards, each with description and (where available) a count.
+
+    UI audit (2026-07-22, PRD workflow §9.8): samples-and-standards work
+    (SKU setup, photo capture, requirements, detection points, review) must
+    come before the digital QC studio (training) in both card order and
+    module responsibility — an administrator with no reviewed sample yet has
+    nothing for the studio to train on.
+    """
     cards = [
-        {
-            "href": "/admin/studio",
-            "icon": "🎬",
-            "title_key": "admin.card.studio.title",
-            "desc_key": "admin.card.studio.desc",
-            "count": None,
-            "count_label_key": None,
-        },
         {
             "href": "/admin/samples",
             "icon": "🧩",
@@ -83,6 +82,14 @@ def admin_home(request: Request, db: Session = Depends(get_db_dep)):
             "desc_key": "admin.card.samples.desc",
             "count": _active_sample_count(db, effective_tenant(request, "default")),
             "count_label_key": "admin.card.samples.count_label",
+        },
+        {
+            "href": "/admin/studio",
+            "icon": "🎬",
+            "title_key": "admin.card.studio.title",
+            "desc_key": "admin.card.studio.desc",
+            "count": None,
+            "count_label_key": None,
         },
         {
             "href": "/admin/workstations",
