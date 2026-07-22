@@ -12,7 +12,7 @@ Jetson-local VLM) remains.
 
 Reflash, dependency install, MNN SDK/model asset pinning and verification,
 service install, and the readiness self-check may all proceed in parallel
-with Stage 2 re-acceptance. Follow, in order:
+with Stage 2 acceptance. Follow, in order:
 
 1. `docs/STAGE3_JETSON_PREDEPLOY_CHECKLIST.md`
 2. `docs/STAGE3_AB_TESTING_SPEC.md` (the authoritative Group A
@@ -22,7 +22,7 @@ with Stage 2 re-acceptance. Follow, in order:
 
 ## Stage 3 testing — requires the authorization gate to be open
 
-Formal Stage 3 Group A testing may start **only** after a fresh
+Formal Stage 3 Group A testing may start **only** after the current
 Stage 2 interactive acceptance has passed. This is not a standing "blocked"
 notice to delete when convenient — it is a live, machine-checked gate:
 

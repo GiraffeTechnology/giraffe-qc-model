@@ -129,12 +129,9 @@
     } else {
       activeChip.classList.add("hidden");
     }
+    const authoringLink = $("#sample-authoring-link");
+    if (authoringLink) authoringLink.href = sku ? `/admin/samples/${sku.id}?tenant_id=${tenant}` : `/admin/samples?tenant_id=${tenant}`;
     renderCard(sku);
-    if (sku && sku.pending_confirmation &&
-        !state.renderedIntakes.has(sku.pending_confirmation.intake_id)) {
-      state.renderedIntakes.add(sku.pending_confirmation.intake_id);
-      renderConfirmCard(sku.pending_confirmation);
-    }
   }
 
   function renderCard(sku) {
@@ -1119,40 +1116,6 @@
   }
 
   // ── Wire up ─────────────────────────────────────────────────────────────
-  $("#chat-form").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const input = $("#chat-text");
-    const text = input.value.trim();
-    if (!text) return;
-    input.value = "";
-    sendChat(text);
-  });
-  $("#photo-input").addEventListener("change", (e) => {
-    if (e.target.files && e.target.files[0]) readAlbumPhoto(e.target.files[0]);
-    e.target.value = "";
-  });
-  $("#photo-album-toggle").addEventListener("click", requestAlbumPhoto);
-  $("#photo-file-input").addEventListener("change", (e) => {
-    if (e.target.files && e.target.files[0]) readDeviceFile(e.target.files[0]);
-    e.target.value = "";
-  });
-  $("#photo-file-toggle").addEventListener("click", requestDeviceFile);
-  $("#process-card-toggle").addEventListener("click", () => openImportPicker("#process-card-input"));
-  $("#standard-file-toggle").addEventListener("click", () => openImportPicker("#standard-file-input"));
-  $("#process-card-input").addEventListener("change", (e) => handleImportSelection(e, "process_card"));
-  $("#standard-file-input").addEventListener("change", (e) => handleImportSelection(e, "file"));
-  $("#standard-camera-toggle").addEventListener("click", openStandardCamera);
-  $("#standard-camera-close").addEventListener("click", closeStandardCamera);
-  standardCameraStart.addEventListener("click", startStandardCamera);
-  standardCameraCapture.addEventListener("click", captureStandardSample);
-  standardCameraUploadConfirm.addEventListener("click", uploadCapturedStandardSample);
-  standardCameraRetake.addEventListener("click", retakeStandardSample);
-  standardCameraStop.addEventListener("click", stopStandardCamera);
-  standardCameraDevice.addEventListener("change", () => {
-    if (standardCameraStream) startStandardCamera();
-  });
-  window.addEventListener("pagehide", stopStandardCamera);
-  $("#voice-toggle").addEventListener("click", voiceToggle);
   let searchTimer;
   $("#sku-search").addEventListener("input", () => {
     clearTimeout(searchTimer);
@@ -1160,19 +1123,6 @@
   });
   $("#sku-status-filter").addEventListener("change", loadSkus);
 
-  api("/admin/studio/conversation")
-    .then((history) => {
-      const messages = history.messages || [];
-      if (!messages.length) addBubble(t("welcome"), "system");
-      else messages.forEach((item) => addBubble(item.text, item.role === "user" ? "user" : "system"));
-    })
-    .catch(() => addBubble(t("welcome"), "system"));
-  api("/admin/studio/assistants")
-    .then((status) => {
-      const ready = status.text && status.text.configured && status.vision && status.vision.configured;
-      setAssistantState(ready ? t("assistantReady") : t("assistantUnavailable"), false);
-    })
-    .catch(() => setAssistantState(t("assistantUnavailable"), false));
   if (initialSkuId) {
     selectSku(initialSkuId).catch(() => loadSkus());
   } else {

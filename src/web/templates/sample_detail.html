@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ sku.item_number }} — {{ t('sample.admin.title') }}{% endblock %}
 {% block content %}
+<div id="sample-standard-workbench" data-tenant="{{ tenant_id }}" data-sku-id="{{ sku.id }}">
 <div class="page-header">
   <div>
     <h1>{{ sku.item_number }}</h1>
@@ -130,6 +131,41 @@
   </details>
 </section>
 
+<!-- Sample standard workbench: all three standard-authoring inputs live here. -->
+<section class="card sample-authoring-card" aria-labelledby="sample-authoring-title">
+  <div class="sample-authoring-head">
+    <div>
+      <h2 id="sample-authoring-title">{{ t('sample.authoring.title') }}</h2>
+      <p class="hint">{{ t('sample.authoring.subtitle') }}</p>
+    </div>
+    <span id="sample-authoring-state" class="sample-authoring-state" aria-live="polite">{{ t('studio.assistant.checking') }}</span>
+  </div>
+  <div id="sample-authoring-conversation" class="sample-authoring-conversation" aria-live="polite"></div>
+  <div class="sample-authoring-imports" aria-label="{{ t('studio.import.toolbar') }}">
+    <button type="button" id="sample-process-card-toggle" class="btn">{{ t('studio.import.process_card') }}</button>
+    <input type="file" id="sample-process-card-input" accept="image/jpeg,image/png,.pdf" hidden>
+    <button type="button" id="sample-standard-file-toggle" class="btn">{{ t('studio.import.file') }}</button>
+    <input type="file" id="sample-standard-file-input" accept="image/jpeg,image/png,.pdf,.docx,.xlsx,.txt,.md,.csv" hidden>
+  </div>
+  <p class="hint">{{ t('studio.import.hint') }}</p>
+  <form id="sample-authoring-form" class="sample-authoring-form">
+    <textarea id="sample-authoring-text" rows="3" placeholder="{{ t('sample.authoring.placeholder') }}" required></textarea>
+    <button type="submit" class="btn btn-primary">{{ t('studio.send') }}</button>
+  </form>
+  <p class="hint sample-authoring-gate">{{ t('studio.human_gate') }}</p>
+</section>
+
+<template id="sample-confirm-card-template">
+  <div class="sample-confirm-card">
+    <h3>{{ t('studio.confirm.head') }}</h3>
+    <div class="sample-confirm-body"></div>
+    <div class="sample-confirm-actions">
+      <button type="button" class="btn btn-primary sample-confirm-yes">{{ t('studio.confirm.yes') }}</button>
+      <button type="button" class="btn sample-confirm-no">{{ t('studio.confirm.no') }}</button>
+    </div>
+  </div>
+</template>
+
 <!-- Inspection Requirements -->
 <section class="card">
   <h2>{{ t('sample.detail.inspection_requirements') }}</h2>
@@ -213,9 +249,9 @@
   </table>
   {% endif %}
 
-  <p class="hint">{{ t('sample.detail.studio_detection_hint') }}</p>
-  <a class="btn btn-primary" href="/admin/studio?tenant_id={{ tenant_id }}&amp;sku_id={{ sku.id }}">{{ t('sample.detail.open_studio') }}</a>
+  <p class="hint">{{ t('sample.detail.sample_detection_hint') }}</p>
 </section>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -229,4 +265,33 @@ function togglePhotoMode(mode) {
 
 </script>
 <script src="/static/sample_camera.js"></script>
+<script>
+window.GIRAFFE_SAMPLE_AUTHOR_I18N = {
+  checking: {{ t('studio.assistant.checking') | tojson }},
+  ready: {{ t('studio.assistant.ready') | tojson }},
+  unavailable: {{ t('studio.assistant.unavailable') | tojson }},
+  welcome: {{ t('sample.authoring.welcome') | tojson }},
+  thinking: {{ t('studio.assistant.text_thinking') | tojson }},
+  assistantMeta: {{ t('studio.assistant.meta') | tojson }},
+  importOpening: {{ t('studio.js.import_opening') | tojson }},
+  importReading: {{ t('studio.js.import_reading') | tojson }},
+  importSending: {{ t('studio.js.import_sending') | tojson }},
+  importComplete: {{ t('studio.js.import_complete') | tojson }},
+  importFailed: {{ t('studio.js.import_failed') | tojson }},
+  ocrComplete: {{ t('studio.js.ocr_complete') | tojson }},
+  error: {{ t('studio.js.error') | tojson }},
+  expected: {{ t('studio.js.expected') | tojson }},
+  expectedCountRequired: {{ t('studio.js.expected_count_required') | tojson }},
+  countPlaceholder: {{ t('studio.js.count_placeholder') | tojson }},
+  provideCounts: {{ t('studio.js.provide_counts') | tojson }},
+  confirmedRevision: {{ t('studio.js.confirmed_revision') | tojson }},
+  savedPoints: {{ t('studio.js.saved_points') | tojson }},
+  rejected: {{ t('studio.js.rejected') | tojson }},
+  coverageComplete: {{ t('studio.js.coverage_complete') | tojson }},
+  coverageIncomplete: {{ t('studio.js.coverage_incomplete') | tojson }},
+  coverageChecked: {{ t('studio.js.coverage_checked') | tojson }},
+  coverageOmissions: {{ t('studio.js.coverage_omissions') | tojson }}
+};
+</script>
+<script src="/static/sample_standard_authoring.js?v=sample-workbench-1"></script>
 {% endblock %}
