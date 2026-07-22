@@ -11,7 +11,8 @@ JetPack5.1.x 实测环境信息（实际 CUDA/cuDNN/TensorRT 版本、可用 whe
 
 **目的：** 回答 Phase 1 测试暴露的核心问题——qc-model 的 VLM 推理能不能在当前
 Jetson Xavier NX 测试机上真实跑起来（而非 mock）。仅评估，不实现、不重刷、不
-提交任何设备端改动。设备端实测（Phase 1.5）由 Codex 在 `192.168.5.35` 上执行。
+提交任何设备端改动。设备端实测（Phase 1.5）由 Codex 在测试机（LAN 地址见内部
+部署记录，此处不暴露）上执行。
 
 ## 0. 结论先行
 

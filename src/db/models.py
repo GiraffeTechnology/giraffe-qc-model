@@ -1,4 +1,4 @@
-"""SQLAlchemy 2.x ORM models — completely independent of giraffe-agent/abcdYi."""
+"""SQLAlchemy 2.x ORM models — completely independent of any external agent framework."""
 from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import (

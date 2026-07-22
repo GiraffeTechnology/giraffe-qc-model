@@ -1,6 +1,6 @@
 # Stage 2 P0 Remediation Record
 
-**Environment:** abcdYi (`/home/dev/workspace/giraffe-qc-model`)
+**Environment:** on-site sandbox host (path redacted — see internal deployment log)
 
 **Status:** implementation and automated verification complete; interactive
 Stage 2 acceptance remains stopped and must be re-run from the first step.
@@ -16,10 +16,10 @@ dependency.
 Current Stage 2 defaults:
 
 - Text: Qwen3.5 9B through the configured text gateway.
-- Primary vision: abcdYi `qwen3-vl-4b-mnn`.
-- Conditional vision fallback: Shanghai `qwen3-vl-30b-a3b-mnn`.
-- abcdYi 4B uses CPU in the Stage 2 simulator. This is not Jetson performance
-  evidence. The Shanghai 30B vision backend is CUDA on Tesla V100S.
+- Primary vision: on-site `qwen3-vl-4b-mnn`.
+- Conditional vision fallback: remote `qwen3-vl-30b-a3b-mnn`.
+- The on-site 4B uses CPU in the Stage 2 simulator. This is not Jetson
+  performance evidence. The remote 30B vision backend is CUDA on Tesla V100S.
 
 ## Implemented P0 changes
 
@@ -59,8 +59,8 @@ Current Stage 2 defaults:
   gateway.
 - Web service health: active, `/health` returned `{"status":"ok"}`.
 - Model health:
-  - abcdYi 4B: online, alias `qwen3-vl-4b-mnn`, Stage 2 CPU backend.
-  - Shanghai 30B: online, hybrid CPU/CUDA, vision backend CUDA, Tesla V100S.
+  - On-site 4B: online, alias `qwen3-vl-4b-mnn`, Stage 2 CPU backend.
+  - Remote 30B: online, hybrid CPU/CUDA, vision backend CUDA, Tesla V100S.
   - Text gateway: online, Qwen3.5 9B listed.
 - Real standard-photo primary smoke: 4B returned live JSON in 44,850 ms with
   route `primary`; its incomplete one-point proposal was marked
