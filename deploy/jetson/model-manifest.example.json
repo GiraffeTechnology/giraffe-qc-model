@@ -1,0 +1,29 @@
+{
+  "$comment": "Stage 3 Group A model manifest template (GAP-04). Every value is a PLACEHOLDER. Copy to model_manifest.json alongside the exported MNN model files and fill every field before scripts/jetson_verify_model_manifest.py will accept it. 2B and 4B must each get their own manifest — never share one manifest between two model selections.",
+  "schema_version": "mnn-model-manifest-v1",
+  "approved": false,
+  "model_name": "<REPLACE: e.g. qwen3-vl-2b-instruct — must match the approved Group A selection in docs/STAGE3_AB_TESTING_SPEC.md>",
+  "model_alias": "<REPLACE: the configured alias this deployment will report, e.g. qwen3-vl-2b-mnn>",
+  "upstream_revision": "<REPLACE: exact upstream model revision/commit/tag this export was built from>",
+  "mnn_export_tool": "<REPLACE: tool name>",
+  "mnn_export_tool_version": "<REPLACE: exact version/commit>",
+  "quantization": "<REPLACE: e.g. int4 — must be explicit, never omitted or 'default'>",
+  "files": [
+    {
+      "path": "<REPLACE: filename relative to the model directory, e.g. model.mnn>",
+      "sha256": "<REPLACE: SHA-256 of this exact file>",
+      "size_bytes": "<REPLACE: integer>"
+    }
+  ],
+  "min_memory_mb": "<REPLACE: integer — minimum device RAM this export requires to load>",
+  "target_jetpack_version": "<REPLACE: must match deploy/jetson/mnn-sdk.lock.json jetpack_version>",
+  "target_l4t_version": "<REPLACE: must match deploy/jetson/mnn-sdk.lock.json l4t_version>",
+  "target_mnn_sdk_commit": "<REPLACE: must match deploy/jetson/mnn-sdk.lock.json git_commit — an export built against a different MNN SDK commit is not this deployment's approved pairing>",
+  "license": "<REPLACE: model license identifier>",
+  "source": "<REPLACE: where this export was obtained from>",
+  "known_limitations": [
+    "<REPLACE: e.g. 'not evaluated on low-light images' — leave the array present even if empty, do not omit the field>"
+  ],
+  "approved_by": "<REPLACE: name/handle of the person who approved this model selection>",
+  "approved_at": "<REPLACE: ISO-8601 timestamp of approval>"
+}

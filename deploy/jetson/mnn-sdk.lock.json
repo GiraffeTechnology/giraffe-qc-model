@@ -1,0 +1,18 @@
+{
+  "$comment": "Stage 3 Group A pinned MNN SDK lock (GAP-03). Every value below is a PLACEHOLDER — this file must not be used to build until the team's actually-approved SDK details are filled in. scripts/jetson_verify_mnn_lock.py refuses to proceed while any field still holds a placeholder value or 'latest'.",
+  "schema_version": "mnn-sdk-lock-v1",
+  "approved": false,
+  "source_url": "<REPLACE: official MNN SDK source URL — release tarball or git remote, never a mirror of unknown provenance>",
+  "git_commit": "<REPLACE: full 40-char git commit SHA, or the exact release tag if the SDK is not built from git — never 'latest', 'main', or a floating tag>",
+  "sha256": "<REPLACE: SHA-256 of the exact SDK archive/commit tree fetched from source_url>",
+  "build_flags": [
+    "<REPLACE: e.g. -DMNN_BUILD_OPENCL=OFF>",
+    "<REPLACE: e.g. -DMNN_CUDA=OFF>"
+  ],
+  "target_arch": "<REPLACE: e.g. aarch64>",
+  "jetpack_version": "<REPLACE: e.g. 5.1.6>",
+  "l4t_version": "<REPLACE: e.g. 35.6.4 — must match the actually-reflashed device, not an assumption>",
+  "compatibility_notes": "<REPLACE: any known incompatibility or workaround between this MNN SDK version and the target JetPack/L4T, or 'none known' if genuinely verified>",
+  "approved_by": "<REPLACE: name/handle of the person who approved this SDK selection>",
+  "approved_at": "<REPLACE: ISO-8601 timestamp of approval>"
+}

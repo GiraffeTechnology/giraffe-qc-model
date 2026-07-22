@@ -4,8 +4,8 @@ Captured before Phase 1 deployment changes at `2026-07-12T01:54:47+08:00`.
 
 ## Connectivity and identity
 
-- Host: `GiraffeNVIDIA`
-- LAN: `192.168.5.35`
+- Host: (redacted — device hostname; see internal deployment log)
+- LAN: (redacted — internal LAN address; see internal deployment log)
 - SSH: reachable as `giraffe`, key authentication verified
 - Kernel/architecture: `Linux 4.9.253-tegra`, `aarch64`
 - OS: Ubuntu 18.04.6 LTS

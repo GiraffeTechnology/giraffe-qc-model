@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://giraffetechnology.com/sandbox/qc-report-stage3-ab-v1.schema.json",
+  "title": "Stage 3 Jetson A/B report",
+  "description": "Extends the base sandbox report schema (report.schema.json) with the fields required to distinguish Group A (local MNN) from Group B (remote VLM) and to make the executing model's identity auditable. See docs/STAGE3_AB_TESTING_SPEC.md.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "stage",
+    "status",
+    "environment_declaration",
+    "model_delta_note",
+    "summary",
+    "acceptance",
+    "cases",
+    "stage3_group",
+    "cv_execution_location",
+    "vlm_execution_location",
+    "model"
+  ],
+  "properties": {
+    "schema_version": { "const": "sandbox-qc-report-stage3-ab-v1" },
+    "stage": { "const": 3 },
+    "status": {
+      "enum": ["passed", "failed", "blocked"]
+    },
+    "stage3_group": {
+      "enum": ["A", "B"],
+      "description": "Which Stage 3 group (docs/STAGE3_AB_TESTING_SPEC.md) this report covers. Must never be confused with the historical Capability A/B demos."
+    },
+    "cv_execution_location": {
+      "const": "jetson_local",
+      "description": "CV always runs on the Jetson for both groups."
+    },
+    "vlm_execution_location": {
+      "enum": ["jetson_local", "remote"],
+      "description": "Group A must be jetson_local; Group B must be remote."
+    },
+    "model": {
+      "type": "object",
+      "required": ["provider", "name", "revision", "quantization", "backend", "manifest_sha256"],
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "minLength": 1 },
+        "quantization": { "type": "string", "minLength": 1 },
+        "backend": {
+          "type": "string",
+          "enum": ["cpu", "cuda", "opencl", "hybrid_cpu_cuda"],
+          "description": "Must reflect the backend actually observed at inference time — never asserted from configuration alone."
+        },
+        "manifest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 of the model manifest that was loaded, so the claimed identity is verifiable."
+        }
+      }
+    },
+    "call_evidence": {
+      "type": "array",
+      "description": "At least one real-call reference per case (request/response artifact reference), not a restatement of the case result.",
+      "items": {
+        "type": "object",
+        "required": ["case_id", "raw_request_ref", "raw_response_ref"],
+        "properties": {
+          "case_id": { "type": "string" },
+          "raw_request_ref": { "type": "string", "minLength": 1 },
+          "raw_response_ref": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "network": {
+      "type": "object",
+      "description": "Required when stage3_group is B — Group A has no network hop to record.",
+      "properties": {
+        "tunnel_ready": { "type": "boolean" },
+        "remote_model_ready": { "type": "boolean" },
+        "round_trip_ms_p50": { "type": "number", "minimum": 0 },
+        "round_trip_ms_p95": { "type": "number", "minimum": 0 }
+      }
+    },
+    "hardware_validation_status": {
+      "enum": ["not_run", "passed"],
+      "description": "Must stay not_run until a reviewed immutable evidence record exists (jetson_runner/HARDWARE_VALIDATION.md). No Stage 3 report may set this to passed by itself."
+    },
+    "production_eligible": {
+      "const": false,
+      "description": "Every Stage 3 A/B report must keep this false until hardware validation passes and is reviewed."
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "stage3_group": { "const": "A" } } },
+      "then": { "properties": { "vlm_execution_location": { "const": "jetson_local" } } }
+    },
+    {
+      "if": { "properties": { "stage3_group": { "const": "B" } } },
+      "then": {
+        "properties": { "vlm_execution_location": { "const": "remote" } },
+        "required": ["network"]
+      }
+    }
+  ]
+}

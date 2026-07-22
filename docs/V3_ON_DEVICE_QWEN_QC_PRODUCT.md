@@ -136,7 +136,7 @@ If either guard is absent or false, images remain on-device regardless of networ
 
 ### `contains_pii` Flag
 
-Assets in the abcdYi/Giraffe CAP asset registry carry a `contains_pii` boolean flag. Assets with `contains_pii=true` are never eligible for cloud transmission, independent of the dual-guard setting.
+Assets in the Giraffe CAP asset registry carry a `contains_pii` boolean flag. Assets with `contains_pii=true` are never eligible for cloud transmission, independent of the dual-guard setting.
 
 ---
 
@@ -148,7 +148,7 @@ The backend is **not** the primary inspection engine. Its responsibilities are l
 |------|-------------|
 | Audit trail | Stores inspection outcomes with timestamps and device ID |
 | Fleet reporting | Aggregates pass/fail/review_required rates across devices |
-| CAP asset registry | Manages abcdYi/Giraffe standard reference photos and QC point configs |
+| CAP asset registry | Manages Giraffe standard reference photos and QC point configs |
 | Cloud fallback | Accepts cloud Qwen inference requests when explicitly enabled |
 
 The backend does not make primary pass/fail decisions. It receives results that the device has already determined.

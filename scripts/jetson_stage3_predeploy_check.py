@@ -13,7 +13,16 @@ configured and answering the way the Stage 3 checklist requires:
 
 The emitted JSON evidence file records exactly what was observed. It never
 claims "passed" — hardware validation status changes only through the manual
-procedure in jetson_runner/HARDWARE_VALIDATION.md with reviewed evidence.
+procedure in jetson_runner/HARDWARE_VALIDATION.md with reviewed evidence. It
+also records the deployed repo's git commit SHA directly (via `git
+rev-parse`), so the deployment checklist never needs to hardcode a commit
+that goes stale the moment a new PR merges.
+
+Privacy note: the evidence JSON includes this device's `hostname`. Treat the
+output file as internal deployment evidence, not something to paste into a
+PR, README, or other repo-tracked file — device hostnames and LAN addresses
+must not be exposed there (see the sensitive-information remediation in this
+same change).
 
 Usage (on the device):
     XAVIER_CHECK_BEARER=<admin bearer> \
@@ -31,14 +40,27 @@ import datetime
 import json
 import os
 import socket
+import subprocess
 import sys
 import urllib.error
 import urllib.request
+
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _check(name, ok, detail):
     print("[{}] {} — {}".format("PASS" if ok else "FAIL", name, detail))
     return {"check": name, "ok": bool(ok), "detail": detail}
+
+
+def _deployed_commit():
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=_REPO_ROOT, stderr=subprocess.DEVNULL
+        )
+        return out.decode("ascii").strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
 
 
 def _get_json(url, bearer=None, timeout=15):
@@ -127,6 +149,7 @@ def main():
         "schema_version": "stage3-predeploy-check-v1",
         "generated_at": datetime.datetime.utcnow().isoformat() + "Z",
         "hostname": socket.gethostname(),
+        "deployed_commit": _deployed_commit(),
         "base_url": args.base_url,
         "all_checks_passed": all_ok,
         "checks": results,

@@ -64,7 +64,7 @@ remediation is deployed.
 ## Stage 3 focus
 
 - Replace the temporary browser device path with the real Pad/Jetson path.
-- Compare Jetson-local qwen3-vl-4b with abcdYi-hosted qwen3-vl-4b using the
+- Compare Jetson-local qwen3-vl-4b with remote-hosted qwen3-vl-4b using the
   same captured frames and snapshotted standard revisions.
 - Include positive, negative, obscured and low-confidence physical samples;
   the Stage 2 USB frame only established the fail-closed path, not visual model
