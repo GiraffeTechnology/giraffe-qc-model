@@ -47,6 +47,15 @@ def text_config() -> AssistantConfig:
         timeout_seconds=float(os.getenv("STUDIO_AI_TIMEOUT_SECONDS", "90")),
     )
 
+def text_output_tokens() -> int:
+    """Bounded text-assistant output budget; four-point drafts exceed 512."""
+    try:
+        configured = int(os.getenv("STUDIO_TEXT_NUM_PREDICT", "1024"))
+    except ValueError:
+        configured = 1024
+    return max(768, min(configured, 4096))
+
+
 
 def vision_config() -> AssistantConfig:
     return AssistantConfig(
@@ -306,7 +315,9 @@ def author_text(*, message: str, language: str, current_sku: dict[str, Any] | No
         "Never claim that a draft is confirmed, published, installed, or inspecting; those require explicit human actions. "
         "Never guess counts, tolerances, units, or pass thresholds: use null and ask a precise question. "
         "For create_sku, return both item_number and name. For requirements, return every independently testable checkpoint. "
-        "Return exactly one JSON object, with no markdown. Required schema: "
+        "Keep labels, descriptions, criteria, and replies concise. Omit empty optional fields. "
+        "Return exactly one complete JSON object, with no markdown. Never stop before closing the JSON object. "
+        "Required schema: "
         + json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
     )
     context = json.dumps(current_sku or {}, ensure_ascii=False, separators=(",", ":"))
@@ -320,7 +331,7 @@ def author_text(*, message: str, language: str, current_sku: dict[str, Any] | No
             # otherwise a malformed turn can continue generating long after
             # the browser has timed out.
             "keep_alive": "30m",
-            "options": {"temperature": 0, "num_predict": 512},
+            "options": {"temperature": 0, "num_predict": text_output_tokens()},
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": f"Current SKU JSON: {context}\nAdministrator: {message}"},
