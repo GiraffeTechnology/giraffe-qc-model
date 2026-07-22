@@ -371,13 +371,19 @@
 
   function publish() {
     if (!state.skuId) return;
+    const mutationCredential = window.prompt(t("mutationPrompt"));
+    if (!mutationCredential) return;
     const btn = $("#publish-btn");
     btn.disabled = true;
     btn.textContent = t("publishing");
     api("/admin/studio/publish", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tenant_id: tenant, sku_id: state.skuId }),
+      body: JSON.stringify({
+        tenant_id: tenant,
+        sku_id: state.skuId,
+        mutation_credential: mutationCredential,
+      }),
     })
       .then((data) => {
         const b = data.bundle;

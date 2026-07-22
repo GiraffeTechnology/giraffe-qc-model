@@ -87,6 +87,7 @@ def client(db_session_factory):
 
     app.dependency_overrides[get_db_dep] = override_get_db
     with TestClient(app) as c:
+        c.headers.update({"X-QC-Mutation-Key": "sample-mutation-test-key", "X-QC-Sample-Surface": "sample-standard"})
         yield c
     app.dependency_overrides.clear()
 
@@ -122,7 +123,7 @@ def _studio_create_confirm(client) -> dict:
 
     # 2. Upload a standard photo (S2 hardened upload).
     up = client.post(
-        "/admin/studio/upload",
+        "/admin/samples/upload",
         data={"sku_id": sku_id, "tenant_id": TENANT},
         files={"image": ("std.png", _tiny_png(), "image/png")},
     )
@@ -382,7 +383,7 @@ def test_e2e_studio_upload_rejects_non_image(client):
     ).json()
     sku_id = created["sku"]["id"]
     resp = client.post(
-        "/admin/studio/upload",
+        "/admin/samples/upload",
         data={"sku_id": sku_id, "tenant_id": TENANT},
         files={"image": ("evil.png", b"#!/bin/sh\nrm -rf /", "image/png")},
     )

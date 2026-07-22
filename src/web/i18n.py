@@ -928,6 +928,26 @@ _STRINGS = {
     "studio.standard_status.no_standard": {LANG_EN: "No standard", LANG_ZH: "无标准", LANG_JA: "標準なし"},
     "studio.standard_status.standard_empty": {LANG_EN: "Standard empty", LANG_ZH: "标准为空", LANG_JA: "標準は空です"},
     "studio.standard_status.standard_active": {LANG_EN: "Standard active", LANG_ZH: "标准已启用", LANG_JA: "標準は有効です"},
+    "security.mutation.label": {
+        LANG_EN: "Sample authorization password/key",
+        LANG_ZH: "样本操作鉴权密码/密钥",
+        LANG_JA: "サンプル操作認証パスワード／キー",
+    },
+    "security.mutation.hint": {
+        LANG_EN: "Required for this operation and must differ from your login credential.",
+        LANG_ZH: "本次操作必须鉴权，且鉴权凭据不得与登录凭据相同。",
+        LANG_JA: "この操作には認証が必要で、ログイン資格情報とは異なる必要があります。",
+    },
+    "security.mutation.required": {
+        LANG_EN: "Enter the sample authorization password/key for this operation.",
+        LANG_ZH: "请输入本次样本操作的鉴权密码/密钥。",
+        LANG_JA: "このサンプル操作の認証パスワード／キーを入力してください。",
+    },
+    "security.publish.prompt": {
+        LANG_EN: "Enter the separate sample publication password/key",
+        LANG_ZH: "请输入独立的样本发布鉴权密码/密钥",
+        LANG_JA: "別のサンプル公開認証パスワード／キーを入力してください",
+    },
     # Admin login
     "admin.login.title": {
         LANG_EN: "Sign in — QC Admin",

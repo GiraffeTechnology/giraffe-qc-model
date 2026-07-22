@@ -31,9 +31,22 @@
   }
 
   function api(path, options) {
-    return fetch(path, options).then(async (response) => {
+    const requestOptions = Object.assign({}, options || {});
+    const method = String(requestOptions.method || "GET").toUpperCase();
+    const mutating = !["GET", "HEAD", "OPTIONS"].includes(method);
+    const credentialInput = document.querySelector("#sample-mutation-credential");
+    if (mutating) {
+      const credential = credentialInput ? credentialInput.value.trim() : "";
+      if (!credential) return Promise.reject(new Error(t("mutationRequired")));
+      const headers = new Headers(requestOptions.headers || {});
+      headers.set("X-QC-Sample-Surface", "sample-standard");
+      headers.set("X-QC-Mutation-Key", credential);
+      requestOptions.headers = headers;
+    }
+    return fetch(path, requestOptions).then(async (response) => {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || data.detail || `HTTP ${response.status}`);
+      if (mutating && credentialInput) credentialInput.value = "";
       return data;
     });
   }

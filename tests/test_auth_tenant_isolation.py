@@ -58,6 +58,7 @@ def client(db_factory):
 
     app.dependency_overrides[get_db_dep] = override
     with TestClient(app) as c:
+        c.headers.update({"X-QC-Mutation-Key": "sample-mutation-test-key", "X-QC-Sample-Surface": "sample-standard"})
         yield c
     app.dependency_overrides.clear()
 
@@ -193,7 +194,7 @@ def test_cross_tenant_photo_not_readable(client):
     ).json()
     sku_id = created["sku"]["id"]
     up = client.post(
-        "/admin/studio/upload",
+        "/admin/samples/upload",
         data={"sku_id": sku_id},
         files={"image": ("s.png", _png(), "image/png")},
         headers=_admin_token("tenant_a"),

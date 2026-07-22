@@ -20,6 +20,7 @@
   <div class="page-actions">
     <form method="post" action="/admin/samples/{{ sku.id }}/archive" style="display:inline">
       <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+      <input type="password" name="mutation_credential" required autocomplete="off" placeholder="{{ t('security.mutation.label') }}" aria-label="{{ t('security.mutation.label') }}">
       <button type="submit" class="btn btn-danger"
               onclick='return confirm({{ t("sample.detail.archive_confirm") | tojson }})'>{{ t('sample.action.archive') }}</button>
     </form>
@@ -52,6 +53,7 @@
       {% if not photo.is_primary %}
       <form method="post" action="/admin/samples/{{ sku.id }}/photos/{{ photo.id }}/set-primary" style="margin-top:6px">
         <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+        <input type="password" name="mutation_credential" required autocomplete="off" placeholder="{{ t('security.mutation.label') }}" aria-label="{{ t('security.mutation.label') }}">
         <button type="submit" class="btn btn-sm">{{ t('sample.detail.set_primary') }}</button>
       </form>
       {% endif %}
@@ -64,6 +66,11 @@
     <summary>{{ t('sample.detail.add_photo') }}</summary>
     <form id="sample-photo-form" class="form-card" method="post" action="/admin/samples/{{ sku.id }}/photos" enctype="multipart/form-data">
       <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+      <div class="form-group">
+        <label for="sample-photo-credential">{{ t('security.mutation.label') }} <span class="required">*</span></label>
+        <input type="password" id="sample-photo-credential" name="mutation_credential" required autocomplete="off">
+        <p class="hint">{{ t('security.mutation.hint') }}</p>
+      </div>
 
       <div class="form-tabs">
         <label><input type="radio" name="_photo_mode" value="camera" checked onchange="togglePhotoMode(this.value)"> {{ t('sample.detail.capture_usb') }}</label>
@@ -159,6 +166,10 @@
   </div>
   <p class="hint">{{ t('studio.import.hint') }}</p>
   <form id="sample-authoring-form" class="sample-authoring-form">
+    <label>
+      {{ t('security.mutation.label') }}
+      <input type="password" id="sample-mutation-credential" required autocomplete="off">
+    </label>
     <textarea id="sample-authoring-text" rows="3" placeholder="{{ t('sample.authoring.placeholder') }}" required></textarea>
     <button type="submit" class="btn btn-primary">{{ t('studio.send') }}</button>
   </form>
@@ -203,6 +214,11 @@
     <summary>{{ t('sample.detail.add_requirement') }}</summary>
     <form class="form-card" method="post" action="/admin/samples/{{ sku.id }}/requirements">
       <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+      <div class="form-group">
+        <label>{{ t('security.mutation.label') }} <span class="required">*</span></label>
+        <input type="password" name="mutation_credential" required autocomplete="off">
+        <p class="hint">{{ t('security.mutation.hint') }}</p>
+      </div>
       <div class="form-row">
         <div class="form-group">
           <label for="req-code">{{ t('sample.field.code') }} <span class="required">*</span></label>
@@ -344,8 +360,9 @@ window.GIRAFFE_SAMPLE_AUTHOR_I18N = {
   cvConfigPrompt: {{ t('studio.js.cv_config_prompt') | tojson }},
   invalidAnalysisJson: {{ t('studio.js.invalid_analysis_json') | tojson }},
   analysisSaved: {{ t('studio.js.analysis_saved') | tojson }},
-  analysisSaveFailed: {{ t('studio.js.analysis_save_failed') | tojson }}
+  analysisSaveFailed: {{ t('studio.js.analysis_save_failed') | tojson }},
+  mutationRequired: {{ t('security.mutation.required') | tojson }}
 };
 </script>
-<script src="/static/sample_standard_authoring.js?v=sample-workbench-3"></script>
+<script src="/static/sample_standard_authoring.js?v=sample-reauth-1"></script>
 {% endblock %}
