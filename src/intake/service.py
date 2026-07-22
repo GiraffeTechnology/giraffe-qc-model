@@ -324,6 +324,28 @@ def confirm_standard_intake(
     if not confirmed_checkpoints:
         raise ValueError("confirmed_checkpoints must not be empty.")
 
+    # Questions persisted with the draft are safety gates, not advisory text.
+    # Exact-count questions can be resolved by the card's count input. Any
+    # other unanswered field requires a new authoring turn and cannot be
+    # bypassed through a direct confirmation request.
+    checkpoint_by_code = {
+        str(cp.get("point_code") or "").strip().upper(): cp
+        for cp in confirmed_checkpoints
+    }
+    unresolved = []
+    for question in (intake.extracted_json or {}).get("questions_for_operator") or []:
+        field = str(question.get("field") or "").strip()
+        match = re.fullmatch(r"([A-Za-z0-9_]+)\.expected_value", field)
+        if match:
+            checkpoint = checkpoint_by_code.get(match.group(1).upper())
+            if checkpoint and str(checkpoint.get("expected_value") or "").strip():
+                continue
+        unresolved.append(question)
+    if unresolved:
+        raise ValueError(
+            "Cannot confirm while the draft has unresolved administrator questions."
+        )
+
     # Detect duplicate point_codes before creating anything
     seen_codes: set[str] = set()
     for i, cp in enumerate(confirmed_checkpoints):

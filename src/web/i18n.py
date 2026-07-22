@@ -770,6 +770,11 @@ _STRINGS = {
         LANG_ZH: "确认前请填写所有期望数量。",
         LANG_JA: "確認前にすべての期待数を入力してください。",
     },
+    "studio.js.resolve_questions_before_confirm": {
+        LANG_EN: "Answer every outstanding question before confirming this draft.",
+        LANG_ZH: "请先回答所有待补问题，再确认此草案。",
+        LANG_JA: "未回答の質問にすべて回答してから、この下書きを確定してください。",
+    },
     "studio.js.confirmed_revision": {
         LANG_EN: "Confirmed - revision {revision}.",
         LANG_ZH: "已确认 - 修订 {revision}。",

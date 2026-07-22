@@ -62,3 +62,26 @@ The administrator review gate worked: the draft exposed both **Confirm** and
 - Live acceptance remains paused until the corrective PR is reviewed and merged.
 - Both observed 9B latencies (207.4 seconds before correction and 89.0 seconds
   after correction) remain recorded; more samples are required before claiming a stable latency improvement.
+
+## Defect S2-LIVE-002 — model-invented centering tolerance
+
+After the preceding correction was merged and deployed, the same
+administrator-authored standard was submitted again. The live text-assistant
+turn completed in **157.9 seconds** and correctly returned exactly four
+candidate detection points:
+
+- 4 petals, with the production petal CV analyzer;
+- 3 pearls, with the production pearl CV analyzer;
+- 7 rhinestones, with the production rhinestone CV analyzer; and
+- one flower-core centering point.
+
+However, the assistant invented a **0.5 mm default centering tolerance** that
+was absent from the administrator's input. The administrator rejected the
+draft; no detection point was activated.
+
+The corrective gate strips model-authored centering thresholds unless the
+administrator supplied the exact value and unit, creates an explicit
+unresolved-question field, displays it in the sample workbench, and blocks
+confirmation in both the UI and server until it is resolved. This prevents an
+unsafe direct API confirmation as well as an accidental click-through. Stage 2
+remains paused until the corrective pull request is reviewed and merged.

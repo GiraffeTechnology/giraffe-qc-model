@@ -12,8 +12,10 @@ exercised end-to-end.
 """
 from __future__ import annotations
 
+import json
 import struct
 import zlib
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -175,6 +177,14 @@ def test_sample_workbench_owns_three_authoring_inputs_and_confirmation(client):
     assert 'id="process-card-toggle"' not in page.text
     assert 'id="standard-file-toggle"' not in page.text
     assert 'id="confirm-card-template"' not in page.text
+
+
+def test_sample_confirmation_shows_questions_and_blocks_unresolved_draft():
+    source = Path("src/web/static/sample_standard_authoring.js").read_text()
+    assert "showQuestions(result.questions);" in source
+    assert "const unresolvedQuestions = (card.questions || [])" in source
+    assert "confirmButton.disabled = true;" in source
+    assert "resolveQuestionsBeforeConfirm" in source
 
 
 def test_sample_page_owns_detection_point_confirmation_studio_does_not(client):
@@ -459,6 +469,40 @@ def test_confirm_rejects_counting_point_without_value(client):
     )
     assert resp.status_code == 400
     assert "expected count" in resp.json()["error"].lower()
+
+
+def test_confirm_rejects_non_counting_unresolved_question(client, monkeypatch):
+    from src.qc_model.studio import ai_gateway
+
+    sku_id = _create_flw(client)
+    monkeypatch.setenv("STUDIO_TEXT_PROVIDER", "ollama_compatible")
+    monkeypatch.setenv("STUDIO_TEXT_BASE_URL", "http://assistant.invalid")
+    monkeypatch.setenv("STUDIO_TEXT_MODEL", "replaceable-text-default")
+
+    def fake_post(config, payload, path):
+        content = {
+            "intent": "define_requirements", "reply": "draft", "sku": {},
+            "checkpoints": [{
+                "point_code": "STAMEN_CENTER", "label": "花蕊居中",
+                "method_hint": "alignment", "severity": "critical",
+                "expected_value": "≤0.5 mm", "pass_criteria": "默认0.5mm",
+            }],
+            "questions": [],
+        }
+        return {"message": {"content": json.dumps(content, ensure_ascii=False)}}, 1
+
+    monkeypatch.setattr(ai_gateway, "_post", fake_post)
+    body = client.post(
+        "/admin/studio/chat",
+        json={"message": "花蕊必须居中", "sku_id": sku_id},
+    ).json()
+    assert body["confirmation_card"]["questions"]
+    response = client.post(
+        "/admin/studio/confirm",
+        json={"intake_id": body["intake_id"], "checkpoints": body["confirmation_card"]["checkpoints"]},
+    )
+    assert response.status_code == 400
+    assert "unresolved administrator questions" in response.json()["error"]
 
 
 # ── §5.5 Confirmation persists all semantic fields ────────────────────────────

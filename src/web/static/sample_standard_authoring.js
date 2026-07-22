@@ -308,6 +308,7 @@
     const panel = fragment.querySelector(".sample-confirm-card");
     const body = fragment.querySelector(".sample-confirm-body");
     const countInputs = {};
+    const unresolvedQuestions = (card.questions || []).filter((question) => question && question.question);
 
     if (card.coverage_review) {
       const coverage = card.coverage_review;
@@ -344,7 +345,16 @@
       body.appendChild(row);
     });
 
-    panel.querySelector(".sample-confirm-yes").addEventListener("click", () => {
+    const confirmButton = panel.querySelector(".sample-confirm-yes");
+    if (unresolvedQuestions.length) {
+      confirmButton.disabled = true;
+      confirmButton.title = t("resolveQuestionsBeforeConfirm");
+      const warning = document.createElement("div");
+      warning.className = "sample-confirm-fields";
+      warning.textContent = t("resolveQuestionsBeforeConfirm");
+      body.appendChild(warning);
+    }
+    confirmButton.addEventListener("click", () => {
       const checkpoints = (card.checkpoints || []).map((checkpoint, index) => {
         const result = Object.assign({}, checkpoint);
         if (countInputs[index]) result.expected_value = countInputs[index].value.trim();
@@ -385,7 +395,7 @@
     showAssistantMeta(result.assistant);
     if (result.sku) renderDetectionPoints(result.sku);
     if (result.confirmation_card) renderConfirmation(result.confirmation_card);
-    else showQuestions(result.questions);
+    showQuestions(result.questions);
   }
 
   function sendText(text) {
