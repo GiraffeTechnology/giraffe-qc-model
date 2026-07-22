@@ -105,27 +105,27 @@ dependency. LLM/VLM providers are selected through configuration and adapters.
 
 Architecture v2 defaults:
 
-| Runtime role | Default model | Responsibility |
+| Runtime role | Deployment default | Responsibility |
 |---|---|---|
-| Cloud GPU (A10/V100 class) | `qwen3-vl-30b-A3B` | Production Operator VLM inference; provider is configurable. |
-| Administrator Xavier NX | `qwen3-vl-4b` via MNN | Administrator-side recognition and standard-authoring assistance only. |
-| Operator Pad + Jetson Nano | No VLM | Capture, OpenCV pre-analysis, crop/compress, upload, queue, and health telemetry. |
+| Text standard-authoring assistant | `qwen3.5-9b`-class text model | Structures administrator-authored natural language, process-card text, and OCR output. It does not perform image recognition. |
+| Registered CV pipeline | OpenCV feature registration + per-checkpoint detectors | Locates configured regions and produces count evidence. CV is the counting authority. |
+| Edge visual assistant | `qwen3-vl-4b` via MNN | Compares configured visual evidence, assists point review, and identifies obvious defects. It never replaces a configured CV count. |
+| Operator runtime | Pad/browser capture during Stage 2; Jetson-local runtime for Stage 3 | Captures evidence, runs registered CV and the configured local visual adapter, and fails closed to human review. |
 
-The Operator path sends bounded crops to the configured cloud inference
-provider. It does not route production judgments through Xavier, and the Nano
-does not host an LLM/VLM. Older Pad-local and Pad-to-Xavier runtime code remains
-only as explicitly marked compatibility material until its scheduled removal;
-it does not define the current product architecture.
+The production design is edge-first. A captured image is registered against the
+confirmed standard photo, processed by checkpoint-specific CV, and then supplied
+with its configured inspection criteria to the local visual assistant. For
+counting checkpoints, the persisted observed value always comes from CV. Missing
+registration, missing detector evidence, model disagreement, or unavailable
+inference cannot auto-pass and instead requires human review.
 
-Admin Studio (`/admin/studio`) independently configures a text assistant and a
-vision assistant through the provider-neutral `STUDIO_TEXT_*` and
-`STUDIO_VISION_*` settings. A deployment may currently choose Qwen defaults,
-but the UI and domain services depend only on compatible adapter contracts.
-Text turns draft structured QC requirements; reference-photo turns draft
-visible inspection points. Both outputs remain pending until an authenticated
-Administrator explicitly confirms them, and publication/installation are
-separate human actions. Production fails closed when either requested assistant
-is unconfigured or unavailable; the deterministic parser is test-only.
+The Sample Standard Workbench on the sample detail page owns standard photos,
+natural-language authoring, process-card import, standard-file import, OCR,
+structured drafts, and administrator confirmation or rejection. Digital QC
+Studio (`/admin/studio`) owns reviewed training, qualification, publication,
+installation, and operational status. The provider-neutral `STUDIO_TEXT_*` and
+`STUDIO_VISION_*` adapters may use Qwen defaults, but the UI and domain services
+depend only on compatible adapter contracts.
 
 ---
 
@@ -148,7 +148,8 @@ fail-closed review_required behavior
 human feedback schema
 false-pass P0 escalation skeleton
 admin UI at /admin/qc-model
-chat-first Admin Studio at /admin/studio
+sample standard workbench at /admin/samples/{sku_id}
+training and release Studio at /admin/studio
 ```
 
 Phase 1 validates structure and safety guardrails. It does not certify real-world visual accuracy, defect recall, or production readiness.
@@ -172,10 +173,10 @@ provider failure fails closed
 malformed model output persists zero proposals
 ```
 
-Confirmed rules are executed through the configured runtime adapter. In
-Architecture v2, Operator recognition uses the cloud adapter, while MNN is
-limited to the Administrator Xavier node. Neither Qwen nor MNN is a required
-product dependency; both are replaceable deployment defaults.
+Confirmed rules are executed through configured edge adapters. Registered CV
+provides authoritative counts, and the local visual adapter supplies bounded
+comparison and obvious-defect evidence. Qwen and MNN are replaceable deployment
+defaults, not required product or ecosystem dependencies.
 
 ---
 
@@ -257,15 +258,15 @@ AI may record, route, or assist review, but physical measurement checkpoints mus
 
 ## Operator Edge CV
 
-The Operator workstation uses Pad + Jetson Nano for deterministic QC-point
-detection, marking, cropping, and optional classical-CV evidence. The Nano runs
-no LLM/VLM. Only bounded per-point crops are sent to the configured cloud VLM
-service in one batch; full frames are prohibited.
+The Operator workstation uses Pad capture with a Jetson-local production target
+for registered QC-point detection, marking, cropping, CV evidence, and the
+configured local visual adapter. Browser capture and the server-hosted Stage 2
+runtime are validation substitutes until the physical Jetson gate is passed.
 
-CV evidence never becomes the verdict by itself. A CV failure is recorded and
-the configured cloud VLM may continue without CV context when valid crops still
-exist. If valid crops cannot be produced, or the cloud returns no response, the
-job has no verdict and fails closed or remains visibly `pending_upload`.
+For counting checkpoints, CV evidence is authoritative and the visual assistant
+may only compare against it. A CV failure, registration failure, missing valid
+crop, model disagreement, or unavailable visual adapter cannot produce an
+automatic pass; the job fails closed to human review.
 
 CI uses labeled test doubles and fixtures only. Those tests demonstrate contract
 and workflow behavior, not hardware readiness, visual accuracy, or cellular SLO
@@ -273,18 +274,18 @@ compliance.
 
 ---
 
-## Administrator Xavier NX
+## Edge Visual Runtime
 
-The Xavier NX is an Administrator-side authoring and qualification node. It
-runs CV plus a configurable local VLM through MNN; `qwen3-vl-4b` is the default
-configuration, not a required model or ecosystem dependency. It is not in the
-Operator production inference path and is never paired to the Pad as the
-Operator verdict engine.
+The target edge runtime runs registered CV plus a configurable local VLM through
+MNN. `qwen3-vl-4b` is the deployment default, not a required model, product
+identity, or ecosystem dependency. Its production scope is bounded to visual
+comparison, point assistance, and obvious-defect recognition; CV remains the
+counting authority.
 
 Any mock runner is explicitly labeled
 `MOCK INFERENCE — NOT REAL QC JUDGMENT`, gated by configuration, and impossible
 to enable in production mode. Physical Xavier validation remains a manual
-hardware step until linked device evidence exists.
+hardware step until linked Stage 3 device evidence exists.
 
 ---
 
