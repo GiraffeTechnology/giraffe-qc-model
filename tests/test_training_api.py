@@ -125,14 +125,14 @@ def _submit_judgment(client, monkeypatch, sku_id, *, ground_truth_label, model_r
         }
 
     monkeypatch.setattr(ai_gateway, "inspect_image", fake_inspect_image)
-    sample_photo_id = _add_training_photo(client, sku_id)
     resp = client.post(
         f"/admin/studio/skus/{sku_id}/training/judgments",
         data={
             "tenant_id": "default",
             "ground_truth_label": ground_truth_label,
-            "sample_photo_id": sample_photo_id,
+            "capture_source": "usb_camera",
         },
+        files={"image": ("usb-frame.jpg", _tiny_png(), "image/png")},
     )
     assert resp.status_code == 200, resp.text
     return resp.json()["judgment"]
@@ -149,8 +149,9 @@ def test_record_judgment_requires_active_revision(client):
         data={
             "tenant_id": "default",
             "ground_truth_label": "qualified",
-            "sample_photo_id": "not-created",
+            "capture_source": "usb_camera",
         },
+        files={"image": ("usb-frame.jpg", _tiny_png(), "image/png")},
     )
     assert resp.status_code == 400
     assert "active confirmed standard" in resp.json()["error"]
@@ -158,14 +159,14 @@ def test_record_judgment_requires_active_revision(client):
 
 def test_record_judgment_rejects_invalid_ground_truth_label(client):
     sku_id = _create_and_confirm(client)
-    sample_photo_id = _add_training_photo(client, sku_id)
     resp = client.post(
         f"/admin/studio/skus/{sku_id}/training/judgments",
         data={
             "tenant_id": "default",
             "ground_truth_label": "maybe",
-            "sample_photo_id": sample_photo_id,
+            "capture_source": "usb_camera",
         },
+        files={"image": ("usb-frame.jpg", _tiny_png(), "image/png")},
     )
     assert resp.status_code == 400
     assert "ground_truth_label" in resp.json()["error"]
@@ -260,3 +261,17 @@ def test_training_status_reflects_reviewed_judgments_and_gates_publish(client, m
 
     published = client.post("/admin/studio/publish", json={"sku_id": sku_id})
     assert published.status_code == 200, published.text
+
+def test_record_judgment_rejects_non_usb_capture(client):
+    sku_id = _create_and_confirm(client)
+    resp = client.post(
+        f"/admin/studio/skus/{sku_id}/training/judgments",
+        data={
+            "tenant_id": "default",
+            "ground_truth_label": "qualified",
+            "capture_source": "file_upload",
+        },
+        files={"image": ("offline.jpg", _tiny_png(), "image/png")},
+    )
+    assert resp.status_code == 403
+    assert "USB camera" in resp.json()["detail"]

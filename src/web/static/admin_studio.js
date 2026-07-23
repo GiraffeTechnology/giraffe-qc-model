@@ -15,6 +15,7 @@
   const skuCard = $("#sku-card");
   const activeChip = $("#active-sku-chip");
   const strings = window.GIRAFFE_STUDIO_I18N || {};
+  const studioCamera = { stream: null };
 
   function t(key, vars) {
     let text = strings[key] || key;
@@ -108,6 +109,7 @@
     const authoringLink = $("#sample-authoring-link");
     if (authoringLink) authoringLink.href = sku ? `/admin/samples/${sku.id}?tenant_id=${tenant}` : `/admin/samples?tenant_id=${tenant}`;
     renderCard(sku);
+    syncStudioCameraControls();
   }
 
   function renderCard(sku) {
@@ -256,11 +258,6 @@
       ? t("trainingWindowStats", { correct: status.recent_30_correct, size: 30 }) : null;
     const falsePassNote = status && status.recent_30_false_pass_count > 0
       ? `<div class="training-false-pass">${esc(t("trainingFalsePass", { count: status.recent_30_false_pass_count }))}</div>` : "";
-    const sampleOptions = (sku.photos || []).filter((photo) => !photo.is_primary).map((photo) => {
-      const label = photo.view_type || photo.angle || photo.id.slice(0, 8);
-      const primary = photo.is_primary ? ` (${t("primary")})` : "";
-      return `<option value="${esc(photo.id)}">${esc(label + primary)}</option>`;
-    }).join("");
     slot.innerHTML =
       `<div class="training-head">` +
       `<strong>${esc(t("trainingHeading"))}</strong> ${badge}` +
@@ -270,11 +267,10 @@
       `</div>` +
       falsePassNote +
       `<div class="training-form">` +
-      `<label>${esc(t("trainingSampleSource"))} ` +
-      `<select id="training-sample-select">${sampleOptions}</select></label>` +
+      `<p class="muted">${esc(t("trainingSampleSource"))}</p>` +
       `<label><input type="radio" name="training-truth" value="qualified" checked> ${esc(t("trainingGroundTruthQualified"))}</label>` +
       `<label><input type="radio" name="training-truth" value="unqualified"> ${esc(t("trainingGroundTruthUnqualified"))}</label>` +
-      `<button type="button" class="btn" id="training-submit-btn" ${sampleOptions ? "" : "disabled"}>${esc(t("trainingSubmitSample"))}</button>` +
+      `<button type="button" class="btn" id="training-submit-btn">${esc(t("trainingSubmitSample"))}</button>` +
       `</div>` +
       `<div id="training-queue" class="training-queue"></div>`;
 
@@ -283,26 +279,86 @@
     loadTrainingQueue(sku.id);
   }
 
+  function setStudioCameraStatus(text, kind) {
+    const status = $("#studio-camera-status");
+    if (!status) return;
+    status.textContent = text;
+    status.className = "studio-camera-status" + (kind ? " is-" + kind : "");
+  }
+
+  function syncStudioCameraControls() {
+    const video = $("#studio-camera-preview");
+    const capture = $("#studio-camera-capture");
+    const stop = $("#studio-camera-stop");
+    const live = Boolean(studioCamera.stream);
+    if (video) video.hidden = !live;
+    if (capture) capture.disabled = !live || !state.skuId;
+    if (stop) stop.disabled = !live;
+  }
+
+  async function startStudioCamera() {
+    try {
+      studioCamera.stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      const video = $("#studio-camera-preview");
+      video.srcObject = studioCamera.stream;
+      await video.play();
+      setStudioCameraStatus(t("trainingCameraReady"), "success");
+      syncStudioCameraControls();
+    } catch (err) {
+      studioCamera.stream = null;
+      setStudioCameraStatus(t("trainingCameraDenied") + " " + (err.message || ""), "error");
+      syncStudioCameraControls();
+    }
+  }
+
+  function stopStudioCamera() {
+    if (studioCamera.stream) studioCamera.stream.getTracks().forEach((track) => track.stop());
+    studioCamera.stream = null;
+    const video = $("#studio-camera-preview");
+    if (video) video.srcObject = null;
+    setStudioCameraStatus(t("trainingCameraRequired"));
+    syncStudioCameraControls();
+  }
+
   function submitTrainingSample(skuId) {
-    const select = $("#training-sample-select");
-    const samplePhotoId = select && select.value;
-    if (!samplePhotoId) {
-      addBubble(t("trainingSelectSample"), "system");
+    if (!studioCamera.stream) {
+      addBubble(t("trainingCameraRequired"), "system");
       return;
     }
+    if (!skuId) {
+      addBubble(t("trainingCaptureSkuFirst"), "system");
+      return;
+    }
+    const video = $("#studio-camera-preview");
+    const canvas = $("#studio-camera-canvas");
+    if (!video || !canvas || !video.videoWidth || !video.videoHeight) {
+      setStudioCameraStatus(t("trainingCameraFailed"), "error");
+      return;
+    }
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
     const truthInput = document.querySelector('input[name="training-truth"]:checked');
     const groundTruth = truthInput ? truthInput.value : "qualified";
-    const fd = new FormData();
-    fd.append("tenant_id", tenant);
-    fd.append("ground_truth_label", groundTruth);
-    fd.append("sample_photo_id", samplePhotoId);
-    addBubble(t("trainingRunning"), "system");
-    api(`/admin/studio/skus/${skuId}/training/judgments`, { method: "POST", body: fd })
-      .then(() => {
-        addBubble(t("trainingRecorded"), "system");
-        loadTrainingQueue(skuId);
-      })
-      .catch((err) => addBubble(t("trainingFailed", { message: err.message }), "system"));
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        setStudioCameraStatus(t("trainingCameraFailed"), "error");
+        return;
+      }
+      const fd = new FormData();
+      fd.append("tenant_id", tenant);
+      fd.append("ground_truth_label", groundTruth);
+      fd.append("capture_source", "usb_camera");
+      fd.append("image", blob, "usb-training-frame.jpg");
+      addBubble(t("trainingRunning"), "system");
+      api(`/admin/studio/skus/${skuId}/training/judgments`, { method: "POST", body: fd })
+        .then(() => {
+          setStudioCameraStatus(t("trainingCameraCaptured"), "success");
+          addBubble(t("trainingRecorded"), "system");
+          loadTrainingQueue(skuId);
+        })
+        .catch((err) => addBubble(t("trainingFailed", { message: err.message }), "system"));
+    }, "image/jpeg", 0.92);
   }
 
   function loadTrainingQueue(skuId) {
@@ -399,6 +455,11 @@
         note.textContent = t("bundleNote", {
           id: b.id.slice(0, 8),
           algorithm: b.signature_algorithm,
+  $("#studio-camera-start").addEventListener("click", startStudioCamera);
+  $("#studio-camera-stop").addEventListener("click", stopStudioCamera);
+  $("#studio-camera-capture").addEventListener("click", () => submitTrainingSample(state.skuId));
+  window.addEventListener("beforeunload", stopStudioCamera);
+
           hash: b.bundle_hash.slice(0, 16),
         });
         if (data.sku) setActiveSku(data.sku);

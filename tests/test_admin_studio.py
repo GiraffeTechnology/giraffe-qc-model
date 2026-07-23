@@ -174,6 +174,12 @@ def test_sample_workbench_owns_three_authoring_inputs_and_confirmation(client):
     assert 'id="sample-confirm-card-template"' in detail.text
     assert '/static/sample_standard_authoring.js' in detail.text
     page = client.get(f"/admin/studio?tenant_id=demo&sku_id={sku_id}")
+    assert 'id="studio-camera-preview"' in page.text
+    assert 'id="studio-camera-start"' in page.text
+    assert 'id="studio-camera-capture"' in page.text
+    assert 'id="studio-camera-stop"' in page.text
+    assert 'id="training-sample-select"' not in page.text
+    assert 'name="sample_photo_id"' not in page.text
     assert f'data-initial-sku="{sku_id}"' in page.text
     assert 'id="chat-text"' not in page.text
     assert 'id="process-card-toggle"' not in page.text
