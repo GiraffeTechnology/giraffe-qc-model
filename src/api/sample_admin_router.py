@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from src.api.deps import get_db_dep
 from src.api.authz import effective_tenant
-from src.api.sample_security import require_sample_admin_mutation
+from src.api.sample_security import require_sample_admin_mutation, sample_is_published
 from src.api.uploads import validate_safe_id
 from src.storage.upload_validation import (
     UploadValidationError,
@@ -212,6 +212,7 @@ def sample_detail(
             "primary_photo": _primary_photo(sku),
             "tenant_id": tenant_id,
             "sample_photo_url": _photo_display_url,
+            "is_published": sample_is_published(db, sku_id, tenant_id),
         },
     )
 

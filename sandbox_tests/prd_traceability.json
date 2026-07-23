@@ -542,6 +542,24 @@
         "tests/test_web_shell.py"
       ],
       "real_run_evidence": null
+    },
+    {
+      "id": "PRD-S2-49",
+      "requirement": "01/02工作室边界与鉴权修正（2026-07-23）：01样品与标准录入（拍摄/上传照片-检测点描述-确认-入库）不要求二次鉴权；02数字质检工作室无样品录入/修改能力，仅调用已确认样本、从USB视频流截取测试品、运行CV+VLM判断、供管理员裁决；发布在训练合格后进行。样品鉴权范围收窄：录入及发布前的authoring/编辑不需要二次凭据，仅已发布样本的后续操作及正式发布本身需要（此前 PR93 对每次样品操作一律要求二次凭据，范围过宽，已按此说明收窄）",
+      "status": "verified",
+      "requires_real_run": false,
+      "code_evidence": [
+        "src/api/sample_security.py",
+        "src/api/sample_admin_router.py",
+        "src/api/qc_studio_router.py",
+        "src/web/templates/sample_detail.html",
+        "src/web/templates/sample_new.html",
+        "src/web/static/sample_standard_authoring.js"
+      ],
+      "test_evidence": [
+        "tests/test_sample_mutation_security.py"
+      ],
+      "real_run_evidence": null
     }
   ]
 }
