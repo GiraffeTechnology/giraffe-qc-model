@@ -36,11 +36,13 @@
     const mutating = !["GET", "HEAD", "OPTIONS"].includes(method);
     const credentialInput = document.querySelector("#sample-mutation-credential");
     if (mutating) {
+      // Entry and pre-publish authoring need no extra credential; it is only
+      // enforced server-side once the target sample has been published, at
+      // which point an omitted/wrong credential surfaces as a normal error.
       const credential = credentialInput ? credentialInput.value.trim() : "";
-      if (!credential) return Promise.reject(new Error(t("mutationRequired")));
       const headers = new Headers(requestOptions.headers || {});
       headers.set("X-QC-Sample-Surface", "sample-standard");
-      headers.set("X-QC-Mutation-Key", credential);
+      if (credential) headers.set("X-QC-Mutation-Key", credential);
       requestOptions.headers = headers;
     }
     return fetch(path, requestOptions).then(async (response) => {

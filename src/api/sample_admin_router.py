@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from src.api.deps import get_db_dep
 from src.api.authz import effective_tenant
-from src.api.sample_security import require_sample_admin_mutation
+from src.api.sample_security import require_sample_admin_mutation, sample_is_published
 from src.api.uploads import validate_safe_id
 from src.storage.upload_validation import (
     UploadValidationError,
@@ -212,6 +212,7 @@ def sample_detail(
             "primary_photo": _primary_photo(sku),
             "tenant_id": tenant_id,
             "sample_photo_url": _photo_display_url,
+            "is_published": sample_is_published(db, sku_id, tenant_id),
         },
     )
 
@@ -247,7 +248,6 @@ async def add_photo(
     tenant_id: str = Form(default="default"),
     is_primary: bool = Form(default=False),
     angle: Optional[str] = Form(default=None),
-    capture_source: str = Form(default=""),
     view_type: Optional[str] = Form(default=None),
     image_url: Optional[str] = Form(default=None),
     local_path_input: Optional[str] = Form(default=None),
@@ -265,15 +265,6 @@ async def add_photo(
     )
     if not sku:
         raise HTTPException(status_code=404, detail="SKU not found")
-
-    if capture_source != "usb_camera" or image_url or local_path_input:
-        raise HTTPException(
-            status_code=403, detail="Samples must be acquired using a USB camera"
-        )
-    if photo_file is None or not photo_file.filename:
-        raise HTTPException(
-            status_code=400, detail="A USB camera capture is required"
-        )
 
     now = _utcnow()
     sha256_hash: Optional[str] = None
