@@ -150,6 +150,7 @@
     setStatus(message("uploading"));
     var data = new FormData(form);
     data.delete("_photo_mode");
+    data.set("capture_source", "usb_camera");
     data.set("photo_file", new File([pendingBlob], "mac-usb-standard-sample.jpg", {type: "image/jpeg"}));
     fetch(form.action, {method: "POST", body: data, credentials: "same-origin", redirect: "follow"})
       .then(function (response) {

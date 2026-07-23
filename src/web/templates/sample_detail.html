@@ -72,11 +72,8 @@
         <p class="hint">{{ t('security.mutation.hint') }}</p>
       </div>
 
-      <div class="form-tabs">
-        <label><input type="radio" name="_photo_mode" value="camera" checked onchange="togglePhotoMode(this.value)"> {{ t('sample.detail.capture_usb') }}</label>
-        <label><input type="radio" name="_photo_mode" value="upload" onchange="togglePhotoMode(this.value)"> {{ t('sample.detail.upload_file') }}</label>
-        <label><input type="radio" name="_photo_mode" value="url" onchange="togglePhotoMode(this.value)"> {{ t('sample.detail.register_url') }}</label>
-      </div>
+      <input type="hidden" name="capture_source" value="usb_camera">
+      <p class="hint"><strong>{{ t('sample.detail.capture_usb') }} · {{ t('sample.camera.required') }}</strong></p>
 
       <section id="mode-camera" class="sample-camera-panel"
                data-default="{{ t('sample.camera.default') }}"
@@ -108,24 +105,6 @@
         </div>
       </section>
 
-      <div id="mode-upload" style="display:none">
-        <div class="form-group">
-          <label for="photo_file">{{ t('sample.detail.image_file') }}</label>
-          <input type="file" id="photo_file" name="photo_file" accept="image/*">
-        </div>
-      </div>
-
-      <div id="mode-url" style="display:none">
-        <div class="form-group">
-          <label for="image_url">{{ t('sample.detail.image_url') }}</label>
-          <input type="text" id="image_url" name="image_url" placeholder="http://192.168.1.10:8080/assets/ref/...">
-        </div>
-        <div class="form-group">
-          <label for="local_path_input">{{ t('sample.detail.local_path') }}</label>
-          <input type="text" id="local_path_input" name="local_path_input" placeholder="/factory/ref/...">
-        </div>
-      </div>
-
       <div class="form-row">
         <div class="form-group">
           <label for="angle">{{ t('sample.detail.angle') }}</label>
@@ -141,9 +120,6 @@
         <label><input type="checkbox" name="is_primary" value="true" {% if not sku.photos %}checked{% endif %}> {{ t('sample.detail.set_as_primary') }}</label>
       </div>
 
-      <div id="photo-form-actions" class="form-actions" style="display:none">
-        <button type="submit" class="btn btn-primary">{{ t('sample.detail.add_photo') }}</button>
-      </div>
     </form>
   </details>
 </section>
@@ -307,15 +283,6 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-function togglePhotoMode(mode) {
-  document.getElementById('mode-camera').style.display = mode === 'camera' ? '' : 'none';
-  document.getElementById('mode-upload').style.display = mode === 'upload' ? '' : 'none';
-  document.getElementById('mode-url').style.display = mode === 'url' ? '' : 'none';
-  document.getElementById('photo-form-actions').style.display = mode === 'camera' ? 'none' : '';
-}
-
-</script>
 <script src="/static/sample_camera.js"></script>
 <script>
 window.GIRAFFE_SAMPLE_AUTHOR_I18N = {
