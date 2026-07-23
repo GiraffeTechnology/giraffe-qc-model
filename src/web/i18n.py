@@ -899,6 +899,7 @@ _STRINGS = {
     "studio.js.training_qualified": {LANG_EN: "Training qualified", LANG_ZH: "训练已合规", LANG_JA: "トレーニング合格"},
     "studio.js.training_not_qualified": {LANG_EN: "Training not qualified", LANG_ZH: "训练未合规", LANG_JA: "トレーニング未合格"},
     "studio.js.training_window_stats": {LANG_EN: "Last {size}: {correct}/{size} correct", LANG_ZH: "最近 {size} 次：{correct}/{size} 正确", LANG_JA: "直近 {size} 件中 {correct}/{size} 件正解"},
+    "studio.js.training_window_progress": {LANG_EN: "30-sample training window: {reviewed}/30 reviewed · {correct} correct", LANG_ZH: "30 次训练窗口：已裁决 {reviewed}/30 · 正确 {correct} 次", LANG_JA: "30件トレーニングウィンドウ：レビュー済み {reviewed}/30 · 正解 {correct}件"},
     "studio.js.training_no_samples": {LANG_EN: "No reviewed training samples yet.", LANG_ZH: "尚无已裁决的训练样本。", LANG_JA: "レビュー済みのトレーニングサンプルはまだありません。"},
     "studio.js.training_false_pass": {LANG_EN: "{count} false pass(es) in the current window — this alone blocks qualification.", LANG_ZH: "当前窗口内有 {count} 次误判合格（False pass），仅此一项即阻止合规。", LANG_JA: "現在のウィンドウ内に {count} 件のフォールスパスがあり、これだけで合格を阻止します。"},
     "studio.js.training_ground_truth_qualified": {LANG_EN: "Sample is qualified", LANG_ZH: "样本为合格品", LANG_JA: "サンプルは合格品"},

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ t('studio.page.title') }}</title>
-  <link rel="stylesheet" href="/static/admin_studio.css?v=stage2-confirmed-samples-1">
+  <link rel="stylesheet" href="/static/admin_studio.css?v=stage2-confirmed-samples-2">
 </head>
 <body data-tenant="{{ tenant_id }}" data-initial-sku="{{ initial_sku_id }}">
   <header class="studio-header">
@@ -72,6 +72,7 @@
           </div>
           <p id="studio-camera-status" class="studio-camera-status" aria-live="polite">{{ t('studio.training.camera.required') }}</p>
         </section>
+        <section id="training-review-section" class="training-review-section" aria-live="polite"></section>
       </div>
     </section>
 
@@ -120,6 +121,7 @@
       trainingQualified: {{ t('studio.js.training_qualified') | tojson }},
       trainingNotQualified: {{ t('studio.js.training_not_qualified') | tojson }},
       trainingWindowStats: {{ t('studio.js.training_window_stats') | tojson }},
+      trainingWindowProgress: {{ t('studio.js.training_window_progress') | tojson }},
       trainingNoSamples: {{ t('studio.js.training_no_samples') | tojson }},
       trainingFalsePass: {{ t('studio.js.training_false_pass') | tojson }},
       trainingGroundTruthQualified: {{ t('studio.js.training_ground_truth_qualified') | tojson }},
@@ -170,6 +172,6 @@
       }
     };
   </script>
-  <script src="/static/admin_studio.js?v=stage2-confirmed-samples-1"></script>
+  <script src="/static/admin_studio.js?v=stage2-center-review-1"></script>
 </body>
 </html>
