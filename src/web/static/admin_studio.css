@@ -108,7 +108,7 @@ body {
 .bubble.meta { padding: 3px 8px; border: 0; background: transparent; color: var(--muted); font-size: 11px; }
 @keyframes pulse { to { opacity: .2; transform: scale(.7); } }
 .bubble.system img.chat-photo { max-width: 220px; border-radius: 8px; display: block; margin-top: 6px; }
-.studio-operations-note { align-items: center; justify-content: center; text-align: center; gap: 10px; }
+.studio-operations-note { align-items: center; justify-content: flex-start; text-align: center; gap: 10px; padding-top: 10px; }
 .studio-operations-note p { color: var(--muted); font-size: 14px; max-width: 320px; }
 
 .btn { padding: 7px 14px; border: 1px solid var(--border); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
