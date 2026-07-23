@@ -154,7 +154,6 @@
       `</div>` +
       `<div><span class="status-badge status-${esc(sku.standard_status)}">${esc(standardStatusLabel(sku.standard_status))}</span></div>` +
       (dps ? `<ul class="dp-list">${dps}</ul>` : `<p class="muted" style="margin-top:12px">${esc(t("noDetectionPoints"))}</p>`) +
-      `<div id="training-section" class="training-section"></div>` +
       `<div class="publish-row">` +
       `<button class="publish-btn" id="publish-btn" ${canPublish ? "" : "disabled"}>${esc(t("publish"))}</button>` +
       (sku.standard_status === "standard_active" && !trainingQualified
@@ -169,7 +168,7 @@
 
     if (sku.active_revision_id) {
       loadProbation(sku.active_revision_id);
-      renderTraining($("#training-section"), sku);
+      renderTraining($("#training-review-section"), sku);
     }
   }
 
@@ -256,12 +255,15 @@
       : `<span class="status-badge status-training-pending">${esc(t("trainingNotQualified"))}</span>`;
     const window30 = status && status.recent_30_correct != null
       ? t("trainingWindowStats", { correct: status.recent_30_correct, size: 30 }) : null;
+    const reviewedCount = status ? Math.min(status.total_reviewed || 0, 30) : 0;
+    const correctCount = status && status.recent_30_correct != null ? status.recent_30_correct : 0;
     const falsePassNote = status && status.recent_30_false_pass_count > 0
       ? `<div class="training-false-pass">${esc(t("trainingFalsePass", { count: status.recent_30_false_pass_count }))}</div>` : "";
     slot.innerHTML =
       `<div class="training-head">` +
       `<strong>${esc(t("trainingHeading"))}</strong> ${badge}` +
       `</div>` +
+      `<div class="training-window-card"><strong>${esc(t("trainingWindowProgress", { reviewed: reviewedCount, correct: correctCount }))}</strong></div>` +
       `<div class="training-stats muted">` +
       (window30 || t("trainingNoSamples")) +
       `</div>` +
@@ -455,11 +457,6 @@
         note.textContent = t("bundleNote", {
           id: b.id.slice(0, 8),
           algorithm: b.signature_algorithm,
-  $("#studio-camera-start").addEventListener("click", startStudioCamera);
-  $("#studio-camera-stop").addEventListener("click", stopStudioCamera);
-  $("#studio-camera-capture").addEventListener("click", () => submitTrainingSample(state.skuId));
-  window.addEventListener("beforeunload", stopStudioCamera);
-
           hash: b.bundle_hash.slice(0, 16),
         });
         if (data.sku) setActiveSku(data.sku);
@@ -487,6 +484,10 @@
     searchTimer = setTimeout(loadSkus, 200);
   });
   $("#sku-status-filter").addEventListener("change", loadSkus);
+  $("#studio-camera-start").addEventListener("click", startStudioCamera);
+  $("#studio-camera-stop").addEventListener("click", stopStudioCamera);
+  $("#studio-camera-capture").addEventListener("click", () => submitTrainingSample(state.skuId));
+  window.addEventListener("beforeunload", stopStudioCamera);
 
   if (initialSkuId) {
     selectSku(initialSkuId).catch(() => loadSkus());
