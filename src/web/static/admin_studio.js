@@ -291,9 +291,11 @@
   function syncStudioCameraControls() {
     const video = $("#studio-camera-preview");
     const capture = $("#studio-camera-capture");
+    const start = $("#studio-camera-start");
     const stop = $("#studio-camera-stop");
     const live = Boolean(studioCamera.stream);
     if (video) video.hidden = !live;
+    if (start) start.disabled = live;
     if (capture) capture.disabled = !live || !state.skuId;
     if (stop) stop.disabled = !live;
   }
