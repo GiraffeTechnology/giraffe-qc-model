@@ -174,6 +174,12 @@ def test_sample_workbench_owns_three_authoring_inputs_and_confirmation(client):
     assert 'id="sample-confirm-card-template"' in detail.text
     assert '/static/sample_standard_authoring.js' in detail.text
     page = client.get(f"/admin/studio?tenant_id=demo&sku_id={sku_id}")
+    assert 'id="studio-camera-preview"' in page.text
+    assert 'id="studio-camera-start"' in page.text
+    assert 'id="studio-camera-capture"' in page.text
+    assert 'id="studio-camera-stop"' in page.text
+    assert 'id="training-sample-select"' not in page.text
+    assert 'name="sample_photo_id"' not in page.text
     assert f'data-initial-sku="{sku_id}"' in page.text
     assert 'id="chat-text"' not in page.text
     assert 'id="process-card-toggle"' not in page.text
@@ -626,7 +632,7 @@ def test_upload_valid_png_displayed(client):
     sku_id = _create_flw(client)
     resp = client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("standard.png", _tiny_png(), "image/png")},
     )
     assert resp.status_code == 200, resp.text
@@ -666,7 +672,7 @@ def test_upload_rejects_non_image(client):
     sku_id = _create_flw(client)
     resp = client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         # Declares image/png but the bytes are not an image → MIME sniff rejects.
         files={"image": ("evil.png", b"#!/bin/sh\nrm -rf /", "image/png")},
     )
@@ -679,7 +685,7 @@ def test_upload_rejects_oversize(client, monkeypatch):
     sku_id = _create_flw(client)
     resp = client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("big.png", _tiny_png(), "image/png")},
     )
     assert resp.status_code == 413
@@ -708,7 +714,7 @@ def test_standard_photo_urls_are_tenant_aware_for_non_default_tenant(client):
     # 2. Upload one standard photo through the Studio upload path.
     up = client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": tenant, "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": tenant},
         files={"image": ("acme.png", _tiny_png(), "image/png")},
     )
     assert up.status_code == 200, up.text
@@ -803,7 +809,7 @@ def test_publish_builds_verifiable_ed25519_tar_gz(client, db_session_factory):
     sku_id = _create_flw(client)
     client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     )
     card = client.post(
@@ -843,7 +849,7 @@ def test_publish_archive_fails_closed_on_missing_photo_file(client, db_session_f
     sku_id = _create_flw(client)
     up = client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     ).json()
     card = client.post(
@@ -874,7 +880,7 @@ def test_publish_archive_fails_closed_on_stale_photo(client, db_session_factory)
     sku_id = _create_flw(client)
     up = client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     ).json()
     card = client.post(
@@ -907,7 +913,7 @@ def test_publish_endpoint_fails_closed_on_missing_photo(client, db_session_facto
     sku_id = _create_flw(client)
     up = client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     ).json()
     card = client.post(
@@ -943,7 +949,7 @@ def test_publish_archive_fails_closed_on_missing_sha256(client, db_session_facto
     sku_id = _create_flw(client)
     up = client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     ).json()
     card = client.post(
@@ -990,7 +996,7 @@ def test_publish_persists_downloadable_verified_archive(client, db_session_facto
     sku_id = _create_flw(client)
     client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     )
     bundle = _publish_flw(client, sku_id, db_session_factory)
@@ -1014,7 +1020,7 @@ def test_download_bundle_is_tenant_scoped(client, db_session_factory):
     sku_id = _create_flw(client)
     client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     )
     bundle = _publish_flw(client, sku_id, db_session_factory)
@@ -1029,7 +1035,7 @@ def test_download_bundle_fails_closed_on_tampered_payload(client, db_session_fac
     sku_id = _create_flw(client)
     client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     )
     bundle = _publish_flw(client, sku_id, db_session_factory)
@@ -1052,7 +1058,7 @@ def test_minimum_admin_happy_path_flw001(client, db_session_factory):
     # 2. Upload a standard photo.
     up = client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     )
     assert up.status_code == 200
@@ -1115,7 +1121,7 @@ def test_set_regions_persists_and_appears_in_sku_summary(client):
     sku_id = _create_flw(client)
     up = client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     )
     photo_id = up.json()["photo_id"]
@@ -1150,7 +1156,7 @@ def test_set_regions_empty_list_clears_existing(client):
     sku_id = _create_flw(client)
     up = client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     )
     photo_id = up.json()["photo_id"]
@@ -1176,7 +1182,7 @@ def test_published_bundle_manifest_contains_authored_regions(client, db_session_
     sku_id = _create_flw(client)
     up = client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     )
     photo_id = up.json()["photo_id"]
@@ -1212,7 +1218,7 @@ def test_analysis_config_real_endpoint_persists_and_bundle_carries_hooks(client,
     sku_id = _create_flw(client)
     client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     )
     dp_id = _confirm_one_point(client, sku_id)
@@ -1255,7 +1261,7 @@ def test_analysis_config_change_after_publish_requires_new_revision(client, db_s
     sku_id = _create_flw(client)
     client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     )
     dp_id = _confirm_one_point(client, sku_id)
@@ -1273,7 +1279,7 @@ def test_published_detection_point_semantic_edit_requires_new_revision(client, d
     sku_id = _create_flw(client)
     client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     )
     dp_id = _confirm_one_point(client, sku_id)
@@ -1293,7 +1299,7 @@ def test_published_detection_point_description_edit_preserves_revision(client, d
     sku_id = _create_flw(client)
     client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": "default", "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": "default"},
         files={"image": ("flw.png", _tiny_png(), "image/png")},
     )
     dp_id = _confirm_one_point(client, sku_id)

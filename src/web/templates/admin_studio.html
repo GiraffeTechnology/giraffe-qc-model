@@ -60,6 +60,18 @@
       <div id="conversation" class="conversation studio-operations-note" aria-live="polite">
         <p>{{ t('studio.center.training_scope') }}</p>
         <a class="btn" id="sample-authoring-link" href="/admin/samples">{{ t('studio.center.open_sample') }}</a>
+        <section id="studio-camera-panel" class="studio-camera-panel" aria-label="{{ t('studio.training.camera.heading') }}">
+          <h3>{{ t('studio.training.camera.heading') }}</h3>
+          <p class="muted">{{ t('studio.training.camera.instructions') }}</p>
+          <video id="studio-camera-preview" class="studio-camera-preview" autoplay playsinline muted hidden></video>
+          <canvas id="studio-camera-canvas" hidden></canvas>
+          <div class="studio-camera-actions">
+            <button type="button" class="btn" id="studio-camera-start">{{ t('studio.training.camera.start') }}</button>
+            <button type="button" class="btn btn-primary" id="studio-camera-capture" disabled>{{ t('studio.training.camera.capture') }}</button>
+            <button type="button" class="btn" id="studio-camera-stop" disabled>{{ t('studio.training.camera.stop') }}</button>
+          </div>
+          <p id="studio-camera-status" class="studio-camera-status" aria-live="polite">{{ t('studio.training.camera.required') }}</p>
+        </section>
       </div>
     </section>
 
@@ -117,6 +129,17 @@
       trainingSelectSample: {{ t('studio.js.training_select_sample') | tojson }},
       trainingRunning: {{ t('studio.js.training_running') | tojson }},
       trainingRecorded: {{ t('studio.js.training_recorded') | tojson }},
+      trainingCameraHeading: {{ t('studio.training.camera.heading') | tojson }},
+      trainingCameraInstructions: {{ t('studio.training.camera.instructions') | tojson }},
+      trainingCameraStart: {{ t('studio.training.camera.start') | tojson }},
+      trainingCameraCapture: {{ t('studio.training.camera.capture') | tojson }},
+      trainingCameraStop: {{ t('studio.training.camera.stop') | tojson }},
+      trainingCameraReady: {{ t('studio.training.camera.ready') | tojson }},
+      trainingCameraDenied: {{ t('studio.training.camera.denied') | tojson }},
+      trainingCameraCaptured: {{ t('studio.training.camera.captured') | tojson }},
+      trainingCameraRequired: {{ t('studio.training.camera.required') | tojson }},
+      trainingCameraFailed: {{ t('studio.training.camera.failed') | tojson }},
+      trainingCaptureSkuFirst: {{ t('studio.training.capture_sku_first') | tojson }},
       trainingFailed: {{ t('studio.js.training_failed') | tojson }},
       trainingQueueEmpty: {{ t('studio.js.training_queue_empty') | tojson }},
       trainingGroundTruth: {{ t('studio.js.training_ground_truth') | tojson }},

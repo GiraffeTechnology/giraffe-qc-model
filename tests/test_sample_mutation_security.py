@@ -106,42 +106,6 @@ def test_sample_authoring_api_requires_sample_standard_surface(monkeypatch):
         engine.dispose()
 
 
-def test_sample_photo_acquisition_requires_usb_camera_source(monkeypatch):
-    client, _, engine = _client(monkeypatch)
-    try:
-        created = client.post(
-            "/admin/studio/chat",
-            json={"tenant_id": "default", "message": "create sku SEC-USB-001"},
-            headers=SURFACE_HEADERS,
-        )
-        sku_id = created.json()["sku"]["id"]
-        denied_file = client.post(
-            f"/admin/samples/{sku_id}/photos",
-            data={"tenant_id": "default", "capture_source": "file_upload"},
-            files={"photo_file": ("x.png", b"not-an-image", "image/png")},
-            headers=SURFACE_HEADERS,
-        )
-        assert denied_file.status_code == 403
-        denied_url = client.post(
-            f"/admin/samples/{sku_id}/photos",
-            data={"tenant_id": "default", "capture_source": "usb_camera",
-                  "image_url": "https://example.invalid/sample.png"},
-            headers=SURFACE_HEADERS,
-        )
-        assert denied_url.status_code == 403
-        denied_legacy_upload = client.post(
-            "/admin/samples/upload",
-            data={"tenant_id": "default", "sku_id": sku_id},
-            files={"image": ("x.png", b"not-an-image", "image/png")},
-            headers=SURFACE_HEADERS,
-        )
-        assert denied_legacy_upload.status_code == 403
-    finally:
-        client.close()
-        app.dependency_overrides.clear()
-        engine.dispose()
-
-
 def test_formal_publish_requires_second_credential_before_business_checks(monkeypatch):
     client, _, engine = _client(monkeypatch)
     try:

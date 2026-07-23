@@ -124,7 +124,7 @@ def _studio_create_confirm(client) -> dict:
     # 2. Upload a standard photo (S2 hardened upload).
     up = client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": TENANT, "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": TENANT},
         files={"image": ("std.png", _tiny_png(), "image/png")},
     )
     assert up.status_code == 200, up.text
@@ -384,7 +384,7 @@ def test_e2e_studio_upload_rejects_non_image(client):
     sku_id = created["sku"]["id"]
     resp = client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id, "tenant_id": TENANT, "capture_source": "usb_camera"},
+        data={"sku_id": sku_id, "tenant_id": TENANT},
         files={"image": ("evil.png", b"#!/bin/sh\nrm -rf /", "image/png")},
     )
     assert resp.status_code == 415
