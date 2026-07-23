@@ -195,7 +195,7 @@ def test_cross_tenant_photo_not_readable(client):
     sku_id = created["sku"]["id"]
     up = client.post(
         "/admin/samples/upload",
-        data={"sku_id": sku_id},
+        data={"sku_id": sku_id, "capture_source": "usb_camera"},
         files={"image": ("s.png", _png(), "image/png")},
         headers=_admin_token("tenant_a"),
     )

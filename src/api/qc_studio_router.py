@@ -494,11 +494,16 @@ async def sample_workbench_upload(
     tenant_id: str = Form("default"),
     view_type: Optional[str] = Form(None),
     angle: Optional[str] = Form(None),
+    capture_source: str = Form(""),
     image: UploadFile = File(...),
     db: Session = Depends(get_db_dep),
 ):
     # The multipart body is not rewritten by the auth gate, so derive the
     # authoritative tenant from the authenticated principal here.
+    if capture_source != "usb_camera":
+        raise HTTPException(
+            status_code=403, detail="Samples must be acquired using a USB camera"
+        )
     tenant_id = effective_tenant(request, tenant_id)
     # sku_id is used to build a filesystem path — reject traversal attempts.
     validate_safe_id(sku_id, "sku_id")

@@ -247,6 +247,7 @@ async def add_photo(
     tenant_id: str = Form(default="default"),
     is_primary: bool = Form(default=False),
     angle: Optional[str] = Form(default=None),
+    capture_source: str = Form(default=""),
     view_type: Optional[str] = Form(default=None),
     image_url: Optional[str] = Form(default=None),
     local_path_input: Optional[str] = Form(default=None),
@@ -264,6 +265,15 @@ async def add_photo(
     )
     if not sku:
         raise HTTPException(status_code=404, detail="SKU not found")
+
+    if capture_source != "usb_camera" or image_url or local_path_input:
+        raise HTTPException(
+            status_code=403, detail="Samples must be acquired using a USB camera"
+        )
+    if photo_file is None or not photo_file.filename:
+        raise HTTPException(
+            status_code=400, detail="A USB camera capture is required"
+        )
 
     now = _utcnow()
     sha256_hash: Optional[str] = None

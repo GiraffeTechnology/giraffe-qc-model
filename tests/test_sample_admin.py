@@ -181,7 +181,10 @@ class TestAdminDetailPage:
         assert 'id="sample-camera-capture"' in html
         assert 'id="sample-camera-upload-confirm"' in html
         assert 'id="sample-camera-retake"' in html
-        assert 'value="camera" checked' in html
+        assert 'name="capture_source" value="usb_camera"' in html
+        assert 'name="_photo_mode"' not in html
+        assert 'id="mode-upload"' not in html
+        assert 'id="mode-url"' not in html
         assert "/static/sample_camera.js" in html
         assert translate("sample.detail.capture_usb", "en") in html
 
@@ -264,16 +267,16 @@ class TestAdminPhotoRegistration:
     def setup(self, client):
         self.sku_id = _make_sku(client, "ADMIN-PHOTO-URL-001", "Admin Photo URL Test")
 
-    def test_register_url_photo_shows_in_detail(self, client):
+    def test_register_url_photo_is_rejected(self, client):
         resp = client.post(f"/admin/samples/{self.sku_id}/photos", data={
             "tenant_id": TENANT,
+            "capture_source": "usb_camera",
             "image_url": "http://192.168.1.10:8080/assets/ref/test-admin.jpg",
             "angle": "front",
             "view_type": "standard",
             "is_primary": "true",
         })
-        assert resp.status_code == 200
-        assert "test-admin.jpg" in resp.text
+        assert resp.status_code == 403
 
     def test_upload_png_file(self, client):
         # Minimal valid 1x1 red PNG
@@ -290,7 +293,7 @@ class TestAdminPhotoRegistration:
         ])
         resp = client.post(
             f"/admin/samples/{self.sku_id}/photos",
-            data={"tenant_id": TENANT, "angle": "back"},
+            data={"tenant_id": TENANT, "angle": "back", "capture_source": "usb_camera"},
             files={"photo_file": ("test_upload.png", io.BytesIO(png_1x1), "image/png")},
         )
         assert resp.status_code == 200
@@ -299,7 +302,7 @@ class TestAdminPhotoRegistration:
         png = _tiny_png()
         resp = client.post(
             f"/admin/samples/{self.sku_id}/photos",
-            data={"tenant_id": TENANT, "is_primary": "true"},
+            data={"tenant_id": TENANT, "is_primary": "true", "capture_source": "usb_camera"},
             files={"photo_file": ("visible.png", io.BytesIO(png), "image/png")},
         )
         assert resp.status_code == 200
@@ -318,15 +321,16 @@ class TestAdminSetPrimary:
     @pytest.fixture(autouse=True)
     def setup(self, client):
         self.sku_id = _make_sku(client, "ADMIN-PRIMARY-001", "Admin Set Primary Test")
-        client.post(f"/admin/samples/{self.sku_id}/photos", data={
-            "tenant_id": TENANT,
-            "image_url": "http://example.com/photo-a.jpg",
-            "is_primary": "true",
-        })
-        client.post(f"/admin/samples/{self.sku_id}/photos", data={
-            "tenant_id": TENANT,
-            "image_url": "http://example.com/photo-b.jpg",
-        })
+        client.post(
+            f"/admin/samples/{self.sku_id}/photos",
+            data={"tenant_id": TENANT, "capture_source": "usb_camera", "is_primary": "true"},
+            files={"photo_file": ("photo-a.png", io.BytesIO(_tiny_png()), "image/png")},
+        )
+        client.post(
+            f"/admin/samples/{self.sku_id}/photos",
+            data={"tenant_id": TENANT, "capture_source": "usb_camera"},
+            files={"photo_file": ("photo-b.png", io.BytesIO(_tiny_png()), "image/png")},
+        )
         api_detail = client.get(f"/api/v1/sku/{self.sku_id}", params={"tenant_id": TENANT})
         self.photos = api_detail.json().get("photos", [])
 
@@ -340,7 +344,7 @@ class TestAdminSetPrimary:
         )
         assert resp.status_code == 200
         detail = client.get(f"/api/v1/sku/{self.sku_id}", params={"tenant_id": TENANT})
-        assert detail.json()["reference_image_url"] == "http://example.com/photo-b.jpg"
+        assert detail.json()["standard_photo_path"] == self.photos[1]["local_path"]
 
 
 # ─── Requirements ────────────────────────────────────────────────────────────
