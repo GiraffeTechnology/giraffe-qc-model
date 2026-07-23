@@ -81,7 +81,7 @@ def _create_and_confirm(client) -> str:
     )
     uploaded = client.post(
         f"/admin/samples/{sku_id}/photos",
-        data={"tenant_id": "default", "is_primary": "true", "view_type": "standard", "capture_source": "usb_camera"},
+        data={"tenant_id": "default", "is_primary": "true", "view_type": "standard"},
         files={"photo_file": ("standard.png", _tiny_png(), "image/png")},
         follow_redirects=False,
     )
@@ -95,7 +95,7 @@ def _add_training_photo(client, sku_id) -> str:
     }
     uploaded = client.post(
         f"/admin/samples/{sku_id}/photos",
-        data={"tenant_id": "default", "is_primary": "false", "view_type": "training_instance", "capture_source": "usb_camera"},
+        data={"tenant_id": "default", "is_primary": "false", "view_type": "training_instance"},
         files={"photo_file": ("training-instance.png", _tiny_png(), "image/png")},
         follow_redirects=False,
     )
