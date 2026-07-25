@@ -1,0 +1,20 @@
+# qc-vlm-probe model registry.
+#
+# Columns (whitespace/tab separated): model_id  input_price  output_price
+#   tiered_flag  vision_flag  token_pixels  default_max_pixels  [thinking]
+#
+# Prices are CNY per 1M tokens, either a scalar ("12.0") or a tier spec
+# ("0:2.0,256000:6.0" meaning >=0 tokens -> 2.0/M, >=256000 -> 6.0/M). The
+# tier that applies is chosen by TOTAL input tokens in the request, not the
+# tokens above the threshold -- see lib/score.py:tier_rate().
+#
+# TBD is deliberate, not a placeholder to silently fill in: lib/score.py's
+# parse_price() raises SystemExit the first time a cost is computed against a
+# TBD row. Pull the current list price from the Bailian console before a real
+# scoring run and replace both TBD cells below. Do not commit a negotiated or
+# discounted price here -- list price only.
+#
+# thinking: na = model has no thinking mode (do not send enable_thinking).
+#
+# model_id                          in_price  out_price  tiered  vision  token_pixels  max_pixels  thinking
+qwen3-vl-235b-a22b-instruct         TBD       TBD        tiered  vision  1024          2621440     na
