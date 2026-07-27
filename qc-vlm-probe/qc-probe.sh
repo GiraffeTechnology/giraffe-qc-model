@@ -142,10 +142,17 @@ build_payload() {
       webp|WEBP)         mime="image/webp" ;;
       *) die "unsupported image type: $img" ;;
     esac
+    # The base64 blob must never be passed as a jq command-line argument:
+    # Linux caps a single execve() argument at MAX_ARG_STRLEN (128 KiB), and
+    # any real photo's base64 encoding clears that easily. Route it through
+    # --rawfile instead, which reads the file's bytes directly.
     b64="$($B64 < "$img")"
-    jq --arg url "data:${mime};base64,${b64}" \
-       '. += [{"type":"image_url","image_url":{"url":$url}}]' \
+    local b64_file; b64_file="$(mktemp)"
+    printf '%s' "$b64" > "$b64_file"
+    jq --arg mime "$mime" --rawfile b64 "$b64_file" \
+       '. += [{"type":"image_url","image_url":{"url":("data:" + $mime + ";base64," + $b64)}}]' \
        "$content_file" > "${content_file}.n" && mv "${content_file}.n" "$content_file"
+    rm -f "$b64_file"
   done
   jq --arg t "$prompt" '. += [{"type":"text","text":$t}]' \
      "$content_file" > "${content_file}.n" && mv "${content_file}.n" "$content_file"
